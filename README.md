@@ -33,7 +33,7 @@ A static file server is preferred so `seed.json` and the service worker load cor
 - Stats strip by type and status
 - Seed samples on first load (with real Open Library covers); clear samples anytime
 - PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v2`)
-- Relative paths only — ready for GitHub Pages under a project path later
+- Relative paths only — works from the GitHub Pages project path
 
 ## Add to Home Screen
 
