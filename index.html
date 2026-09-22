@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Media Shelf — track books, games, and movies in one place." />
+  <meta name="theme-color" content="#14110e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Media Shelf" />
+  <title>Media Shelf — Books · Games · Movies</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
+            <rect x="4" y="6" width="8" height="20" rx="1.5" fill="#e8a87c"/>
+            <rect x="13" y="6" width="6" height="20" rx="1.5" fill="#c38d9e"/>
+            <rect x="20" y="6" width="8" height="20" rx="1.5" fill="#85cfc0"/>
+          </svg>
+        </span>
+        <div>
+          <h1>Media Shelf</h1>
+          <p class="tagline">Books · Games · Movies — your personal shelf</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="btn btn-ghost" id="btn-export" title="Export library as JSON">Export</button>
+        <button type="button" class="btn btn-ghost" id="btn-import" title="Import library from JSON">Import</button>
+        <input type="file" id="import-file" accept="application/json,.json" hidden />
+        <button type="button" class="btn btn-primary" id="btn-add">+ Add</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="stats" id="stats" aria-label="Library stats"></section>
+
+  <div class="toolbar">
+    <nav class="type-tabs" role="tablist" aria-label="Media type">
+      <button type="button" class="chip active" data-type="all" role="tab" aria-selected="true">All</button>
+      <button type="button" class="chip" data-type="book" role="tab" aria-selected="false">Books</button>
+      <button type="button" class="chip" data-type="game" role="tab" aria-selected="false">Games</button>
+      <button type="button" class="chip" data-type="movie" role="tab" aria-selected="false">Movies</button>
+    </nav>
+
+    <div class="filters-row">
+      <label class="sr-only" for="status-filter">Status</label>
+      <select id="status-filter" class="select">
+        <option value="all">All statuses</option>
+        <option value="want">Want</option>
+        <option value="in_progress">In progress</option>
+        <option value="done">Done</option>
+        <option value="dropped">Dropped</option>
+      </select>
+
+      <label class="sr-only" for="sort-select">Sort</label>
+      <select id="sort-select" class="select">
+        <option value="updated">Recently updated</option>
+        <option value="title">Title A–Z</option>
+        <option value="rating">Rating</option>
+      </select>
+
+      <div class="search-wrap">
+        <label class="sr-only" for="search">Search</label>
+        <input type="search" id="search" class="search" placeholder="Search title, creator, notes, tags…" autocomplete="off" />
+      </div>
+    </div>
+  </div>
+
+  <main id="main" class="main">
+    <div id="seed-banner" class="seed-banner" hidden>
+      <p>Showing sample items so the shelf isn’t empty. Your data stays in this browser.</p>
+      <button type="button" class="btn btn-ghost btn-sm" id="btn-clear-seed">Clear samples</button>
+    </div>
+    <ul id="item-list" class="item-list" aria-live="polite"></ul>
+    <div id="empty-state" class="empty-state" hidden>
+      <p class="empty-title">Nothing on this shelf yet</p>
+      <p class="empty-hint">Add a book, game, or movie to get started.</p>
+      <button type="button" class="btn btn-primary" id="btn-empty-add">+ Add your first item</button>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p>Data stays in your browser (<code>localStorage</code>) · Export JSON to back up · Hosted on GitHub Pages</p>
+  </footer>
+
+  <!-- Modal -->
+  <div id="modal" class="modal" hidden aria-hidden="true">
+    <div class="modal-backdrop" data-close="true"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-header">
+        <h2 id="modal-title">Add item</h2>
+        <button type="button" class="btn-icon" id="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <form id="item-form" class="item-form" novalidate>
+        <input type="hidden" id="field-id" />
+
+        <div class="form-row">
+          <label for="field-type">Type <span class="req">*</span></label>
+          <select id="field-type" required>
+            <option value="book">Book</option>
+            <option value="game">Game</option>
+            <option value="movie">Movie</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label for="field-barcode">Barcode / ISBN</label>
+          <div class="barcode-row">
+            <input type="text" id="field-barcode" maxlength="32" placeholder="ISBN-10/13, UPC, or EAN" autocomplete="off" inputmode="numeric" />
+            <button type="button" class="btn btn-ghost" id="btn-scan" title="Scan with camera">Scan</button>
+            <button type="button" class="btn btn-ghost" id="btn-lookup" title="Look up cover and details">Lookup</button>
+          </div>
+          <p class="field-hint">Camera scan works best on HTTPS or localhost; on plain HTTP LAN it may be blocked.</p>
+          <p id="lookup-status" class="lookup-status" role="status" aria-live="polite" hidden></p>
+        </div>
+
+        <div class="form-row">
+          <label for="field-title">Title <span class="req">*</span></label>
+          <input type="text" id="field-title" required maxlength="200" />
+        </div>
+
+        <div class="form-row">
+          <label for="field-creator" id="label-creator">Creator</label>
+          <input type="text" id="field-creator" maxlength="200" placeholder="Author / studio / developer" />
+        </div>
+
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="field-year">Year</label>
+            <input type="number" id="field-year" min="1800" max="2100" placeholder="e.g. 2024" />
+          </div>
+          <div class="form-row">
+            <label for="field-status">Status <span class="req">*</span></label>
+            <select id="field-status" required>
+              <option value="want">Want</option>
+              <option value="in_progress">In progress</option>
+              <option value="done">Done</option>
+              <option value="dropped">Dropped</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-grid" id="format-row">
+          <div class="form-row">
+            <label for="field-format">Format <span class="req">*</span></label>
+            <select id="field-format" required>
+              <option value="physical">Physical</option>
+              <option value="digital">Digital</option>
+              <option value="audiobook">Audiobook</option>
+            </select>
+          </div>
+          <div class="form-row" id="disc-row" hidden>
+            <label for="field-disc">Disc <span class="req">*</span></label>
+            <select id="field-disc">
+              <option value="blu-ray">Blu-ray</option>
+              <option value="dvd">DVD</option>
+              <option value="vhs">VHS</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="field-rating">Rating</label>
+            <select id="field-rating">
+              <option value="">—</option>
+              <option value="1">★☆☆☆☆</option>
+              <option value="2">★★☆☆☆</option>
+              <option value="3">★★★☆☆</option>
+              <option value="4">★★★★☆</option>
+              <option value="5">★★★★★</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="field-progress">Progress</label>
+            <input type="text" id="field-progress" maxlength="80" placeholder="page 120 / hour 8 / ep 3" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label for="field-tags">Tags</label>
+          <input type="text" id="field-tags" maxlength="200" placeholder="sci-fi, indie (comma-separated)" />
+        </div>
+
+        <div class="form-row">
+          <label for="field-notes">Notes</label>
+          <textarea id="field-notes" rows="3" maxlength="2000" placeholder="Thoughts, reminders…"></textarea>
+        </div>
+
+        <div class="form-row">
+          <label for="field-cover">Cover URL</label>
+          <input type="url" id="field-cover" maxlength="500" placeholder="https://…" />
+          <input type="hidden" id="field-cover-source" />
+          <div class="cover-preview-wrap">
+            <img id="cover-preview" class="cover-preview" alt="" hidden />
+            <div id="cover-preview-placeholder" class="cover-preview-placeholder" aria-hidden="true">No cover</div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-danger" id="btn-delete" hidden>Delete</button>
+          <div class="form-actions-right">
+            <button type="button" class="btn btn-ghost" data-close="true">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="btn-save">Save</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Barcode scan panel -->
+  <div id="scan-modal" class="modal" hidden aria-hidden="true">
+    <div class="modal-backdrop" data-scan-close="true"></div>
+    <div class="modal-panel modal-panel-sm scan-panel" role="dialog" aria-modal="true" aria-labelledby="scan-title">
+      <div class="modal-header">
+        <h2 id="scan-title">Scan barcode</h2>
+        <button type="button" class="btn-icon" id="scan-close" aria-label="Close scan">&times;</button>
+      </div>
+      <p class="field-hint">Point your camera at an ISBN or barcode. Works best on HTTPS or localhost.</p>
+      <div id="qr-reader" class="qr-reader"></div>
+      <p id="scan-status" class="lookup-status" role="status" aria-live="polite"></p>
+      <div class="form-actions-right confirm-actions">
+        <button type="button" class="btn btn-ghost" id="scan-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm dialog -->
+  <div id="confirm" class="modal" hidden aria-hidden="true">
+    <div class="modal-backdrop" data-confirm-cancel="true"></div>
+    <div class="modal-panel modal-panel-sm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-desc">
+      <h2 id="confirm-title">Delete item?</h2>
+      <p id="confirm-desc">This cannot be undone.</p>
+      <div class="form-actions-right confirm-actions">
+        <button type="button" class="btn btn-ghost" id="confirm-cancel">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirm-ok">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
