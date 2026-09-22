@@ -902,10 +902,174 @@ body.modal-open {
 .card-refs {
   margin-left: auto;
 }
-.api-key-hint a {
-  color: var(--accent);
-}
 
 .header-actions {
   flex-wrap: wrap;
+}
+
+
+/* API key wizard (Settings) */
+.btn-sm {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+}
+
+.modal-panel-settings {
+  max-width: 560px;
+  max-height: min(92dvh, 860px);
+  margin: auto 1rem 8vh;
+  border-radius: var(--radius);
+  padding: 1.15rem 1.25rem 1.35rem;
+}
+
+@media (min-width: 560px) {
+  .modal-panel-settings {
+    margin: 0;
+  }
+}
+
+.settings-intro {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.api-key-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.api-key-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  padding: 0.9rem 1rem 1rem;
+  outline: none;
+}
+
+.api-key-card.is-focus {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.api-key-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.45rem;
+}
+
+.api-key-card-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.api-key-status {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+
+.api-key-status[data-status="set"] {
+  color: #6dcea0;
+  border-color: rgba(109, 206, 160, 0.45);
+  background: rgba(109, 206, 160, 0.12);
+}
+
+.api-key-blurb {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.api-key-steps {
+  margin: 0 0 0.75rem;
+  padding-left: 1.2rem;
+  font-size: 0.8rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.api-key-steps li + li {
+  margin-top: 0.2rem;
+}
+
+.api-key-field {
+  margin-bottom: 0.65rem;
+}
+
+.api-key-input-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: stretch;
+}
+
+.api-key-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.api-key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.api-key-actions a.btn {
+  text-decoration: none;
+}
+
+.api-key-test-status {
+  margin: 0.55rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.api-key-test-status.is-ok {
+  color: #6dcea0;
+}
+
+.api-key-test-status.is-fail {
+  color: #f0a0a0;
+}
+
+.settings-done-row {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.api-key-hint-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.65rem;
+  margin: 0.55rem 0 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-strong);
+  background: var(--accent-dim);
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.api-key-hint-banner[hidden] {
+  display: none;
+}
+
+.api-key-hint-banner #api-key-hint-text {
+  flex: 1;
+  min-width: 12rem;
 }

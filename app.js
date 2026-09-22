@@ -45,6 +45,12 @@
   /** @type {any} */
   let activeScanner = null;
   let lookupBusy = false;
+  let apiHintDismissed = false;
+  try {
+    apiHintDismissed = sessionStorage.getItem("media-shelf-api-hint-dismissed") === "1";
+  } catch {
+    /* private mode */
+  }
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -91,9 +97,16 @@
     toast: $("#toast"),
     importFile: $("#import-file"),
     settingsModal: $("#settings-modal"),
-    settingsForm: $("#settings-form"),
     fieldOmdbKey: $("#field-omdb-key"),
     fieldRawgKey: $("#field-rawg-key"),
+    omdbKeyStatus: $("#omdb-key-status"),
+    rawgKeyStatus: $("#rawg-key-status"),
+    omdbTestStatus: $("#omdb-test-status"),
+    rawgTestStatus: $("#rawg-test-status"),
+    apiCardOmdb: $("#api-card-omdb"),
+    apiCardRawg: $("#api-card-rawg"),
+    apiKeyHintText: $("#api-key-hint-text"),
+    btnOpenApiSettings: $("#btn-open-api-settings"),
     refImdb: $("#ref-imdb"),
     refIsfdb: $("#ref-isfdb"),
     refRawg: $("#ref-rawg"),
@@ -313,7 +326,7 @@
     setLookupStatus("");
     updateCoverPreview();
     updateReferenceLinks();
-    updateApiKeyHint();
+    if (els.apiKeyHint) els.apiKeyHint.hidden = true;
 
     els.modal.hidden = false;
     els.modal.setAttribute("aria-hidden", "false");
@@ -830,116 +843,256 @@
     }
   }
 
-  function setApiKeys({ omdb, rawg }) {
+  function setOmdbKey(value) {
     try {
-      if (omdb) localStorage.setItem(OMDB_KEY_STORAGE, omdb);
+      const v = String(value || "").trim();
+      if (v) localStorage.setItem(OMDB_KEY_STORAGE, v);
       else localStorage.removeItem(OMDB_KEY_STORAGE);
-      if (rawg) localStorage.setItem(RAWG_KEY_STORAGE, rawg);
+    } catch {
+      /* quota / private mode */
+    }
+  }
+
+  function setRawgKey(value) {
+    try {
+      const v = String(value || "").trim();
+      if (v) localStorage.setItem(RAWG_KEY_STORAGE, v);
       else localStorage.removeItem(RAWG_KEY_STORAGE);
     } catch {
       /* quota / private mode */
     }
   }
 
-  function openSettingsModal() {
+  function maskApiKey(key) {
+    const k = String(key || "").trim();
+    if (!k) return "";
+    const last = k.slice(-4);
+    return `••••${last}`;
+  }
+
+  function refreshApiKeyStatuses() {
+    const omdb = getOmdbKey();
+    const rawg = getRawgKey();
+    if (els.omdbKeyStatus) {
+      if (omdb) {
+        els.omdbKeyStatus.textContent = `Key saved ${maskApiKey(omdb)}`;
+        els.omdbKeyStatus.dataset.status = "set";
+      } else {
+        els.omdbKeyStatus.textContent = "Not set";
+        els.omdbKeyStatus.dataset.status = "unset";
+      }
+    }
+    if (els.rawgKeyStatus) {
+      if (rawg) {
+        els.rawgKeyStatus.textContent = `Key saved ${maskApiKey(rawg)}`;
+        els.rawgKeyStatus.dataset.status = "set";
+      } else {
+        els.rawgKeyStatus.textContent = "Not set";
+        els.rawgKeyStatus.dataset.status = "unset";
+      }
+    }
+  }
+
+  function setKeyVisibility(provider, show) {
+    const input = provider === "omdb" ? els.fieldOmdbKey : els.fieldRawgKey;
+    const btn = $(provider === "omdb" ? "#btn-toggle-omdb" : "#btn-toggle-rawg");
+    if (!input || !btn) return;
+    input.type = show ? "text" : "password";
+    btn.textContent = show ? "Hide" : "Show";
+    btn.setAttribute("aria-pressed", show ? "true" : "false");
+  }
+
+  function clearTestStatus(provider) {
+    const el = provider === "omdb" ? els.omdbTestStatus : els.rawgTestStatus;
+    if (!el) return;
+    el.hidden = true;
+    el.textContent = "";
+    el.classList.remove("is-ok", "is-fail");
+  }
+
+  function showTestStatus(provider, ok, message) {
+    const el = provider === "omdb" ? els.omdbTestStatus : els.rawgTestStatus;
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = message;
+    el.classList.toggle("is-ok", !!ok);
+    el.classList.toggle("is-fail", !ok);
+  }
+
+  function focusApiCard(provider) {
+    const card =
+      provider === "rawg"
+        ? els.apiCardRawg
+        : provider === "omdb"
+          ? els.apiCardOmdb
+          : null;
+    [els.apiCardOmdb, els.apiCardRawg].forEach((c) => {
+      if (c) c.classList.remove("is-focus");
+    });
+    if (!card) return;
+    card.classList.add("is-focus");
+    card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const input = provider === "rawg" ? els.fieldRawgKey : els.fieldOmdbKey;
+    requestAnimationFrame(() => {
+      if (input) input.focus();
+      else card.focus();
+    });
+  }
+
+  function openSettingsModal(focusProvider) {
     if (!els.settingsModal) return;
     els.fieldOmdbKey.value = getOmdbKey();
     els.fieldRawgKey.value = getRawgKey();
+    setKeyVisibility("omdb", false);
+    setKeyVisibility("rawg", false);
+    clearTestStatus("omdb");
+    clearTestStatus("rawg");
+    refreshApiKeyStatuses();
     els.settingsModal.hidden = false;
     els.settingsModal.setAttribute("aria-hidden", "false");
     document.body.classList.add("modal-open");
-    requestAnimationFrame(() => els.fieldOmdbKey.focus());
+    if (focusProvider === "omdb" || focusProvider === "rawg") {
+      focusApiCard(focusProvider);
+    } else {
+      [els.apiCardOmdb, els.apiCardRawg].forEach((c) => {
+        if (c) c.classList.remove("is-focus");
+      });
+      requestAnimationFrame(() => {
+        if (els.fieldOmdbKey) els.fieldOmdbKey.focus();
+      });
+    }
   }
 
   function closeSettingsModal() {
     if (!els.settingsModal) return;
     els.settingsModal.hidden = true;
     els.settingsModal.setAttribute("aria-hidden", "true");
+    [els.apiCardOmdb, els.apiCardRawg].forEach((c) => {
+      if (c) c.classList.remove("is-focus");
+    });
     if (els.modal.hidden && els.scanModal.hidden && els.confirm.hidden) {
       document.body.classList.remove("modal-open");
     }
-  }
-
-  function saveSettings(e) {
-    e.preventDefault();
-    setApiKeys({
-      omdb: els.fieldOmdbKey.value.trim(),
-      rawg: els.fieldRawgKey.value.trim(),
-    });
-    closeSettingsModal();
-    showToast("Settings saved");
     updateApiKeyHint();
   }
 
-  function buildImdbUrl(title, year) {
-    const q = String(title || "").trim();
-    if (!q) return "";
-    let term = q;
-    if (year) term = `${q} ${year}`;
-    return `https://www.imdb.com/find/?q=${encodeURIComponent(term)}`;
+  function saveProviderKey(provider) {
+    const input = provider === "omdb" ? els.fieldOmdbKey : els.fieldRawgKey;
+    const value = input ? input.value.trim() : "";
+    if (provider === "omdb") setOmdbKey(value);
+    else setRawgKey(value);
+    if (input) input.value = value;
+    setKeyVisibility(provider, false);
+    clearTestStatus(provider);
+    refreshApiKeyStatuses();
+    showToast(value ? `${provider === "omdb" ? "OMDb" : "RAWG"} key saved` : `${provider === "omdb" ? "OMDb" : "RAWG"} key cleared`);
+    updateApiKeyHint();
   }
 
-  function buildIsfdbUrl(title) {
-    const q = String(title || "").trim();
-    if (!q) return "";
-    return (
-      `https://www.isfdb.org/cgi-bin/se.cgi?arg=${encodeURIComponent(q)}` +
-      `&type=Fiction+Titles`
-    );
-  }
-
-  function buildRawgSearchUrl(title) {
-    const q = String(title || "").trim();
-    if (!q) return "";
-    return `https://rawg.io/search?query=${encodeURIComponent(q)}`;
-  }
-
-  function buildIgdbUrl(title) {
-    const q = String(title || "").trim();
-    if (!q) return "";
-    return `https://www.igdb.com/search?type=games&q=${encodeURIComponent(q)}`;
-  }
-
-  function setRefLink(el, url) {
-    if (!el) return;
-    if (url) {
-      el.href = url;
-      el.hidden = false;
+  function clearProviderKey(provider) {
+    if (provider === "omdb") {
+      setOmdbKey("");
+      if (els.fieldOmdbKey) els.fieldOmdbKey.value = "";
     } else {
-      el.removeAttribute("href");
-      el.hidden = true;
+      setRawgKey("");
+      if (els.fieldRawgKey) els.fieldRawgKey.value = "";
+    }
+    setKeyVisibility(provider, false);
+    clearTestStatus(provider);
+    refreshApiKeyStatuses();
+    showToast(`${provider === "omdb" ? "OMDb" : "RAWG"} key cleared`);
+    updateApiKeyHint();
+  }
+
+  async function testProviderKey(provider) {
+    const input = provider === "omdb" ? els.fieldOmdbKey : els.fieldRawgKey;
+    const typed = input ? input.value.trim() : "";
+    const stored = provider === "omdb" ? getOmdbKey() : getRawgKey();
+    const key = typed || stored;
+    if (!key) {
+      showTestStatus(provider, false, "Paste a key first, then Test.");
+      return;
+    }
+    showTestStatus(provider, true, "Testing…");
+    try {
+      if (provider === "omdb") {
+        const params = new URLSearchParams({ apikey: key, t: "Inception", type: "movie" });
+        const res = await fetch(`https://www.omdbapi.com/?${params.toString()}`);
+        if (!res.ok) throw new Error("network");
+        const data = await res.json();
+        if (data && data.Response === "True" && data.Title) {
+          showTestStatus(provider, true, `Looks good — found “${data.Title}”.`);
+        } else if (data && /invalid|key/i.test(String(data.Error || ""))) {
+          showTestStatus(provider, false, "Key rejected by OMDb. Check that you copied it fully.");
+        } else {
+          showTestStatus(provider, false, data && data.Error ? String(data.Error) : "Unexpected OMDb response.");
+        }
+      } else {
+        const params = new URLSearchParams({ key, search: "Hades", page_size: "1" });
+        const res = await fetch(`https://api.rawg.io/api/games?${params.toString()}`);
+        if (res.status === 401 || res.status === 403) {
+          showTestStatus(provider, false, "Key rejected by RAWG. Check that you copied it fully.");
+          return;
+        }
+        if (!res.ok) throw new Error("network");
+        const data = await res.json();
+        const hit =
+          data && Array.isArray(data.results) && data.results[0]
+            ? data.results[0].name
+            : "";
+        if (hit) {
+          showTestStatus(provider, true, `Looks good — found “${hit}”.`);
+        } else {
+          showTestStatus(provider, false, "RAWG responded but no results for “Hades”.");
+        }
+      }
+    } catch {
+      showTestStatus(provider, false, "Test failed — check your connection and try again.");
     }
   }
 
-  function updateReferenceLinks() {
-    const type = els.fieldType.value;
-    const title = els.fieldTitle.value.trim();
-    const year = els.fieldYear.value.trim();
-    const imdb = type === "movie" || type === "game" ? buildImdbUrl(title, year) : "";
-    const isfdb = type === "book" ? buildIsfdbUrl(title) : "";
-    const rawg = type === "game" ? buildRawgSearchUrl(title) : "";
-    const igdb = type === "game" ? buildIgdbUrl(title) : "";
-    setRefLink(els.refImdb, imdb);
-    setRefLink(els.refIsfdb, isfdb);
-    setRefLink(els.refRawg, rawg);
-    setRefLink(els.refIgdb, igdb);
+  function dismissApiHint() {
+    apiHintDismissed = true;
+    try {
+      sessionStorage.setItem("media-shelf-api-hint-dismissed", "1");
+    } catch {
+      /* ignore */
+    }
+    if (els.apiKeyHint) {
+      els.apiKeyHint.hidden = true;
+    }
+  }
+
+  function maybeShowLookupKeyHint(type) {
+    if (!els.apiKeyHint || apiHintDismissed) return;
+    if (type === "movie" && !getOmdbKey()) {
+      if (els.apiKeyHintText) {
+        els.apiKeyHintText.textContent =
+          "Want better covers? Add a free OMDb key in Settings.";
+      }
+      els.apiKeyHint.hidden = false;
+      els.apiKeyHint.dataset.focus = "omdb";
+    } else if (type === "game" && !getRawgKey()) {
+      if (els.apiKeyHintText) {
+        els.apiKeyHintText.textContent =
+          "Want better covers? Add a free RAWG key in Settings.";
+      }
+      els.apiKeyHint.hidden = false;
+      els.apiKeyHint.dataset.focus = "rawg";
+    }
   }
 
   function updateApiKeyHint() {
     if (!els.apiKeyHint) return;
     const type = els.fieldType ? els.fieldType.value : "";
-    if (type === "movie" && !getOmdbKey()) {
-      els.apiKeyHint.hidden = false;
-      els.apiKeyHint.innerHTML =
-        'Add a free <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener noreferrer">OMDb key</a> in Settings for IMDb-quality movie lookup.';
-    } else if (type === "game" && !getRawgKey()) {
-      els.apiKeyHint.hidden = false;
-      els.apiKeyHint.innerHTML =
-        'Add a free <a href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer">RAWG key</a> in Settings for deep game covers.';
-    } else {
+    if (type === "movie" && getOmdbKey()) {
       els.apiKeyHint.hidden = true;
-      els.apiKeyHint.textContent = "";
+    } else if (type === "game" && getRawgKey()) {
+      els.apiKeyHint.hidden = true;
+    } else if (type !== "movie" && type !== "game") {
+      els.apiKeyHint.hidden = true;
     }
+    /* Do not auto-show on type change — only after Lookup (maybeShowLookupKeyHint). */
   }
 
   async function fetchOmdb({ title, year }) {
@@ -1696,6 +1849,9 @@
     } finally {
       lookupBusy = false;
       els.btnLookup.disabled = false;
+      if (type === "movie" || type === "game") {
+        maybeShowLookupKeyHint(type);
+      }
     }
   }
 
@@ -1850,9 +2006,34 @@
     $$("[data-settings-close]").forEach((el) =>
       el.addEventListener("click", () => closeSettingsModal())
     );
-    if (els.settingsForm) {
-      els.settingsForm.addEventListener("submit", saveSettings);
+    if (els.btnOpenApiSettings) {
+      els.btnOpenApiSettings.addEventListener("click", () => {
+        const focus = (els.apiKeyHint && els.apiKeyHint.dataset.focus) || "";
+        dismissApiHint();
+        openSettingsModal(focus === "rawg" || focus === "omdb" ? focus : undefined);
+      });
     }
+    const bindToggle = (id, provider) => {
+      const btn = $(id);
+      if (!btn) return;
+      btn.addEventListener("click", () => {
+        const input = provider === "omdb" ? els.fieldOmdbKey : els.fieldRawgKey;
+        const showing = input && input.type === "text";
+        setKeyVisibility(provider, !showing);
+      });
+    };
+    bindToggle("#btn-toggle-omdb", "omdb");
+    bindToggle("#btn-toggle-rawg", "rawg");
+    const bindClick = (id, fn) => {
+      const el = $(id);
+      if (el) el.addEventListener("click", fn);
+    };
+    bindClick("#btn-save-omdb", () => saveProviderKey("omdb"));
+    bindClick("#btn-save-rawg", () => saveProviderKey("rawg"));
+    bindClick("#btn-clear-omdb", () => clearProviderKey("omdb"));
+    bindClick("#btn-clear-rawg", () => clearProviderKey("rawg"));
+    bindClick("#btn-test-omdb", () => testProviderKey("omdb"));
+    bindClick("#btn-test-rawg", () => testProviderKey("rawg"));
 
     $("#btn-export").addEventListener("click", exportJson);
     $("#btn-import").addEventListener("click", () => els.importFile.click());

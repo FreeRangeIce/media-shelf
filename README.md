@@ -20,7 +20,7 @@ A static file server is preferred so `seed.json` and the service worker load cor
 
 **Lookup** tries free sources in order and stops on the first strong match (prefer a cover; otherwise title + creator). The form stores `coverSource` (`openlibrary` | `googlebooks` | `itunes` | `wikipedia` | `omdb` | `rawg` | `manual`) and shows a status such as “Matched via Google Books”. Failures on one source are skipped so the next can run.
 
-Optional API keys (OMDb, RAWG) live in **Settings** → stored only in this browser’s `localStorage`. No keys are required for the default waterfall.
+Optional API keys (OMDb, RAWG) live in **Settings → Improve Lookup**, a short wizard that explains what a key is, links to the free signup pages, and lets you Save / Clear / Test each key. Keys are stored only in this browser’s `localStorage` (`media-shelf-omdb-key`, `media-shelf-rawg-key`). No keys are required for the default waterfall.
 
 ### Books
 1. [Open Library](https://openlibrary.org) — ISBN and title search; covers via `covers.openlibrary.org`
@@ -32,14 +32,14 @@ Optional API keys (OMDb, RAWG) live in **Settings** → stored only in this brow
 ISFDB serves HTML without CORS for browser apps, so Lookup does not scrape it.
 
 ### Movies
-1. **OMDb** (optional key) — IMDb-backed title/year lookup and poster; key from [omdbapi.com](https://www.omdbapi.com/apikey.aspx). `coverSource: omdb`
+1. **OMDb** (optional key) — IMDb-backed title/year lookup and poster; get a free key via Settings → Movies (OMDb) or [omdbapi.com/apikey.aspx](https://www.omdbapi.com/apikey.aspx). `coverSource: omdb`
 2. [iTunes Search](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/) — `entity=movie`
 3. Wikipedia — exact title summary; on miss, OpenSearch then summary (prefers film-like titles)
 
 **IMDb** reference link: `https://www.imdb.com/find/?q={title}` (and year when set). Movie UPC barcodes alone usually will not match — use a title or paste a cover URL.
 
 ### Games
-1. **RAWG** (optional key, preferred deep source) — `https://api.rawg.io/api/games?key=…&search=…` plus detail for `background_image` / developers; free key from [rawg.io/apidocs](https://rawg.io/apidocs). `coverSource: rawg`
+1. **RAWG** (optional key, preferred deep source) — `https://api.rawg.io/api/games?key=…&search=…` plus detail for `background_image` / developers; free key via Settings → Games (RAWG) or [rawg.io/apidocs](https://rawg.io/apidocs) (create the key in your RAWG developer/account area). `coverSource: rawg`
 2. iTunes — `entity=software` by title (best-effort)
 3. Wikipedia — OpenSearch + summary (prefers video-game-like titles)
 4. Open Library — only when the barcode looks like an ISBN
@@ -55,11 +55,11 @@ Reference links (no keys): **RAWG** (`https://rawg.io/search?query=…`), **IGDB
 - Library with type, creator, year, status, rating, progress, notes, tags, barcode, cover
 - Format / edition: books (physical · digital · audiobook), games (physical · digital), movies (physical · digital + disc when physical)
 - Filters: All / Books / Games / Movies + status; search (debounced); sort by updated, title, rating
-- Add / edit / delete (confirm) via modal; Settings for optional OMDb + RAWG keys
+- Add / edit / delete (confirm) via modal; Settings wizard for optional OMDb + RAWG keys (status, Show/Hide, Get free key, Test)
 - Reference links: IMDb, ISFDB, RAWG, IGDB (by type)
 - Stats strip by type and status
 - Seed samples on first load; clear samples anytime
-- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v3`)
+- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v4`)
 - Relative paths only — works from the GitHub Pages project path
 
 ## Add to Home Screen

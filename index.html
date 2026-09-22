@@ -122,7 +122,10 @@
           </div>
           <p class="field-hint">Camera scan works best on HTTPS or localhost; on plain HTTP LAN it may be blocked.</p>
           <p id="lookup-status" class="lookup-status" role="status" aria-live="polite" hidden></p>
-          <p id="api-key-hint" class="field-hint api-key-hint" hidden></p>
+          <div id="api-key-hint" class="api-key-hint-banner" hidden>
+            <span id="api-key-hint-text">Want better covers? Add free OMDb/RAWG keys in Settings.</span>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-open-api-settings">Open Settings</button>
+          </div>
         </div>
 
         <div class="form-row">
@@ -260,39 +263,84 @@
     </div>
   </div>
 
-  <!-- Settings -->
+  <!-- Settings / API key wizard -->
   <div id="settings-modal" class="modal" hidden aria-hidden="true">
     <div class="modal-backdrop" data-settings-close="true"></div>
-    <div class="modal-panel modal-panel-sm" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="modal-panel modal-panel-settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <div class="modal-header">
-        <h2 id="settings-title">Settings</h2>
+        <h2 id="settings-title">Improve Lookup</h2>
         <button type="button" class="btn-icon" id="settings-close" aria-label="Close settings">&times;</button>
       </div>
-      <form id="settings-form" class="item-form" novalidate>
-        <div class="form-row">
-          <label for="field-omdb-key">OMDb API key (optional)</label>
-          <input type="password" id="field-omdb-key" maxlength="64" autocomplete="off" placeholder="IMDb-backed movie posters" />
-          <p class="field-hint">
-            Free key:
-            <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener noreferrer">omdbapi.com/apikey.aspx</a>.
-            Leave blank to skip OMDb (iTunes + Wikipedia still work).
+      <p class="settings-intro">
+        Optional free API keys unlock better movie posters (OMDb) and game covers (RAWG).
+        Keys stay in <strong>this browser only</strong> — never uploaded. Lookup still works without them.
+      </p>
+      <div class="api-key-cards" id="api-key-cards">
+        <section class="api-key-card" id="api-card-omdb" data-provider="omdb" tabindex="-1">
+          <div class="api-key-card-head">
+            <h3>Movies (OMDb)</h3>
+            <span class="api-key-status" id="omdb-key-status" data-status="unset">Not set</span>
+          </div>
+          <p class="api-key-blurb">
+            An API key is a free password that lets Media Shelf ask OMDb for IMDb-quality posters and titles.
+            Stored only in this browser. Without it, movie Lookup still uses iTunes + Wikipedia.
           </p>
-        </div>
-        <div class="form-row">
-          <label for="field-rawg-key">RAWG API key (optional)</label>
-          <input type="password" id="field-rawg-key" maxlength="64" autocomplete="off" placeholder="Deep game covers &amp; metadata" />
-          <p class="field-hint">
-            Free key:
-            <a href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer">rawg.io/apidocs</a>.
-            Leave blank to skip RAWG (iTunes + Wikipedia still work).
+          <ol class="api-key-steps">
+            <li>Click <strong>Get free key</strong> (opens OMDb signup).</li>
+            <li>Register and verify your email.</li>
+            <li>Copy the key from OMDb’s confirmation / account page.</li>
+            <li>Paste it below and press <strong>Save</strong>.</li>
+          </ol>
+          <div class="form-row api-key-field">
+            <label for="field-omdb-key">OMDb API key</label>
+            <div class="api-key-input-row">
+              <input type="password" id="field-omdb-key" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Paste key here" />
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-toggle-omdb" aria-pressed="false">Show</button>
+            </div>
+          </div>
+          <div class="api-key-actions">
+            <a class="btn btn-ghost btn-sm" id="btn-get-omdb" href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener noreferrer">Get free key</a>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-test-omdb">Test</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-clear-omdb">Clear</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-save-omdb">Save</button>
+          </div>
+          <p class="api-key-test-status" id="omdb-test-status" role="status" aria-live="polite" hidden></p>
+        </section>
+
+        <section class="api-key-card" id="api-card-rawg" data-provider="rawg" tabindex="-1">
+          <div class="api-key-card-head">
+            <h3>Games (RAWG)</h3>
+            <span class="api-key-status" id="rawg-key-status" data-status="unset">Not set</span>
+          </div>
+          <p class="api-key-blurb">
+            A free RAWG developer key unlocks deep game covers and metadata.
+            Stored only in this browser. Without it, game Lookup still uses iTunes + Wikipedia.
           </p>
-        </div>
-        <p class="field-hint">Keys stay in this browser’s <code>localStorage</code> only — never uploaded.</p>
-        <div class="form-actions-right">
-          <button type="button" class="btn btn-ghost" data-settings-close="true">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="btn-settings-save">Save</button>
-        </div>
-      </form>
+          <ol class="api-key-steps">
+            <li>Click <strong>Get free key</strong> (opens RAWG API docs).</li>
+            <li>Create / sign in to a RAWG account from the docs or site.</li>
+            <li>Create an API key in your RAWG developer / account area, then copy it.</li>
+            <li>Paste it below and press <strong>Save</strong>.</li>
+          </ol>
+          <div class="form-row api-key-field">
+            <label for="field-rawg-key">RAWG API key</label>
+            <div class="api-key-input-row">
+              <input type="password" id="field-rawg-key" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Paste key here" />
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-toggle-rawg" aria-pressed="false">Show</button>
+            </div>
+          </div>
+          <div class="api-key-actions">
+            <a class="btn btn-ghost btn-sm" id="btn-get-rawg" href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer">Get free key</a>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-test-rawg">Test</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-clear-rawg">Clear</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-save-rawg">Save</button>
+          </div>
+          <p class="api-key-test-status" id="rawg-test-status" role="status" aria-live="polite" hidden></p>
+        </section>
+      </div>
+      <div class="form-actions-right settings-done-row">
+        <button type="button" class="btn btn-primary" data-settings-close="true" id="btn-settings-done">Done</button>
+      </div>
     </div>
   </div>
 
