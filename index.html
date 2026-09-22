@@ -33,6 +33,7 @@
         </div>
       </div>
       <div class="header-actions">
+        <button type="button" class="btn btn-ghost" id="btn-settings" title="API keys and settings">Settings</button>
         <button type="button" class="btn btn-ghost" id="btn-export" title="Export library as JSON">Export</button>
         <button type="button" class="btn btn-ghost" id="btn-import" title="Import library from JSON">Import</button>
         <input type="file" id="import-file" accept="application/json,.json" hidden />
@@ -121,11 +122,23 @@
           </div>
           <p class="field-hint">Camera scan works best on HTTPS or localhost; on plain HTTP LAN it may be blocked.</p>
           <p id="lookup-status" class="lookup-status" role="status" aria-live="polite" hidden></p>
+          <p id="api-key-hint" class="field-hint api-key-hint" hidden></p>
         </div>
 
         <div class="form-row">
           <label for="field-title">Title <span class="req">*</span></label>
           <input type="text" id="field-title" required maxlength="200" />
+        </div>
+
+        <div class="form-row ref-links-row" id="ref-links-row">
+          <span class="ref-links-label">Reference</span>
+          <div class="ref-links" id="ref-links">
+            <a class="ref-link" id="ref-imdb" href="#" target="_blank" rel="noopener noreferrer" hidden>IMDb</a>
+            <a class="ref-link" id="ref-isfdb" href="#" target="_blank" rel="noopener noreferrer" hidden>ISFDB</a>
+            <a class="ref-link" id="ref-rawg" href="#" target="_blank" rel="noopener noreferrer" hidden>RAWG</a>
+            <a class="ref-link" id="ref-igdb" href="#" target="_blank" rel="noopener noreferrer" hidden>IGDB</a>
+          </div>
+          <p class="field-hint">Opens site search in a new tab (no API key). ISFDB = speculative fiction; RAWG/IGDB = games.</p>
         </div>
 
         <div class="form-row">
@@ -244,6 +257,42 @@
         <button type="button" class="btn btn-ghost" id="confirm-cancel">Cancel</button>
         <button type="button" class="btn btn-danger" id="confirm-ok">Delete</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div id="settings-modal" class="modal" hidden aria-hidden="true">
+    <div class="modal-backdrop" data-settings-close="true"></div>
+    <div class="modal-panel modal-panel-sm" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="modal-header">
+        <h2 id="settings-title">Settings</h2>
+        <button type="button" class="btn-icon" id="settings-close" aria-label="Close settings">&times;</button>
+      </div>
+      <form id="settings-form" class="item-form" novalidate>
+        <div class="form-row">
+          <label for="field-omdb-key">OMDb API key (optional)</label>
+          <input type="password" id="field-omdb-key" maxlength="64" autocomplete="off" placeholder="IMDb-backed movie posters" />
+          <p class="field-hint">
+            Free key:
+            <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener noreferrer">omdbapi.com/apikey.aspx</a>.
+            Leave blank to skip OMDb (iTunes + Wikipedia still work).
+          </p>
+        </div>
+        <div class="form-row">
+          <label for="field-rawg-key">RAWG API key (optional)</label>
+          <input type="password" id="field-rawg-key" maxlength="64" autocomplete="off" placeholder="Deep game covers &amp; metadata" />
+          <p class="field-hint">
+            Free key:
+            <a href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer">rawg.io/apidocs</a>.
+            Leave blank to skip RAWG (iTunes + Wikipedia still work).
+          </p>
+        </div>
+        <p class="field-hint">Keys stay in this browser’s <code>localStorage</code> only — never uploaded.</p>
+        <div class="form-actions-right">
+          <button type="button" class="btn btn-ghost" data-settings-close="true">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-settings-save">Save</button>
+        </div>
+      </form>
     </div>
   </div>
 

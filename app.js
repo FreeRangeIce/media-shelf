@@ -3,6 +3,8 @@
   "use strict";
 
   const STORAGE_KEY = "media-tracker-v1";
+  const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
+  const RAWG_KEY_STORAGE = "media-shelf-rawg-key";
   const HTML5_QRCODE_CDN =
     "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js";
   const TYPE_LABELS = { book: "Book", game: "Game", movie: "Movie" };
@@ -81,12 +83,21 @@
     coverPreview: $("#cover-preview"),
     coverPreviewPlaceholder: $("#cover-preview-placeholder"),
     lookupStatus: $("#lookup-status"),
+    apiKeyHint: $("#api-key-hint"),
     btnScan: $("#btn-scan"),
     btnLookup: $("#btn-lookup"),
     scanStatus: $("#scan-status"),
     qrReader: $("#qr-reader"),
     toast: $("#toast"),
     importFile: $("#import-file"),
+    settingsModal: $("#settings-modal"),
+    settingsForm: $("#settings-form"),
+    fieldOmdbKey: $("#field-omdb-key"),
+    fieldRawgKey: $("#field-rawg-key"),
+    refImdb: $("#ref-imdb"),
+    refIsfdb: $("#ref-isfdb"),
+    refRawg: $("#ref-rawg"),
+    refIgdb: $("#ref-igdb"),
   };
 
   function uid() {
@@ -301,6 +312,8 @@
     els.fieldCoverSource.value = item ? item.coverSource || "" : "";
     setLookupStatus("");
     updateCoverPreview();
+    updateReferenceLinks();
+    updateApiKeyHint();
 
     els.modal.hidden = false;
     els.modal.setAttribute("aria-hidden", "false");
@@ -576,6 +589,40 @@
         const notes = item.notes
           ? `<p class="item-notes">${escapeHtml(item.notes)}</p>`
           : "";
+        const cardRefs = [];
+        if (item.type === "movie" || item.type === "game") {
+          const imdb = buildImdbUrl(item.title, item.year);
+          if (imdb) {
+            cardRefs.push(
+              `<a class="card-ref" href="${escapeHtml(imdb)}" target="_blank" rel="noopener noreferrer">IMDb</a>`
+            );
+          }
+        }
+        if (item.type === "book") {
+          const isfdb = buildIsfdbUrl(item.title);
+          if (isfdb) {
+            cardRefs.push(
+              `<a class="card-ref" href="${escapeHtml(isfdb)}" target="_blank" rel="noopener noreferrer">ISFDB</a>`
+            );
+          }
+        }
+        if (item.type === "game") {
+          const rawg = buildRawgSearchUrl(item.title);
+          const igdb = buildIgdbUrl(item.title);
+          if (rawg) {
+            cardRefs.push(
+              `<a class="card-ref" href="${escapeHtml(rawg)}" target="_blank" rel="noopener noreferrer">RAWG</a>`
+            );
+          }
+          if (igdb) {
+            cardRefs.push(
+              `<a class="card-ref" href="${escapeHtml(igdb)}" target="_blank" rel="noopener noreferrer">IGDB</a>`
+            );
+          }
+        }
+        const refsHtml = cardRefs.length
+          ? `<div class="card-refs">${cardRefs.join("")}</div>`
+          : "";
         return `
 <li>
   <article class="item-card" tabindex="0" data-id="${escapeHtml(item.id)}" role="button" aria-label="Edit ${escapeHtml(item.title)}">
@@ -597,6 +644,7 @@
         ${starStr ? `<span class="stars" aria-label="Rating ${item.rating} of 5">${starStr}</span>` : ""}
         ${progress}
         ${tags ? `<span class="tags">${tags}</span>` : ""}
+        ${refsHtml}
       </div>
     </div>
   </article>
@@ -731,6 +779,313 @@
     }
   }
 
+  const COVER_SOURCE_LABELS = {
+    openlibrary: "Open Library",
+    googlebooks: "Google Books",
+    itunes: "iTunes",
+    wikipedia: "Wikipedia",
+    omdb: "OMDb",
+    rawg: "RAWG",
+    manual: "manual",
+  };
+
+  function sourceLabel(slug) {
+    return COVER_SOURCE_LABELS[slug] || slug || "unknown";
+  }
+
+  function isGoodLookupMatch(data) {
+    if (!data) return false;
+    if (data.coverUrl) return true;
+    if (data.title && data.creator) return true;
+    return false;
+  }
+
+  function lookupHasUsefulFields(data) {
+    return Boolean(data && (data.coverUrl || data.title || data.creator || data.year != null));
+  }
+
+  function upgradeGoogleBooksImage(url) {
+    if (!url) return "";
+    let u = String(url).replace(/^http:\/\//i, "https://");
+    u = u.replace(/([?&])zoom=\d+/i, "$1zoom=0");
+    if (!/[?&]zoom=/i.test(u)) {
+      u += (u.includes("?") ? "&" : "?") + "zoom=0";
+    }
+    return u;
+  }
+
+  function getOmdbKey() {
+    try {
+      return String(localStorage.getItem(OMDB_KEY_STORAGE) || "").trim();
+    } catch {
+      return "";
+    }
+  }
+
+  function getRawgKey() {
+    try {
+      return String(localStorage.getItem(RAWG_KEY_STORAGE) || "").trim();
+    } catch {
+      return "";
+    }
+  }
+
+  function setApiKeys({ omdb, rawg }) {
+    try {
+      if (omdb) localStorage.setItem(OMDB_KEY_STORAGE, omdb);
+      else localStorage.removeItem(OMDB_KEY_STORAGE);
+      if (rawg) localStorage.setItem(RAWG_KEY_STORAGE, rawg);
+      else localStorage.removeItem(RAWG_KEY_STORAGE);
+    } catch {
+      /* quota / private mode */
+    }
+  }
+
+  function openSettingsModal() {
+    if (!els.settingsModal) return;
+    els.fieldOmdbKey.value = getOmdbKey();
+    els.fieldRawgKey.value = getRawgKey();
+    els.settingsModal.hidden = false;
+    els.settingsModal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+    requestAnimationFrame(() => els.fieldOmdbKey.focus());
+  }
+
+  function closeSettingsModal() {
+    if (!els.settingsModal) return;
+    els.settingsModal.hidden = true;
+    els.settingsModal.setAttribute("aria-hidden", "true");
+    if (els.modal.hidden && els.scanModal.hidden && els.confirm.hidden) {
+      document.body.classList.remove("modal-open");
+    }
+  }
+
+  function saveSettings(e) {
+    e.preventDefault();
+    setApiKeys({
+      omdb: els.fieldOmdbKey.value.trim(),
+      rawg: els.fieldRawgKey.value.trim(),
+    });
+    closeSettingsModal();
+    showToast("Settings saved");
+    updateApiKeyHint();
+  }
+
+  function buildImdbUrl(title, year) {
+    const q = String(title || "").trim();
+    if (!q) return "";
+    let term = q;
+    if (year) term = `${q} ${year}`;
+    return `https://www.imdb.com/find/?q=${encodeURIComponent(term)}`;
+  }
+
+  function buildIsfdbUrl(title) {
+    const q = String(title || "").trim();
+    if (!q) return "";
+    return (
+      `https://www.isfdb.org/cgi-bin/se.cgi?arg=${encodeURIComponent(q)}` +
+      `&type=Fiction+Titles`
+    );
+  }
+
+  function buildRawgSearchUrl(title) {
+    const q = String(title || "").trim();
+    if (!q) return "";
+    return `https://rawg.io/search?query=${encodeURIComponent(q)}`;
+  }
+
+  function buildIgdbUrl(title) {
+    const q = String(title || "").trim();
+    if (!q) return "";
+    return `https://www.igdb.com/search?type=games&q=${encodeURIComponent(q)}`;
+  }
+
+  function setRefLink(el, url) {
+    if (!el) return;
+    if (url) {
+      el.href = url;
+      el.hidden = false;
+    } else {
+      el.removeAttribute("href");
+      el.hidden = true;
+    }
+  }
+
+  function updateReferenceLinks() {
+    const type = els.fieldType.value;
+    const title = els.fieldTitle.value.trim();
+    const year = els.fieldYear.value.trim();
+    const imdb = type === "movie" || type === "game" ? buildImdbUrl(title, year) : "";
+    const isfdb = type === "book" ? buildIsfdbUrl(title) : "";
+    const rawg = type === "game" ? buildRawgSearchUrl(title) : "";
+    const igdb = type === "game" ? buildIgdbUrl(title) : "";
+    setRefLink(els.refImdb, imdb);
+    setRefLink(els.refIsfdb, isfdb);
+    setRefLink(els.refRawg, rawg);
+    setRefLink(els.refIgdb, igdb);
+  }
+
+  function updateApiKeyHint() {
+    if (!els.apiKeyHint) return;
+    const type = els.fieldType ? els.fieldType.value : "";
+    if (type === "movie" && !getOmdbKey()) {
+      els.apiKeyHint.hidden = false;
+      els.apiKeyHint.innerHTML =
+        'Add a free <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener noreferrer">OMDb key</a> in Settings for IMDb-quality movie lookup.';
+    } else if (type === "game" && !getRawgKey()) {
+      els.apiKeyHint.hidden = false;
+      els.apiKeyHint.innerHTML =
+        'Add a free <a href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer">RAWG key</a> in Settings for deep game covers.';
+    } else {
+      els.apiKeyHint.hidden = true;
+      els.apiKeyHint.textContent = "";
+    }
+  }
+
+  async function fetchOmdb({ title, year }) {
+    const key = getOmdbKey();
+    if (!key) return null;
+    const t = String(title || "").trim();
+    if (!t) return null;
+    try {
+      const params = new URLSearchParams({ apikey: key, t, type: "movie" });
+      if (year) params.set("y", String(year));
+      const res = await fetch(`https://www.omdbapi.com/?${params.toString()}`);
+      if (!res.ok) throw new Error("network");
+      const data = await res.json();
+      if (!data || data.Response === "False") {
+        /* try search */
+        const sp = new URLSearchParams({ apikey: key, s: t, type: "movie" });
+        const sr = await fetch(`https://www.omdbapi.com/?${sp.toString()}`);
+        if (!sr.ok) return null;
+        const sd = await sr.json();
+        if (!sd || sd.Response === "False" || !Array.isArray(sd.Search) || !sd.Search.length) {
+          return null;
+        }
+        const best = sd.Search[0];
+        const detailParams = new URLSearchParams({
+          apikey: key,
+          i: best.imdbID,
+        });
+        const dr = await fetch(`https://www.omdbapi.com/?${detailParams.toString()}`);
+        if (!dr.ok) return null;
+        const detail = await dr.json();
+        if (!detail || detail.Response === "False") return null;
+        return mapOmdbResult(detail);
+      }
+      return mapOmdbResult(data);
+    } catch {
+      return null;
+    }
+  }
+
+  function mapOmdbResult(data) {
+    const poster = data.Poster && data.Poster !== "N/A" ? data.Poster : "";
+    let year = null;
+    if (data.Year) {
+      const m = String(data.Year).match(/(18|19|20)\d{2}/);
+      if (m) year = Number(m[0]);
+    }
+    const creator =
+      (data.Director && data.Director !== "N/A" ? data.Director : "") ||
+      (data.Production && data.Production !== "N/A" ? data.Production : "");
+    return {
+      title: data.Title || "",
+      creator,
+      year,
+      coverUrl: poster,
+      coverSource: "omdb",
+    };
+  }
+
+  async function fetchRawg(title) {
+    const key = getRawgKey();
+    if (!key) return null;
+    const t = String(title || "").trim();
+    if (!t) return null;
+    try {
+      const params = new URLSearchParams({
+        key,
+        search: t,
+        page_size: "5",
+      });
+      const res = await fetch(`https://api.rawg.io/api/games?${params.toString()}`);
+      if (!res.ok) throw new Error("network");
+      const data = await res.json();
+      const results = Array.isArray(data.results) ? data.results : [];
+      if (!results.length) return null;
+
+      const tLower = t.toLowerCase();
+      let best = results[0];
+      let bestScore = -1;
+      for (const g of results) {
+        const name = String(g.name || "").toLowerCase();
+        let score = 0;
+        if (name === tLower) score += 100;
+        if (name.includes(tLower) || tLower.includes(name)) score += 40;
+        const words = tLower.split(/\s+/).filter(Boolean);
+        for (const w of words) {
+          if (name.includes(w)) score += 8;
+        }
+        if (g.background_image) score += 10;
+        if (score > bestScore) {
+          bestScore = score;
+          best = g;
+        }
+      }
+
+      let coverUrl = best.background_image || "";
+      let creator = "";
+      let year = null;
+      if (best.released) {
+        const m = String(best.released).match(/^(18|19|20)\d{2}/);
+        if (m) year = Number(m[0]);
+      }
+
+      /* Detail fetch for better image / developers when slug/id present */
+      if (best.id && (!coverUrl || !creator)) {
+        try {
+          const dr = await fetch(
+            `https://api.rawg.io/api/games/${best.id}?key=${encodeURIComponent(key)}`
+          );
+          if (dr.ok) {
+            const detail = await dr.json();
+            if (detail.background_image) coverUrl = detail.background_image;
+            if (Array.isArray(detail.developers) && detail.developers.length) {
+              creator = detail.developers
+                .slice(0, 3)
+                .map((d) => d.name)
+                .filter(Boolean)
+                .join(", ");
+            } else if (Array.isArray(detail.publishers) && detail.publishers.length) {
+              creator = detail.publishers
+                .slice(0, 2)
+                .map((d) => d.name)
+                .filter(Boolean)
+                .join(", ");
+            }
+            if (year == null && detail.released) {
+              const m = String(detail.released).match(/^(18|19|20)\d{2}/);
+              if (m) year = Number(m[0]);
+            }
+          }
+        } catch {
+          /* keep search-level data */
+        }
+      }
+
+      return {
+        title: best.name || t,
+        creator,
+        year,
+        coverUrl,
+        coverSource: "rawg",
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async function fetchOpenLibraryByIsbn(isbn) {
     const clean = normalizeBarcode(isbn);
     const coverUrl = `https://covers.openlibrary.org/b/isbn/${clean}-L.jpg`;
@@ -786,7 +1141,19 @@
       if (!res.ok) throw new Error("search failed");
       const data = await res.json();
       const doc = (data.docs || [])[0];
-      if (!doc) return null;
+      if (!doc) {
+        if (title || creator || year != null) {
+          return {
+            title,
+            creator,
+            year,
+            coverUrl,
+            coverSource: "openlibrary",
+            barcode: clean,
+          };
+        }
+        return null;
+      }
       title = title || doc.title || "";
       if (!creator && Array.isArray(doc.author_name)) {
         creator = doc.author_name.slice(0, 3).join(", ");
@@ -807,8 +1174,236 @@
         barcode: clean,
       };
     } catch {
+      if (title || creator || year != null) {
+        return {
+          title,
+          creator,
+          year,
+          coverUrl,
+          coverSource: "openlibrary",
+          barcode: clean,
+        };
+      }
       return null;
     }
+  }
+
+  async function fetchOpenLibraryByTitle(title, author) {
+    const t = String(title || "").trim();
+    if (!t) return null;
+    try {
+      const params = new URLSearchParams();
+      params.set("title", t);
+      if (author) params.set("author", String(author).trim());
+      params.set("limit", "5");
+      const res = await fetch(`https://openlibrary.org/search.json?${params.toString()}`);
+      if (!res.ok) throw new Error("search failed");
+      const data = await res.json();
+      const docs = Array.isArray(data.docs) ? data.docs : [];
+      if (!docs.length) return null;
+      const tLower = t.toLowerCase();
+      let best = docs[0];
+      let bestScore = -1;
+      for (const doc of docs) {
+        const name = String(doc.title || "").toLowerCase();
+        let score = 0;
+        if (name === tLower) score += 100;
+        if (name.includes(tLower) || tLower.includes(name)) score += 40;
+        if (author && Array.isArray(doc.author_name)) {
+          const aLower = String(author).toLowerCase();
+          if (doc.author_name.some((n) => String(n).toLowerCase().includes(aLower))) score += 30;
+        }
+        if (doc.cover_i) score += 5;
+        if (score > bestScore) {
+          bestScore = score;
+          best = doc;
+        }
+      }
+      const creator = Array.isArray(best.author_name)
+        ? best.author_name.slice(0, 3).join(", ")
+        : "";
+      let year = null;
+      if (best.first_publish_year) year = Number(best.first_publish_year);
+      const coverUrl = best.cover_i
+        ? `https://covers.openlibrary.org/b/id/${best.cover_i}-L.jpg`
+        : "";
+      return {
+        title: best.title || t,
+        creator,
+        year,
+        coverUrl,
+        coverSource: "openlibrary",
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async function fetchOpenLibrary({ isbn, title, author }) {
+    if (isbn && looksLikeIsbn(isbn)) {
+      const byIsbn = await fetchOpenLibraryByIsbn(isbn);
+      if (byIsbn) return byIsbn;
+    }
+    if (title) return fetchOpenLibraryByTitle(title, author);
+    return null;
+  }
+
+  async function fetchGoogleBooks({ isbn, title, author }) {
+    try {
+      let q = "";
+      if (isbn && looksLikeIsbn(isbn)) {
+        q = `isbn:${normalizeBarcode(isbn)}`;
+      } else if (title) {
+        q = `intitle:${title}`;
+        if (author) q += `+inauthor:${author}`;
+      } else {
+        return null;
+      }
+      const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("network");
+      const data = await res.json();
+      const items = Array.isArray(data.items) ? data.items : [];
+      if (!items.length) return null;
+
+      const tLower = String(title || "").toLowerCase();
+      let best = items[0];
+      let bestScore = -1;
+      for (const item of items) {
+        const info = item.volumeInfo || {};
+        const name = String(info.title || "").toLowerCase();
+        let score = 0;
+        if (tLower && name === tLower) score += 100;
+        if (tLower && (name.includes(tLower) || tLower.includes(name))) score += 40;
+        if (info.imageLinks) score += 10;
+        if (Array.isArray(info.authors) && info.authors.length) score += 5;
+        if (score > bestScore) {
+          bestScore = score;
+          best = item;
+        }
+      }
+
+      const info = best.volumeInfo || {};
+      const links = info.imageLinks || {};
+      const rawCover =
+        links.large || links.medium || links.thumbnail || links.smallThumbnail || "";
+      const coverUrl = upgradeGoogleBooksImage(rawCover);
+      let year = null;
+      if (info.publishedDate) {
+        const m = String(info.publishedDate).match(/(18|19|20)\d{2}/);
+        if (m) year = Number(m[0]);
+      }
+      const creator = Array.isArray(info.authors)
+        ? info.authors.slice(0, 3).join(", ")
+        : "";
+      return {
+        title: info.title || title || "",
+        creator,
+        year,
+        coverUrl,
+        coverSource: "googlebooks",
+        barcode: isbn && looksLikeIsbn(isbn) ? normalizeBarcode(isbn) : undefined,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function scoreWikiOpenSearchTitle(candidate, term, kind) {
+    const name = String(candidate || "").toLowerCase();
+    const t = String(term || "").toLowerCase();
+    let score = 0;
+    if (name === t) score += 100;
+    if (name.includes(t) || t.includes(name)) score += 40;
+    const words = t.split(/\s+/).filter(Boolean);
+    for (const w of words) {
+      if (name.includes(w)) score += 8;
+    }
+    if (kind === "movie") {
+      if (/\b(film|movie|cinema)\b/.test(name)) score += 25;
+      if (/\b(album|song|novel|book)\b/.test(name)) score -= 15;
+    } else if (kind === "game") {
+      if (/\b(video game|game|videogame)\b/.test(name)) score += 25;
+      if (/\b(album|song|film|movie|novel)\b/.test(name)) score -= 10;
+    } else if (kind === "book") {
+      if (/\b(novel|book|novella)\b/.test(name)) score += 15;
+      if (/\b(film|movie|album|song|video game)\b/.test(name)) score -= 15;
+    }
+    return score;
+  }
+
+  async function fetchWikipediaSummary(pageTitle) {
+    const t = String(pageTitle || "").trim();
+    if (!t) return null;
+    try {
+      const encoded = encodeURIComponent(t.replace(/ /g, "_"));
+      const res = await fetch(
+        `https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`
+      );
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("network");
+      const data = await res.json();
+      if (!data || data.type === "disambiguation") {
+        /* still usable for title/cover sometimes, but skip thin disambiguation */
+        if (data && data.type === "disambiguation" && !data.originalimage && !data.thumbnail) {
+          return null;
+        }
+      }
+      const coverUrl =
+        (data.originalimage && data.originalimage.source) ||
+        (data.thumbnail && data.thumbnail.source) ||
+        "";
+      let year = null;
+      const desc = `${data.description || ""} ${data.extract || ""}`;
+      const ym = desc.match(/\b((?:18|19|20)\d{2})\b/);
+      if (ym) year = Number(ym[1]);
+      return {
+        title: data.title || t,
+        creator: "",
+        year,
+        coverUrl,
+        coverSource: "wikipedia",
+        description: data.description || "",
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async function fetchWikipediaOpenSearch(term, kind) {
+    const q = String(term || "").trim();
+    if (!q) return null;
+    try {
+      const url =
+        `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(q)}` +
+        `&limit=5&namespace=0&format=json&origin=*`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("network");
+      const data = await res.json();
+      const titles = Array.isArray(data) && Array.isArray(data[1]) ? data[1] : [];
+      if (!titles.length) return null;
+      let best = titles[0];
+      let bestScore = -1;
+      for (const candidate of titles) {
+        const s = scoreWikiOpenSearchTitle(candidate, q, kind);
+        if (s > bestScore) {
+          bestScore = s;
+          best = candidate;
+        }
+      }
+      return fetchWikipediaSummary(best);
+    } catch {
+      return null;
+    }
+  }
+
+  async function fetchWikipedia({ title, kind }) {
+    const t = String(title || "").trim();
+    if (!t) return null;
+    const exact = await fetchWikipediaSummary(t);
+    if (exact) return exact;
+    /* 404 / miss — try opensearch (movies/games especially; books as soft fallback) */
+    return fetchWikipediaOpenSearch(t, kind || "book");
   }
 
   function scoreItunesMatch(result, term) {
@@ -825,35 +1420,122 @@
   }
 
   async function fetchItunes(term, entity) {
-    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=${encodeURIComponent(entity)}&limit=5`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("network");
-    const data = await res.json();
-    const results = Array.isArray(data.results) ? data.results : [];
-    if (!results.length) return null;
-    let best = results[0];
-    let bestScore = -1;
-    for (const r of results) {
-      const s = scoreItunesMatch(r, term);
-      if (s > bestScore) {
-        bestScore = s;
-        best = r;
+    try {
+      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=${encodeURIComponent(entity)}&limit=5`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("network");
+      const data = await res.json();
+      const results = Array.isArray(data.results) ? data.results : [];
+      if (!results.length) return null;
+      let best = results[0];
+      let bestScore = -1;
+      for (const r of results) {
+        const s = scoreItunesMatch(r, term);
+        if (s > bestScore) {
+          bestScore = s;
+          best = r;
+        }
+      }
+      const art = upgradeItunesArtwork(best.artworkUrl100 || best.artworkUrl60 || "");
+      let year = null;
+      if (best.releaseDate) {
+        const m = String(best.releaseDate).match(/^(18|19|20)\d{2}/);
+        if (m) year = Number(m[0]);
+      }
+      return {
+        title: best.trackName || best.collectionName || "",
+        creator: best.artistName || "",
+        year,
+        coverUrl: art,
+        coverSource: "itunes",
+        _score: bestScore,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function lookupRank(d) {
+    if (!d) return 0;
+    return (
+      (d.coverUrl ? 8 : 0) +
+      (d.title ? 2 : 0) +
+      (d.creator ? 2 : 0) +
+      (d.year != null ? 1 : 0)
+    );
+  }
+
+  function mergeLookupPreferEmpty(base, extra) {
+    if (!base) return extra;
+    if (!extra) return base;
+    return {
+      title: base.title || extra.title || "",
+      creator: base.creator || extra.creator || "",
+      year: base.year != null ? base.year : extra.year,
+      coverUrl: base.coverUrl || extra.coverUrl || "",
+      coverSource: base.coverUrl
+        ? base.coverSource
+        : extra.coverUrl
+          ? extra.coverSource
+          : base.coverSource || extra.coverSource || "",
+      barcode: base.barcode || extra.barcode,
+      _score: Math.max(base._score || 0, extra._score || 0),
+    };
+  }
+
+  async function runLookupWaterfall(steps, triedLabels) {
+    let withCover = null;
+    let withTitleCreator = null;
+    let partial = null;
+    let knownTitle = "";
+
+    for (const step of steps) {
+      triedLabels.push(step.label);
+      let data = null;
+      try {
+        data = await step.run(knownTitle);
+      } catch {
+        data = null;
+      }
+      if (!lookupHasUsefulFields(data)) continue;
+      if (data.title) knownTitle = knownTitle || data.title;
+
+      const wrapped = {
+        data,
+        label: step.label,
+        slug: data.coverSource || step.slug,
+      };
+
+      if (data.coverUrl) {
+        /* Prefer filling empty metadata from earlier partials onto the cover hit */
+        if (partial && partial.data) {
+          wrapped.data = mergeLookupPreferEmpty(data, partial.data);
+          /* cover source must stay with the cover provider */
+          wrapped.data.coverUrl = data.coverUrl;
+          wrapped.data.coverSource = data.coverSource || step.slug;
+        }
+        withCover = wrapped;
+        break; /* first cover wins */
+      }
+
+      if (data.title && data.creator && !withTitleCreator) {
+        withTitleCreator = wrapped;
+      }
+
+      if (!partial || lookupRank(data) > lookupRank(partial.data)) {
+        partial = wrapped;
+      } else if (partial) {
+        partial = {
+          data: mergeLookupPreferEmpty(partial.data, data),
+          label: partial.label,
+          slug: partial.slug,
+        };
       }
     }
-    const art = upgradeItunesArtwork(best.artworkUrl100 || best.artworkUrl60 || "");
-    let year = null;
-    if (best.releaseDate) {
-      const m = String(best.releaseDate).match(/^(18|19|20)\d{2}/);
-      if (m) year = Number(m[0]);
-    }
-    return {
-      title: best.trackName || best.collectionName || "",
-      creator: best.artistName || "",
-      year,
-      coverUrl: art,
-      coverSource: "itunes",
-      _score: bestScore,
-    };
+
+    if (withCover) return withCover;
+    if (withTitleCreator) return withTitleCreator;
+    return partial;
   }
 
   async function runLookup() {
@@ -861,6 +1543,7 @@
     const type = els.fieldType.value;
     const barcode = els.fieldBarcode.value.trim();
     const title = els.fieldTitle.value.trim();
+    const author = els.fieldCreator.value.trim();
     const isbnShaped = looksLikeIsbn(barcode);
 
     if (!barcode && !title) {
@@ -873,75 +1556,141 @@
     setLookupStatus("Looking up…");
 
     try {
-      let data = null;
+      const tried = [];
+      let result = null;
 
-      if (type === "book" || isbnShaped) {
-        if (!isbnShaped) {
+      if (type === "book") {
+        if (!isbnShaped && !title) {
           setLookupStatus(
-            type === "book"
-              ? "Books need an ISBN for Open Library lookup. You can still paste a cover URL."
-              : "That barcode doesn’t look like an ISBN. Try a title search or paste a cover URL.",
+            "Enter an ISBN or a title to look up a book.",
             "error"
           );
           return;
         }
-        data = await fetchOpenLibraryByIsbn(barcode);
-        if (!data) {
-          setLookupStatus("No book match found for that ISBN.", "error");
-          return;
-        }
-        commitLookup(data, "Found via Open Library.");
-        return;
-      }
-
-      if (type === "movie") {
-        const term = title || barcode;
-        if (!title && barcode && !isbnShaped) {
-          setLookupStatus(
-            "Movie barcodes usually aren’t in iTunes. Enter a title, then Lookup — or paste a cover URL.",
-            "error"
-          );
-          return;
-        }
-        data = await fetchItunes(term, "movie");
-        if (!data || !data.title) {
-          setLookupStatus("No movie match found. Try a different title or paste a cover URL.", "error");
-          return;
-        }
-        commitLookup(data, "Found via iTunes.");
-        return;
-      }
-
-      if (type === "game") {
-        if (isbnShaped) {
-          data = await fetchOpenLibraryByIsbn(barcode);
-          if (data) {
-            commitLookup(data, "ISBN matched via Open Library (unusual for games).");
-            return;
-          }
-        }
-        const term = title || barcode;
+        const steps = [
+          {
+            label: "Open Library",
+            slug: "openlibrary",
+            run: () =>
+              fetchOpenLibrary({
+                isbn: isbnShaped ? barcode : "",
+                title,
+                author,
+              }),
+          },
+          {
+            label: "Google Books",
+            slug: "googlebooks",
+            run: (knownTitle) =>
+              fetchGoogleBooks({
+                isbn: isbnShaped ? barcode : "",
+                title: title || knownTitle || "",
+                author,
+              }),
+          },
+          {
+            label: "Wikipedia",
+            slug: "wikipedia",
+            run: async (knownTitle) => {
+              const t = title || knownTitle || "";
+              if (!t) return null;
+              return fetchWikipedia({ title: t, kind: "book" });
+            },
+          },
+        ];
+        result = await runLookupWaterfall(steps, tried);
+      } else if (type === "movie") {
+        const term = title || "";
         if (!term) {
+          setLookupStatus(
+            "Movie barcodes usually aren’t in free catalogs. Enter a title, then Lookup — or paste a cover URL.",
+            "error"
+          );
+          return;
+        }
+        const yearVal = els.fieldYear.value.trim();
+        const steps = [];
+        if (getOmdbKey()) {
+          steps.push({
+            label: "OMDb",
+            slug: "omdb",
+            run: () => fetchOmdb({ title: term, year: yearVal }),
+          });
+        }
+        steps.push(
+          {
+            label: "iTunes",
+            slug: "itunes",
+            run: () => fetchItunes(term, "movie"),
+          },
+          {
+            label: "Wikipedia",
+            slug: "wikipedia",
+            run: (knownTitle) =>
+              fetchWikipedia({ title: term || knownTitle || "", kind: "movie" }),
+          }
+        );
+        result = await runLookupWaterfall(steps, tried);
+      } else if (type === "game") {
+        const term = title || "";
+        const steps = [];
+        if (term && getRawgKey()) {
+          steps.push({
+            label: "RAWG",
+            slug: "rawg",
+            run: () => fetchRawg(term),
+          });
+        }
+        if (term) {
+          steps.push({
+            label: "iTunes",
+            slug: "itunes",
+            run: async () => {
+              let data = await fetchItunes(`${term} game`, "software");
+              if (!data || data._score < 20) {
+                const retry = await fetchItunes(term, "software");
+                if (retry && retry._score >= 20) data = retry;
+                else if (!data) data = retry;
+              }
+              if (data && data._score < 15 && !data.coverUrl) return null;
+              return data;
+            },
+          });
+          steps.push({
+            label: "Wikipedia",
+            slug: "wikipedia",
+            run: (knownTitle) =>
+              fetchWikipedia({ title: term || knownTitle || "", kind: "game" }),
+          });
+        }
+        if (isbnShaped) {
+          steps.push({
+            label: "Open Library",
+            slug: "openlibrary",
+            run: () => fetchOpenLibraryByIsbn(barcode),
+          });
+        }
+        if (!steps.length) {
           setLookupStatus("Enter a game title to search, or paste a cover URL.", "error");
           return;
         }
-        data = await fetchItunes(title ? `${title} game` : term, "software");
-        if (!data || data._score < 20) {
-          const retry = title ? await fetchItunes(title, "software") : null;
-          if (retry && retry._score >= 20) data = retry;
-        }
-        if (!data || !data.coverUrl) {
-          setLookupStatus(
-            "No solid game match (UPC lookups are limited). Paste a cover URL manually.",
-            "error"
-          );
-          return;
-        }
-        commitLookup(data, "Found via iTunes (best effort for games).");
+        result = await runLookupWaterfall(steps, tried);
+      } else {
+        setLookupStatus("Unsupported type for lookup.", "error");
         return;
       }
 
-      setLookupStatus("Unsupported type for lookup.", "error");
+      if (result && lookupHasUsefulFields(result.data)) {
+        const label = result.label || sourceLabel(result.slug);
+        commitLookup(result.data, `Matched via ${label}`);
+        return;
+      }
+
+      const list =
+        tried.length > 0
+          ? tried.join(", ")
+          : "available sources";
+      setLookupStatus(`No match across ${list}`, "error");
     } catch {
       setLookupStatus("Lookup failed — check your connection and try again.", "error");
     } finally {
@@ -1096,6 +1845,15 @@
     $("#btn-add").addEventListener("click", () => openModal(null));
     $("#btn-empty-add").addEventListener("click", () => openModal(null));
     $("#btn-clear-seed").addEventListener("click", clearSeeds);
+    $("#btn-settings").addEventListener("click", () => openSettingsModal());
+    $("#settings-close").addEventListener("click", () => closeSettingsModal());
+    $$("[data-settings-close]").forEach((el) =>
+      el.addEventListener("click", () => closeSettingsModal())
+    );
+    if (els.settingsForm) {
+      els.settingsForm.addEventListener("submit", saveSettings);
+    }
+
     $("#btn-export").addEventListener("click", exportJson);
     $("#btn-import").addEventListener("click", () => els.importFile.click());
     els.importFile.addEventListener("change", () => {
@@ -1105,6 +1863,7 @@
     });
 
     els.list.addEventListener("click", (e) => {
+      if (e.target.closest("a.card-ref, a.ref-link")) return;
       const card = e.target.closest(".item-card");
       if (!card) return;
       const item = items.find((i) => i.id === card.dataset.id);
@@ -1121,8 +1880,14 @@
 
     els.form.addEventListener("submit", saveItem);
     els.btnDelete.addEventListener("click", deleteCurrent);
-    els.fieldType.addEventListener("change", updateFormatOptions);
+    els.fieldType.addEventListener("change", () => {
+      updateFormatOptions();
+      updateReferenceLinks();
+      updateApiKeyHint();
+    });
     els.fieldFormat.addEventListener("change", updateDiscVisibility);
+    els.fieldTitle.addEventListener("input", updateReferenceLinks);
+    els.fieldYear.addEventListener("input", updateReferenceLinks);
     els.fieldCover.addEventListener("input", () => {
       els.fieldCoverSource.value = els.fieldCover.value.trim() ? "manual" : "";
       updateCoverPreview();
@@ -1173,6 +1938,10 @@
         }
         if (!els.scanModal.hidden) {
           closeScanModal();
+          return;
+        }
+        if (els.settingsModal && !els.settingsModal.hidden) {
+          closeSettingsModal();
           return;
         }
         if (!els.modal.hidden) closeModal();
