@@ -20,7 +20,7 @@ A static file server is preferred so `seed.json` and the service worker load cor
 
 A web app can’t write to iCloud Drive directly, so Media Shelf hands a backup file to the iPhone share sheet. **Backups are manual — there is no automatic sync.** The app can’t see where the file ends up (the Web Share API doesn’t report the chosen target), so check that it landed in iCloud Drive or Files.
 
-**Back up (iPhone):** tap **Back up** in the header (or **Settings → Back up (save a file)**) → choose **Save to Files** → pick **iCloud Drive** and a folder → **Save**. The file is named `media-shelf-backup-YYYY-MM-DD.json`.
+**Back up (iPhone):** tap **Back up** in the header (or **Settings → Back up (save a file)**) → choose **Save to Files** → pick **iCloud Drive** and a folder → **Save**. The file is named `media-shelf-backup-YYYY-MM-DD.json`. Then open Files to check the file is there.
 
 **Restore (iPhone):** **Settings → Restore from file** (or header **Import**) → in Files, **Browse → iCloud Drive** → pick the backup → choose:
 - **Merge** — keeps your current library, adds items whose `id` isn’t present, and for items in both keeps whichever has the newer `dateUpdated`.
