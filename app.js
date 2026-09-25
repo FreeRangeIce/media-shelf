@@ -7,6 +7,8 @@
   const RAWG_KEY_STORAGE = "media-shelf-rawg-key";
   const LAST_BACKUP_STORAGE = "media-shelf-last-backup";
   const BACKUP_REMINDER_DISMISSED_STORAGE = "media-shelf-backup-reminder-dismissed";
+  /** New key (B3): set once samples have been offered, so clearing them is permanent. */
+  const SEEDED_STORAGE = "media-shelf-seeded";
   const BACKUP_APP_ID = "media-shelf";
   const BACKUP_VERSION = 1;
   const BACKUP_STALE_DAYS = 14;
@@ -37,6 +39,11 @@
     game: "Developer / publisher",
     movie: "Director / studio",
   };
+  const CREATOR_PLACEHOLDERS = {
+    book: "e.g. Andy Weir",
+    game: "e.g. Supergiant Games",
+    movie: "e.g. Denis Villeneuve",
+  };
 
   /** @type {Array<object>} */
   let items = [];
@@ -55,6 +62,9 @@
   /** @type {any} */
   let activeScanner = null;
   let lookupBusy = false;
+  /** B10: per-lookup record of sources that refused / errored (label -> issue). */
+  let lookupIssues = null;
+  let lookupSource = "";
   let apiHintDismissed = false;
   try {
     apiHintDismissed = sessionStorage.getItem("media-shelf-api-hint-dismissed") === "1";
@@ -216,6 +226,15 @@
     if (store && Array.isArray(store.items) && store.items.length > 0) {
       items = store.items.map(normalizeItem);
       saveStore();
+      if (!readLs(SEEDED_STORAGE)) writeLs(SEEDED_STORAGE, nowIso());
+      return;
+    }
+    // Samples are offered once. A saved (even empty) library means this browser has
+    // already been set up — e.g. samples cleared or every item deleted — so don't re-seed.
+    if (readLs(SEEDED_STORAGE) || store) {
+      items = store ? store.items.map(normalizeItem) : [];
+      if (!readLs(SEEDED_STORAGE)) writeLs(SEEDED_STORAGE, nowIso());
+      saveStore();
       return;
     }
     try {
@@ -224,8 +243,11 @@
       const data = await res.json();
       items = (Array.isArray(data) ? data : []).map(normalizeItem);
     } catch {
+      // Seed file unavailable: start empty but don't persist, so a later visit can retry.
       items = [];
+      return;
     }
+    writeLs(SEEDED_STORAGE, nowIso());
     saveStore();
   }
 
@@ -307,6 +329,7 @@
     const allowed = options.map(([v]) => v);
     els.fieldFormat.value = allowed.includes(current) ? current : allowed[0];
     els.labelCreator.textContent = CREATOR_HINTS[type] || "Creator";
+    els.fieldCreator.placeholder = CREATOR_PLACEHOLDERS[type] || "";
     updateDiscVisibility();
   }
 
@@ -889,8 +912,9 @@
       navigator
         .share({ files: [file], title: "Media Shelf backup" })
         .then(() => {
+          // Web Share can't tell us where the file went, so record "file created", not "saved".
           markBackedUp();
-          showToast("Backup saved ✓");
+          showToast("Backup file shared. Check it’s in iCloud Drive or Files.");
         })
         .catch((err) => {
           if (err && err.name === "AbortError") return; // user cancelled
@@ -914,11 +938,16 @@
   }
 
   function backupReminderDue() {
-    const hasOwnItems = items.some((i) => !i.seed);
-    if (!hasOwnItems) return false;
+    const ownItems = items.filter((i) => !i.seed);
+    if (!ownItems.length) return false;
     const now = Date.now();
     const last = parseTime(readLs(LAST_BACKUP_STORAGE));
     if (last && now - last < BACKUP_STALE_DAYS * DAY_MS) return false;
+    if (!last) {
+      // Never backed up: 14-day grace from the first own item (no reminder on day one).
+      const firstOwn = Math.min(...ownItems.map((i) => parseTime(i.dateAdded) || now));
+      if (now - firstOwn < BACKUP_STALE_DAYS * DAY_MS) return false;
+    }
     const dismissed = parseTime(readLs(BACKUP_REMINDER_DISMISSED_STORAGE));
     if (dismissed && now - dismissed < BACKUP_SNOOZE_DAYS * DAY_MS) return false;
     return true;
@@ -935,7 +964,7 @@
     const label = formatBackupDate(lastIso);
     const fresh = label && Date.now() - parseTime(lastIso) < BACKUP_STALE_DAYS * DAY_MS;
     if (els.backupLast) {
-      els.backupLast.textContent = `Last backed up: ${label || "Never"}`;
+      els.backupLast.textContent = `Last backup file created: ${label || "Never"}`;
     }
     if (els.backupStatus) {
       els.backupStatus.textContent = label ? (fresh ? "Up to date" : "Due") : "Never";
@@ -946,8 +975,8 @@
       els.backupBanner.hidden = !due;
       if (due) {
         $("#backup-banner-text").textContent = label
-          ? `It’s been a while since your last backup (${label}).`
-          : "It’s been a while since your last backup — you haven’t backed up this library yet.";
+          ? `Last backup: ${label}. Back up again to keep your copy current.`
+          : "You haven’t backed up this library yet. Back up to keep a copy outside this browser.";
       }
     }
   }
@@ -1132,7 +1161,7 @@
     return checks.length > 0;
   }
 
-  function commitLookup(data, okMsg) {
+  function commitLookup(data, okMsg, kind = "ok") {
     const applyEmpty = () => applyLookupFields(data, { overwrite: false });
     applyEmpty();
     if (wouldOverwrite(data)) {
@@ -1142,13 +1171,13 @@
         () => {
           applyLookupFields(data, { overwrite: true });
           closeConfirm();
-          setLookupStatus(okMsg || "Details updated.", "ok");
+          setLookupStatus(okMsg || "Details updated.", kind);
         },
         "Overwrite"
       );
       setLookupStatus("Found a match — empty fields filled. Confirm to overwrite the rest.", "ok");
     } else {
-      setLookupStatus(okMsg || "Details filled.", "ok");
+      setLookupStatus(okMsg || "Details filled.", kind);
     }
   }
 
@@ -1381,6 +1410,23 @@
       if (provider === "omdb") {
         const params = new URLSearchParams({ apikey: key, t: "Inception", type: "movie" });
         const res = await fetch(`https://www.omdbapi.com/?${params.toString()}`);
+        if (res.status === 401) {
+          // OMDb answers a bad key (and an exhausted daily limit) with 401 + JSON.
+          let err = "";
+          try {
+            err = String((await res.json()).Error || "");
+          } catch {
+            /* body unreadable */
+          }
+          showTestStatus(
+            provider,
+            false,
+            /limit/i.test(err)
+              ? "OMDb says this key’s daily request limit is reached. Try again tomorrow."
+              : "Key rejected by OMDb. Check that you copied it fully."
+          );
+          return;
+        }
         if (!res.ok) throw new Error("network");
         const data = await res.json();
         if (data && data.Response === "True" && data.Title) {
@@ -1392,7 +1438,21 @@
         }
       } else {
         const params = new URLSearchParams({ key, search: "Hades", page_size: "1" });
-        const res = await fetch(`https://api.rawg.io/api/games?${params.toString()}`);
+        let res;
+        try {
+          res = await fetch(`https://api.rawg.io/api/games?${params.toString()}`);
+        } catch {
+          // RAWG's 401 for a bad key has no CORS header, so the browser reports a
+          // network failure; we can't tell "rejected" from "blocked" or offline.
+          showTestStatus(
+            provider,
+            false,
+            navigator.onLine === false
+              ? "You’re offline. Connect and try again."
+              : "Couldn’t verify the key — RAWG rejected the request or it was blocked. Check that you copied it fully."
+          );
+          return;
+        }
         if (res.status === 401 || res.status === 403) {
           showTestStatus(provider, false, "Key rejected by RAWG. Check that you copied it fully.");
           return;
@@ -1431,14 +1491,14 @@
     if (type === "movie" && !getOmdbKey()) {
       if (els.apiKeyHintText) {
         els.apiKeyHintText.textContent =
-          "Want better covers? Add a free OMDb key in Settings.";
+          "Add a free OMDb key in Settings and movie Lookup will check OMDb first.";
       }
       els.apiKeyHint.hidden = false;
       els.apiKeyHint.dataset.focus = "omdb";
     } else if (type === "game" && !getRawgKey()) {
       if (els.apiKeyHintText) {
         els.apiKeyHintText.textContent =
-          "Want better covers? Add a free RAWG key in Settings.";
+          "Add a free RAWG key in Settings and game Lookup will check RAWG first.";
       }
       els.apiKeyHint.hidden = false;
       els.apiKeyHint.dataset.focus = "rawg";
@@ -1458,6 +1518,41 @@
     /* Do not auto-show on type change — only after Lookup (maybeShowLookupKeyHint). */
   }
 
+  /* ---------- B10: tell refused/errored sources apart from genuine no-match ---------- */
+  function noteLookupIssue(source, issue, override = false) {
+    if (!lookupIssues || !source) return;
+    if (override || !lookupIssues.has(source)) lookupIssues.set(source, issue);
+  }
+
+  /** fetch() for Lookup sources: records HTTP errors (not 404) and network failures. */
+  async function lookupFetch(url) {
+    const source = lookupSource;
+    let res;
+    try {
+      res = await fetch(url);
+    } catch (err) {
+      noteLookupIssue(source, { kind: "network" });
+      throw err;
+    }
+    if (!res.ok && res.status !== 404) noteLookupIssue(source, { kind: "http", status: res.status });
+    return res;
+  }
+
+  function describeLookupIssue(source, issue) {
+    if (issue.kind === "key") return `${source} rejected your API key — check it in Settings.`;
+    if (issue.kind === "limit") return `${source}’s daily request limit is reached.`;
+    if (issue.kind === "network") {
+      return source === "RAWG"
+        ? "RAWG rejected the request or it was blocked — check your key in Settings."
+        : `${source} couldn’t be reached (network error or blocked).`;
+    }
+    const st = issue.status;
+    if (st === 401 || st === 403) return `${source} refused the request (HTTP ${st}).`;
+    if (st === 429) return `${source} is limiting requests (HTTP 429). Try again later.`;
+    if (st >= 500) return `${source} had a server error (HTTP ${st}).`;
+    return `${source} returned an error (HTTP ${st}).`;
+  }
+
   async function fetchOmdb({ title, year }) {
     const key = getOmdbKey();
     if (!key) return null;
@@ -1466,13 +1561,28 @@
     try {
       const params = new URLSearchParams({ apikey: key, t, type: "movie" });
       if (year) params.set("y", String(year));
-      const res = await fetch(`https://www.omdbapi.com/?${params.toString()}`);
+      const res = await lookupFetch(`https://www.omdbapi.com/?${params.toString()}`);
+      if (res.status === 401) {
+        // B6: a bad key (or exhausted daily limit) must surface, not fall through silently.
+        let err = "";
+        try {
+          err = String((await res.json()).Error || "");
+        } catch {
+          /* body unreadable */
+        }
+        noteLookupIssue("OMDb", { kind: /limit/i.test(err) ? "limit" : "key" }, true);
+        return null;
+      }
       if (!res.ok) throw new Error("network");
       const data = await res.json();
+      if (data && data.Response === "False" && /invalid api key/i.test(String(data.Error || ""))) {
+        noteLookupIssue("OMDb", { kind: "key" }, true);
+        return null;
+      }
       if (!data || data.Response === "False") {
         /* try search */
         const sp = new URLSearchParams({ apikey: key, s: t, type: "movie" });
-        const sr = await fetch(`https://www.omdbapi.com/?${sp.toString()}`);
+        const sr = await lookupFetch(`https://www.omdbapi.com/?${sp.toString()}`);
         if (!sr.ok) return null;
         const sd = await sr.json();
         if (!sd || sd.Response === "False" || !Array.isArray(sd.Search) || !sd.Search.length) {
@@ -1483,7 +1593,7 @@
           apikey: key,
           i: best.imdbID,
         });
-        const dr = await fetch(`https://www.omdbapi.com/?${detailParams.toString()}`);
+        const dr = await lookupFetch(`https://www.omdbapi.com/?${detailParams.toString()}`);
         if (!dr.ok) return null;
         const detail = await dr.json();
         if (!detail || detail.Response === "False") return null;
@@ -1525,7 +1635,7 @@
         search: t,
         page_size: "5",
       });
-      const res = await fetch(`https://api.rawg.io/api/games?${params.toString()}`);
+      const res = await lookupFetch(`https://api.rawg.io/api/games?${params.toString()}`);
       if (!res.ok) throw new Error("network");
       const data = await res.json();
       const results = Array.isArray(data.results) ? data.results : [];
@@ -1610,7 +1720,7 @@
     let year = null;
 
     try {
-      const res = await fetch(`https://openlibrary.org/isbn/${clean}.json`);
+      const res = await lookupFetch(`https://openlibrary.org/isbn/${clean}.json`);
       if (res.ok) {
         const data = await res.json();
         title = data.title || data.full_title || "";
@@ -1651,7 +1761,7 @@
 
     try {
       const q = encodeURIComponent(`isbn:${clean}`);
-      const res = await fetch(
+      const res = await lookupFetch(
         `https://openlibrary.org/search.json?q=${q}&limit=1`
       );
       if (!res.ok) throw new Error("search failed");
@@ -1712,7 +1822,7 @@
       params.set("title", t);
       if (author) params.set("author", String(author).trim());
       params.set("limit", "5");
-      const res = await fetch(`https://openlibrary.org/search.json?${params.toString()}`);
+      const res = await lookupFetch(`https://openlibrary.org/search.json?${params.toString()}`);
       if (!res.ok) throw new Error("search failed");
       const data = await res.json();
       const docs = Array.isArray(data.docs) ? data.docs : [];
@@ -1776,7 +1886,7 @@
         return null;
       }
       const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5`;
-      const res = await fetch(url);
+      const res = await lookupFetch(url);
       if (!res.ok) throw new Error("network");
       const data = await res.json();
       const items = Array.isArray(data.items) ? data.items : [];
@@ -1835,11 +1945,14 @@
     for (const w of words) {
       if (name.includes(w)) score += 8;
     }
+    /* B8: for movies/games a type-marked title ("… (film)", "… (video game)") must beat the
+       bare exact title, which is often the book, the person or a disambiguation page. */
     if (kind === "movie") {
-      if (/\b(film|movie|cinema)\b/.test(name)) score += 25;
+      if (/\b(film|movie)\)?$/.test(name) || /\((\d{4} )?film\)/.test(name)) score += 150;
       if (/\b(album|song|novel|book)\b/.test(name)) score -= 15;
     } else if (kind === "game") {
-      if (/\b(video game|game|videogame)\b/.test(name)) score += 25;
+      if (/\((\d{4} )?video game\)/.test(name)) score += 150;
+      else if (/\b(video game|videogame)\b/.test(name)) score += 25;
       if (/\b(album|song|film|movie|novel)\b/.test(name)) score -= 10;
     } else if (kind === "book") {
       if (/\b(novel|book|novella)\b/.test(name)) score += 15;
@@ -1848,23 +1961,59 @@
     return score;
   }
 
-  async function fetchWikipediaSummary(pageTitle) {
+  /** Does a Wikipedia short description ("2016 film by Denis Villeneuve") fit the item type? */
+  function wikiDescriptionFits(description, kind) {
+    const d = String(description || "").toLowerCase();
+    if (kind === "movie") return /\b(film|movie)\b/.test(d);
+    if (kind === "game") return /\bvideo ?game\b|\bgame\b/.test(d);
+    return true;
+  }
+
+  /**
+   * B8: resolve candidate titles in one MediaWiki query (no 404 noise), following redirects.
+   * Returns the first candidate that exists, isn't a disambiguation page and, when
+   * `mustFit` is set, whose short description fits the item type.
+   */
+  async function resolveWikipediaTitle(candidates, kind) {
+    const list = candidates.filter((c) => c && c.title);
+    if (!list.length) return null;
+    const url =
+      "https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*" +
+      "&redirects=1&prop=pageprops%7Cdescription&ppprop=disambiguation&titles=" +
+      encodeURIComponent(list.map((c) => c.title).join("|"));
+    const res = await lookupFetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const q = (data && data.query) || {};
+    const resolve = (title) => {
+      let t = title;
+      for (const n of q.normalized || []) if (n.from === t) t = n.to;
+      for (const r of q.redirects || []) if (r.from === t) t = r.to;
+      return t;
+    };
+    const pages = new Map((q.pages || []).map((pg) => [pg.title, pg]));
+    for (const c of list) {
+      const pg = pages.get(resolve(c.title));
+      if (!pg || pg.missing || pg.invalid) continue;
+      if (pg.pageprops && "disambiguation" in pg.pageprops) continue;
+      if (c.mustFit && !wikiDescriptionFits(pg.description, kind)) continue;
+      return pg.title;
+    }
+    return null;
+  }
+
+  async function fetchWikipediaSummary(pageTitle, kind) {
     const t = String(pageTitle || "").trim();
     if (!t) return null;
     try {
       const encoded = encodeURIComponent(t.replace(/ /g, "_"));
-      const res = await fetch(
+      const res = await lookupFetch(
         `https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`
       );
       if (res.status === 404) return null;
       if (!res.ok) throw new Error("network");
       const data = await res.json();
-      if (!data || data.type === "disambiguation") {
-        /* still usable for title/cover sometimes, but skip thin disambiguation */
-        if (data && data.type === "disambiguation" && !data.originalimage && !data.thumbnail) {
-          return null;
-        }
-      }
+      if (!data || data.type === "disambiguation") return null;
       const coverUrl =
         (data.originalimage && data.originalimage.source) ||
         (data.thumbnail && data.thumbnail.source) ||
@@ -1873,9 +2022,29 @@
       const desc = `${data.description || ""} ${data.extract || ""}`;
       const ym = desc.match(/\b((?:18|19|20)\d{2})\b/);
       if (ym) year = Number(ym[1]);
+      /* Short descriptions often name the director: "2023 film by Christopher Nolan". */
+      let creator = "";
+      if (kind === "movie") {
+        const cm = String(data.description || "").match(/\bfilm (?:directed )?by (.+)$/i);
+        if (cm) creator = cm[1].trim();
+        if (!creator) {
+          /* Lead sentence: "… film directed by Denis Villeneuve and written by …" */
+          const em = String(data.extract || "").match(
+            /\bdirected by ((?:[A-Z][\p{L}.'’-]*)(?: (?:[A-Z][\p{L}.'’-]*|de|van|von|del|da)){0,3})/u
+          );
+          if (em) {
+            /* Stop at a sentence end, but keep initials ("J. J. Abrams"). */
+            creator = em[1].replace(/(\p{L}{2,})\. .*$/u, "$1").replace(/\.$/, "").trim();
+          }
+        }
+      }
+      /* Page titles carry a disambiguator ("Arrival (film)"); the item title shouldn't. */
+      const cleanTitle = String(data.title || t)
+        .replace(/\s*\((?:\d{4} )?(?:[\w -]+ )?(?:film|movie|video game)\)\s*$/i, "")
+        .trim();
       return {
-        title: data.title || t,
-        creator: "",
+        title: cleanTitle || t,
+        creator,
         year,
         coverUrl,
         coverSource: "wikipedia",
@@ -1892,34 +2061,46 @@
     try {
       const url =
         `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(q)}` +
-        `&limit=5&namespace=0&format=json&origin=*`;
-      const res = await fetch(url);
+        `&limit=8&namespace=0&format=json&origin=*`;
+      const res = await lookupFetch(url);
       if (!res.ok) throw new Error("network");
       const data = await res.json();
       const titles = Array.isArray(data) && Array.isArray(data[1]) ? data[1] : [];
       if (!titles.length) return null;
-      let best = titles[0];
-      let bestScore = -1;
-      for (const candidate of titles) {
-        const s = scoreWikiOpenSearchTitle(candidate, q, kind);
-        if (s > bestScore) {
-          bestScore = s;
-          best = candidate;
-        }
-      }
-      return fetchWikipediaSummary(best);
+      const ranked = titles
+        .map((title) => ({ title, score: scoreWikiOpenSearchTitle(title, q, kind), mustFit: true }))
+        .sort((a, b) => b.score - a.score);
+      const best = await resolveWikipediaTitle(ranked, kind);
+      return best ? fetchWikipediaSummary(best, kind) : null;
     } catch {
       return null;
     }
   }
 
-  async function fetchWikipedia({ title, kind }) {
+  async function fetchWikipedia({ title, kind, year }) {
     const t = String(title || "").trim();
     if (!t) return null;
-    const exact = await fetchWikipediaSummary(t);
-    if (exact) return exact;
-    /* 404 / miss — try opensearch (movies/games especially; books as soft fallback) */
-    return fetchWikipediaOpenSearch(t, kind || "book");
+    const k = kind || "book";
+    /* B8: try the type-specific article first, then the bare title (which must fit the type). */
+    const candidates = [];
+    if (k === "movie") {
+      if (year) candidates.push({ title: `${t} (${year} film)` });
+      candidates.push({ title: `${t} (film)` });
+    } else if (k === "game") {
+      if (year) candidates.push({ title: `${t} (${year} video game)` });
+      candidates.push({ title: `${t} (video game)` });
+    }
+    candidates.push({ title: t, mustFit: k === "movie" || k === "game" });
+    try {
+      const resolved = await resolveWikipediaTitle(candidates, k);
+      if (resolved) {
+        const hit = await fetchWikipediaSummary(resolved, k);
+        if (hit) return hit;
+      }
+    } catch {
+      /* fall through to OpenSearch */
+    }
+    return fetchWikipediaOpenSearch(t, k);
   }
 
   function scoreItunesMatch(result, term) {
@@ -1938,7 +2119,7 @@
   async function fetchItunes(term, entity) {
     try {
       const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=${encodeURIComponent(entity)}&limit=5`;
-      const res = await fetch(url);
+      const res = await lookupFetch(url);
       if (!res.ok) throw new Error("network");
       const data = await res.json();
       const results = Array.isArray(data.results) ? data.results : [];
@@ -2007,13 +2188,17 @@
 
     for (const step of steps) {
       triedLabels.push(step.label);
+      lookupSource = step.label;
       let data = null;
       try {
         data = await step.run(knownTitle);
       } catch {
         data = null;
       }
+      lookupSource = "";
       if (!lookupHasUsefulFields(data)) continue;
+      /* A source that returned data isn't "refused", even if a secondary request failed. */
+      if (lookupIssues) lookupIssues.delete(step.label);
       if (data.title) knownTitle = knownTitle || data.title;
 
       const wrapped = {
@@ -2069,6 +2254,7 @@
 
     lookupBusy = true;
     els.btnLookup.disabled = true;
+    lookupIssues = new Map();
     setLookupStatus("Looking up…");
 
     try {
@@ -2143,7 +2329,7 @@
             label: "Wikipedia",
             slug: "wikipedia",
             run: (knownTitle) =>
-              fetchWikipedia({ title: term || knownTitle || "", kind: "movie" }),
+              fetchWikipedia({ title: term || knownTitle || "", kind: "movie", year: yearVal }),
           }
         );
         result = await runLookupWaterfall(steps, tried);
@@ -2176,7 +2362,11 @@
             label: "Wikipedia",
             slug: "wikipedia",
             run: (knownTitle) =>
-              fetchWikipedia({ title: term || knownTitle || "", kind: "game" }),
+              fetchWikipedia({
+                title: term || knownTitle || "",
+                kind: "game",
+                year: els.fieldYear.value.trim(),
+              }),
           });
         }
         if (isbnShaped) {
@@ -2196,21 +2386,45 @@
         return;
       }
 
+      const issues = [...lookupIssues.entries()];
       if (result && lookupHasUsefulFields(result.data)) {
         const label = result.label || sourceLabel(result.slug);
-        commitLookup(result.data, `Matched via ${label}`);
+        /* B6: after a match, still surface problems with the user's own API keys. */
+        const keyNotes = issues
+          .filter(([src]) => src === "OMDb" || src === "RAWG")
+          .map(([src, issue]) => describeLookupIssue(src, issue));
+        commitLookup(
+          result.data,
+          keyNotes.length ? `Matched via ${label}. ${keyNotes.join(" ")}` : `Matched via ${label}`,
+          keyNotes.length ? "note" : "ok"
+        );
         return;
       }
 
-      const list =
-        tried.length > 0
-          ? tried.join(", ")
-          : "available sources";
-      setLookupStatus(`No match across ${list}`, "error");
+      if (!issues.length) {
+        const list =
+          tried.length > 0
+            ? tried.join(", ")
+            : "available sources";
+        setLookupStatus(`No match across ${list}`, "error");
+        return;
+      }
+      /* B10: say which sources refused/errored instead of calling it a "no match". */
+      const failed = new Set(issues.map(([src]) => src));
+      const noMatch = tried.filter((l) => !failed.has(l));
+      const why = issues.map(([src, issue]) => describeLookupIssue(src, issue)).join(" ");
+      setLookupStatus(
+        noMatch.length
+          ? `No match in ${noMatch.join(", ")}. ${why}`
+          : `Couldn’t get a result. ${why}`,
+        "error"
+      );
     } catch {
       setLookupStatus("Lookup failed — check your connection and try again.", "error");
     } finally {
       lookupBusy = false;
+      lookupIssues = null;
+      lookupSource = "";
       els.btnLookup.disabled = false;
       if (type === "movie" || type === "game") {
         maybeShowLookupKeyHint(type);

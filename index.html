@@ -34,7 +34,7 @@
       </div>
       <div class="header-actions">
         <button type="button" class="btn btn-ghost" id="btn-settings" title="Backup, restore, and lookup settings">Settings</button>
-        <button type="button" class="btn btn-ghost" id="btn-backup" title="Back up to iCloud (opens the share sheet — choose Save to Files)">Back up</button>
+        <button type="button" class="btn btn-ghost" id="btn-backup" title="Back up: save a backup file (on iPhone choose Save to Files → iCloud Drive)">Back up</button>
         <button type="button" class="btn btn-ghost" id="btn-export" title="Export library as JSON">Export</button>
         <button type="button" class="btn btn-ghost" id="btn-import" title="Import library from JSON">Import</button>
         <input type="file" id="import-file" accept="application/json,.json" hidden />
@@ -79,11 +79,11 @@
 
   <main id="main" class="main">
     <div id="seed-banner" class="seed-banner" hidden>
-      <p>Showing sample items so the shelf isn’t empty. Your data stays in this browser.</p>
+      <p>These are sample items. Clear them any time. Your library is saved only in this browser.</p>
       <button type="button" class="btn btn-ghost btn-sm" id="btn-clear-seed">Clear samples</button>
     </div>
     <div id="backup-banner" class="seed-banner backup-banner" role="region" aria-label="Backup reminder" hidden>
-      <p id="backup-banner-text">It’s been a while since your last backup.</p>
+      <p id="backup-banner-text">You haven’t backed up this library yet. Back up to keep a copy outside this browser.</p>
       <div class="backup-banner-actions">
         <button type="button" class="btn btn-primary btn-sm" id="btn-backup-now">Back up now</button>
         <button type="button" class="btn btn-ghost btn-sm" id="btn-backup-dismiss" aria-label="Dismiss backup reminder for 7 days">Not now</button>
@@ -98,7 +98,7 @@
   </main>
 
   <footer class="site-footer">
-    <p>Data stays in your browser (<code>localStorage</code>) · Back up to iCloud or Export JSON · Hosted on GitHub Pages</p>
+    <p>Your library is saved in this browser (<code>localStorage</code>). Back up or Export to keep a copy. Hosted on GitHub Pages.</p>
   </footer>
 
   <!-- Modal -->
@@ -128,10 +128,10 @@
             <button type="button" class="btn btn-ghost" id="btn-scan" title="Scan with camera">Scan</button>
             <button type="button" class="btn btn-ghost" id="btn-lookup" title="Look up cover and details">Lookup</button>
           </div>
-          <p class="field-hint">Camera scan works best on HTTPS or localhost; on plain HTTP LAN it may be blocked.</p>
+          <p class="field-hint">Camera scan needs a secure page (HTTPS or localhost) and camera permission. On plain HTTP, such as a LAN address, the browser blocks the camera.</p>
           <p id="lookup-status" class="lookup-status" role="status" aria-live="polite" hidden></p>
           <div id="api-key-hint" class="api-key-hint-banner" hidden>
-            <span id="api-key-hint-text">Want better covers? Add free OMDb/RAWG keys in Settings.</span>
+            <span id="api-key-hint-text">Add free OMDb/RAWG keys in Settings and Lookup will check those sources first.</span>
             <button type="button" class="btn btn-ghost btn-sm" id="btn-open-api-settings">Open Settings</button>
           </div>
         </div>
@@ -149,12 +149,12 @@
             <a class="ref-link" id="ref-rawg" href="#" target="_blank" rel="noopener noreferrer" hidden>RAWG</a>
             <a class="ref-link" id="ref-igdb" href="#" target="_blank" rel="noopener noreferrer" hidden>IGDB</a>
           </div>
-          <p class="field-hint">Opens site search in a new tab (no API key). ISFDB = speculative fiction; RAWG/IGDB = games.</p>
+          <p class="field-hint">Opens a search on that site in a new tab. No API key needed. IMDb: movies and many games. ISFDB: science fiction and fantasy books. RAWG, IGDB: games.</p>
         </div>
 
         <div class="form-row">
           <label for="field-creator" id="label-creator">Creator</label>
-          <input type="text" id="field-creator" maxlength="200" placeholder="Author / studio / developer" />
+          <input type="text" id="field-creator" maxlength="200" placeholder="e.g. Andy Weir" />
         </div>
 
         <div class="form-grid">
@@ -249,7 +249,7 @@
         <h2 id="scan-title">Scan barcode</h2>
         <button type="button" class="btn-icon" id="scan-close" aria-label="Close scan">&times;</button>
       </div>
-      <p class="field-hint">Point your camera at an ISBN or barcode. Works best on HTTPS or localhost.</p>
+      <p class="field-hint">Point your camera at an ISBN or barcode. Camera scan needs a secure page (HTTPS or localhost) and camera permission. On plain HTTP, such as a LAN address, the browser blocks the camera.</p>
       <div id="qr-reader" class="qr-reader"></div>
       <p id="scan-status" class="lookup-status" role="status" aria-live="polite"></p>
       <div class="form-actions-right confirm-actions">
@@ -283,7 +283,7 @@
 
       <section class="api-key-card backup-card" id="backup-card" aria-labelledby="backup-heading" tabindex="-1">
         <div class="api-key-card-head">
-          <h3 id="backup-heading">Backup &amp; restore (iCloud)</h3>
+          <h3 id="backup-heading">Backup &amp; restore</h3>
           <span class="api-key-status" id="backup-status" data-status="unset">Never</span>
         </div>
         <p class="api-key-blurb">
@@ -292,10 +292,10 @@
           <strong>This is manual, not automatic sync</strong> — back up again after big changes.
           API keys are not included in backups.
         </p>
-        <p class="backup-last" id="backup-last" role="status" aria-live="polite">Last backed up: Never</p>
+        <p class="backup-last" id="backup-last" role="status" aria-live="polite">Last backup file created: Never</p>
         <div class="api-key-actions backup-actions">
-          <button type="button" class="btn btn-primary btn-sm" id="btn-backup-settings">Back up to iCloud</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="btn-restore">Restore from iCloud</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-backup-settings">Back up (save a file)</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-restore">Restore from file</button>
         </div>
         <details class="backup-help">
           <summary>How it works on iPhone</summary>
@@ -317,8 +317,10 @@
 
       <h3 class="settings-section-title">Improve Lookup</h3>
       <p class="settings-intro">
-        Optional free API keys unlock better movie posters (OMDb) and game covers (RAWG).
-        Keys stay in <strong>this browser only</strong> — never uploaded. Lookup still works without them.
+        Optional free API keys let movie Lookup check OMDb and game Lookup check RAWG first.
+        Keys are saved only in this browser and aren’t included in backups. When you use Lookup,
+        your browser sends the key directly to OMDb or RAWG. Media Shelf has no server.
+        Book Lookup works without keys. Movie and game Lookup without keys is limited.
       </p>
       <div class="api-key-cards" id="api-key-cards">
         <section class="api-key-card" id="api-card-omdb" data-provider="omdb" tabindex="-1">
@@ -327,14 +329,16 @@
             <span class="api-key-status" id="omdb-key-status" data-status="unset">Not set</span>
           </div>
           <p class="api-key-blurb">
-            An API key is a free password that lets Media Shelf ask OMDb for IMDb-quality posters and titles.
-            Stored only in this browser. Without it, movie Lookup still uses iTunes + Wikipedia.
+            OMDb gives out free API keys (up to 1,000 requests a day). With a key, movie Lookup checks
+            OMDb first for poster, title, year and director.
+            Saved in this browser. Sent only to OMDb with lookups.
+            Without a key, movie Lookup tries iTunes and Wikipedia. Results are hit-or-miss: check the match or paste a cover URL.
           </p>
           <ol class="api-key-steps">
-            <li>Click <strong>Get free key</strong> (opens OMDb signup).</li>
-            <li>Register and verify your email.</li>
-            <li>Copy the key from OMDb’s confirmation / account page.</li>
-            <li>Paste it below and press <strong>Save</strong>.</li>
+            <li>Tap <strong>Get free key</strong> (opens omdbapi.com).</li>
+            <li>Choose <strong>FREE! (1,000 daily limit)</strong>, enter your email, name and a short description of use, then <strong>Submit</strong>.</li>
+            <li>OMDb emails you the key. Follow any instructions in that email.</li>
+            <li>Paste the key below and press <strong>Save</strong>.</li>
           </ol>
           <div class="form-row api-key-field">
             <label for="field-omdb-key">OMDb API key</label>
@@ -358,13 +362,15 @@
             <span class="api-key-status" id="rawg-key-status" data-status="unset">Not set</span>
           </div>
           <p class="api-key-blurb">
-            A free RAWG developer key unlocks deep game covers and metadata.
-            Stored only in this browser. Without it, game Lookup still uses iTunes + Wikipedia.
+            RAWG gives out free API keys for personal projects (up to 20,000 requests a month, credit to
+            RAWG required). With a key, game Lookup checks RAWG first for cover, year and developer.
+            Saved in this browser. Sent only to RAWG with lookups.
+            Without a key, game Lookup tries iTunes (App Store games only) and Wikipedia. Check the match or paste a cover URL.
           </p>
           <ol class="api-key-steps">
-            <li>Click <strong>Get free key</strong> (opens RAWG API docs).</li>
-            <li>Create / sign in to a RAWG account from the docs or site.</li>
-            <li>Create an API key in your RAWG developer / account area, then copy it.</li>
+            <li>Tap <strong>Get free key</strong> (opens RAWG’s API page).</li>
+            <li>Tap <strong>Get API Key</strong> and sign in or create a RAWG account.</li>
+            <li>Copy your key.</li>
             <li>Paste it below and press <strong>Save</strong>.</li>
           </ol>
           <div class="form-row api-key-field">
