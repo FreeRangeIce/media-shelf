@@ -50,7 +50,7 @@ ISFDB serves HTML without CORS for browser apps, so Lookup does not scrape it.
 ### Movies
 1. **OMDb** (optional key) — title/year lookup with poster, year and director. Free key = 1,000 requests/day, emailed after signup at [omdbapi.com/apikey.aspx](https://www.omdbapi.com/apikey.aspx) (OMDb isn’t affiliated with IMDb). A bad key (HTTP 401) is reported in Test and in Lookup. `coverSource: omdb`
 2. [iTunes Search](https://performance-partners.apple.com/search-api) — `entity=movie`. **Caveat:** Apple limits the API to about 20 calls/minute, and from our test machine uncached queries returned HTTP 403; whether it works from your device/network is unverified. A 403 now shows as “iTunes refused the request”, not “No match”.
-3. Wikipedia — one MediaWiki query tries `{title} ({year} film)`, `{title} (film)`, then the bare title only if its description is a film; disambiguation pages are skipped; OpenSearch fallback ranks “(film)” titles first. The director is read from the short description when present (“2023 film by Christopher Nolan”).
+3. Wikipedia — one MediaWiki query tries `{title} ({year} film)`, `{title} (film)`, then the bare title only if its description is a film; disambiguation pages are skipped; OpenSearch fallback ranks “(film)” titles first. The director is read from the short description (“2023 film by Christopher Nolan”) or the article’s first sentence (“… film directed by Denis Villeneuve …”); the “(film)” part of the page title isn’t copied into your item.
 
 **IMDb** reference link: `https://www.imdb.com/find/?q={title}` (and year when set). Movie UPC barcodes alone usually will not match — use a title or paste a cover URL.
 
