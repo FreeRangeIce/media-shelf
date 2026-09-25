@@ -1,5 +1,5 @@
-/* Media Shelf service worker — cache version v7 */
-const CACHE = "media-shelf-v7";
+/* Media Shelf service worker — cache version v8 */
+const CACHE = "media-shelf-v8";
 const ASSETS = [
   "./",
   "./index.html",

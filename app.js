@@ -45,6 +45,32 @@
     movie: "e.g. Denis Villeneuve",
   };
 
+  /**
+   * Count wording: [singular, plural]. English plural is "other" for 0 and 2+.
+   * Status labels are adjectives/verb labels, not count nouns, so they don't take an -s:
+   * "1 done / 2 done", "1 in progress / 2 in progress", "1 want / 2 want" ("2 wants" would
+   * read as desires). "dropped" is listed for completeness.
+   */
+  const COUNT_NOUNS = {
+    book: ["book", "books"],
+    game: ["game", "games"],
+    movie: ["movie", "movies"],
+    item: ["item", "items"],
+    want: ["want", "want"],
+    in_progress: ["in progress", "in progress"],
+    done: ["done", "done"],
+    dropped: ["dropped", "dropped"],
+  };
+
+  function countNoun(n, key) {
+    const forms = COUNT_NOUNS[key] || [key, `${key}s`];
+    return Number(n) === 1 ? forms[0] : forms[1];
+  }
+
+  function countLabel(n, key) {
+    return `${n} ${countNoun(n, key)}`;
+  }
+
   /** @type {Array<object>} */
   let items = [];
   let filterType = "all";
@@ -609,13 +635,15 @@
       byType[i.type] = (byType[i.type] || 0) + 1;
       byStatus[i.status] = (byStatus[i.status] || 0) + 1;
     }
+    const pill = (cls, n, key) =>
+      `<span class="stat-pill${cls ? ` ${cls}` : ""}"><strong>${n}</strong> ${countNoun(n, key)}</span>`;
     els.stats.innerHTML = [
-      `<span class="stat-pill book"><strong>${byType.book}</strong> books</span>`,
-      `<span class="stat-pill game"><strong>${byType.game}</strong> games</span>`,
-      `<span class="stat-pill movie"><strong>${byType.movie}</strong> movies</span>`,
-      `<span class="stat-pill"><strong>${byStatus.want}</strong> want</span>`,
-      `<span class="stat-pill"><strong>${byStatus.in_progress}</strong> in progress</span>`,
-      `<span class="stat-pill"><strong>${byStatus.done}</strong> done</span>`,
+      pill("book", byType.book, "book"),
+      pill("game", byType.game, "game"),
+      pill("movie", byType.movie, "movie"),
+      pill("", byStatus.want, "want"),
+      pill("", byStatus.in_progress, "in_progress"),
+      pill("", byStatus.done, "done"),
     ].join("");
   }
 
@@ -1068,7 +1096,7 @@
       }
       const when = formatBackupDate(parsed.exportedAt);
       const n = incoming.length;
-      const fromLine = `This backup has ${n} item${n === 1 ? "" : "s"}${when ? ` (saved ${when})` : ""}.`;
+      const fromLine = `This backup has ${countLabel(n, "item")}${when ? ` (saved ${when})` : ""}.`;
       const hasCurrent = items.length > 0;
       const desc = hasCurrent
         ? `${fromLine} Merge keeps your current ${items.length} and adds anything new (the newer copy wins when both have the same item). Replace swaps your whole library for the backup.`
@@ -1078,7 +1106,7 @@
         saveStore();
         closeConfirm();
         render();
-        showToast(`Restored ${items.length} item${items.length === 1 ? "" : "s"}`);
+        showToast(`Restored ${countLabel(items.length, "item")}`);
       };
       const doMerge = () => {
         const res = mergeItems(items, incoming);
