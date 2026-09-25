@@ -76,7 +76,7 @@ Reference links (no keys): **RAWG** (`https://rawg.io/search?query=…`), **IGDB
 - Reference links: IMDb, ISFDB, RAWG, IGDB (by type)
 - Stats strip by type and status
 - Seed samples on first load; clear samples anytime
-- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v5`)
+- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v6`)
 - Relative paths only — works from the GitHub Pages project path
 
 ## Add to Home Screen
