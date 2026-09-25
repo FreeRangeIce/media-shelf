@@ -677,10 +677,10 @@ body {
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow);
   font-size: 0.875rem;
-  white-space: nowrap;
+  width: max-content;
   max-width: calc(100vw - 2rem);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  text-align: center;
+  line-height: 1.35;
 }
 
 .toast[hidden] {
@@ -1072,4 +1072,72 @@ body.modal-open {
 .api-key-hint-banner #api-key-hint-text {
   flex: 1;
   min-width: 12rem;
+}
+
+
+/* Backup & restore (iCloud via share sheet) */
+#confirm {
+  z-index: 110; /* above Settings when restoring from there */
+}
+
+.confirm-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.backup-banner[hidden] {
+  display: none;
+}
+
+.backup-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.backup-card {
+  margin-bottom: 1.1rem;
+}
+
+.backup-last {
+  margin: 0 0 0.65rem;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.backup-actions {
+  margin-bottom: 0.65rem;
+}
+
+.backup-help {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.backup-help summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 550;
+  padding: 0.2rem 0;
+}
+
+.backup-help summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-radius: 4px;
+}
+
+.backup-help-label {
+  margin: 0.6rem 0 0.3rem;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.backup-help .field-hint {
+  margin: 0.4rem 0 0;
+}
+
+.settings-section-title {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
 }

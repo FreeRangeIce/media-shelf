@@ -5,6 +5,14 @@
   const STORAGE_KEY = "media-tracker-v1";
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
   const RAWG_KEY_STORAGE = "media-shelf-rawg-key";
+  const LAST_BACKUP_STORAGE = "media-shelf-last-backup";
+  const BACKUP_REMINDER_DISMISSED_STORAGE = "media-shelf-backup-reminder-dismissed";
+  const BACKUP_APP_ID = "media-shelf";
+  const BACKUP_VERSION = 1;
+  const BACKUP_STALE_DAYS = 14;
+  const BACKUP_SNOOZE_DAYS = 7;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
   const HTML5_QRCODE_CDN =
     "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js";
   const TYPE_LABELS = { book: "Book", game: "Game", movie: "Movie" };
@@ -40,6 +48,8 @@
   let editingId = null;
   let lastFocus = null;
   let confirmCallback = null;
+  let confirmAltCallback = null;
+  let confirmReturnFocus = null;
   let toastTimer = null;
   let html5QrCodeLibPromise = null;
   /** @type {any} */
@@ -96,6 +106,12 @@
     qrReader: $("#qr-reader"),
     toast: $("#toast"),
     importFile: $("#import-file"),
+    confirmOk: $("#confirm-ok"),
+    confirmAlt: $("#confirm-alt"),
+    backupBanner: $("#backup-banner"),
+    backupLast: $("#backup-last"),
+    backupStatus: $("#backup-status"),
+    backupCard: $("#backup-card"),
     settingsModal: $("#settings-modal"),
     fieldOmdbKey: $("#field-omdb-key"),
     fieldRawgKey: $("#field-rawg-key"),
@@ -347,23 +363,51 @@
     }
   }
 
-  function openConfirm(title, desc, onOk, okLabel) {
+  /**
+   * @param {string} title
+   * @param {string} desc
+   * @param {() => void} onOk
+   * @param {string} [okLabel]
+   * @param {{ altLabel?: string, onAlt?: () => void, focusAlt?: boolean }} [opts]
+   *   Optional second action (e.g. Merge next to Replace).
+   */
+  function openConfirm(title, desc, onOk, okLabel, opts = {}) {
+    confirmReturnFocus = document.activeElement;
     $("#confirm-title").textContent = title;
     $("#confirm-desc").textContent = desc;
-    $("#confirm-ok").textContent = okLabel || "OK";
+    els.confirmOk.textContent = okLabel || "OK";
     confirmCallback = onOk;
+    if (opts.altLabel && typeof opts.onAlt === "function") {
+      els.confirmAlt.textContent = opts.altLabel;
+      els.confirmAlt.hidden = false;
+      confirmAltCallback = opts.onAlt;
+    } else {
+      els.confirmAlt.hidden = true;
+      confirmAltCallback = null;
+    }
     els.confirm.hidden = false;
     els.confirm.setAttribute("aria-hidden", "false");
     document.body.classList.add("modal-open");
-    $("#confirm-ok").focus();
+    (opts.focusAlt && !els.confirmAlt.hidden ? els.confirmAlt : els.confirmOk).focus();
   }
 
   function closeConfirm() {
     els.confirm.hidden = true;
     els.confirm.setAttribute("aria-hidden", "true");
     confirmCallback = null;
-    if (els.modal.hidden && els.scanModal.hidden) {
+    confirmAltCallback = null;
+    els.confirmAlt.hidden = true;
+    if (
+      els.modal.hidden &&
+      els.scanModal.hidden &&
+      (!els.settingsModal || els.settingsModal.hidden)
+    ) {
       document.body.classList.remove("modal-open");
+    }
+    const back = confirmReturnFocus;
+    confirmReturnFocus = null;
+    if (back && back.isConnected && typeof back.focus === "function" && back.offsetParent) {
+      back.focus();
     }
   }
 
@@ -669,48 +713,361 @@
   function render() {
     renderStats();
     renderList();
+    updateBackupUi();
+  }
+
+  /* ---------- Reference links (restored; dropped in 4d252ca) ---------- */
+  function buildImdbUrl(title, year) {
+    const q = String(title || "").trim();
+    if (!q) return "";
+    let term = q;
+    if (year) term = `${q} ${year}`;
+    return `https://www.imdb.com/find/?q=${encodeURIComponent(term)}`;
+  }
+
+  function buildIsfdbUrl(title) {
+    const q = String(title || "").trim();
+    if (!q) return "";
+    return (
+      `https://www.isfdb.org/cgi-bin/se.cgi?arg=${encodeURIComponent(q)}` +
+      `&type=Fiction+Titles`
+    );
+  }
+
+  function buildRawgSearchUrl(title) {
+    const q = String(title || "").trim();
+    if (!q) return "";
+    return `https://rawg.io/search?query=${encodeURIComponent(q)}`;
+  }
+
+  function buildIgdbUrl(title) {
+    const q = String(title || "").trim();
+    if (!q) return "";
+    return `https://www.igdb.com/search?type=games&q=${encodeURIComponent(q)}`;
+  }
+
+  function setRefLink(el, url) {
+    if (!el) return;
+    if (url) {
+      el.href = url;
+      el.hidden = false;
+    } else {
+      el.removeAttribute("href");
+      el.hidden = true;
+    }
+  }
+
+  function updateReferenceLinks() {
+    const type = els.fieldType.value;
+    const title = els.fieldTitle.value.trim();
+    const year = els.fieldYear.value.trim();
+    const imdb = type === "movie" || type === "game" ? buildImdbUrl(title, year) : "";
+    const isfdb = type === "book" ? buildIsfdbUrl(title) : "";
+    const rawg = type === "game" ? buildRawgSearchUrl(title) : "";
+    const igdb = type === "game" ? buildIgdbUrl(title) : "";
+    setRefLink(els.refImdb, imdb);
+    setRefLink(els.refIsfdb, isfdb);
+    setRefLink(els.refRawg, rawg);
+    setRefLink(els.refIgdb, igdb);
+  }
+
+  /* ---------- Backup / restore (iCloud via share sheet) ---------- */
+
+  function readLs(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+
+  function writeLs(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      /* storage full / private mode */
+    }
+  }
+
+  function parseTime(iso) {
+    const t = Date.parse(String(iso || ""));
+    return Number.isFinite(t) ? t : 0;
+  }
+
+  function localDateStamp(d = new Date()) {
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  function formatBackupDate(iso) {
+    const t = parseTime(iso);
+    if (!t) return "";
+    return new Date(t).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+
+  /** Library snapshot for backup/export. Never includes API keys. */
+  function buildBackupPayload() {
+    return {
+      app: BACKUP_APP_ID,
+      version: BACKUP_VERSION,
+      exportedAt: nowIso(),
+      items: items.map((i) => ({ ...i })),
+    };
+  }
+
+  function backupFileName() {
+    return `media-shelf-backup-${localDateStamp()}.json`;
+  }
+
+  function backupJsonText() {
+    return JSON.stringify(buildBackupPayload(), null, 2);
+  }
+
+  function downloadText(text, filename) {
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Safari needs the URL alive briefly after click.
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  function markBackedUp() {
+    writeLs(LAST_BACKUP_STORAGE, nowIso());
+    updateBackupUi();
   }
 
   function exportJson() {
-    const payload = {
-      version: 1,
-      exportedAt: nowIso(),
-      app: "Media Shelf",
-      items,
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const a = document.createElement("a");
-    const stamp = new Date().toISOString().slice(0, 10);
-    a.href = URL.createObjectURL(blob);
-    a.download = `media-shelf-${stamp}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    if (!items.length) {
+      showToast("Nothing to export yet");
+      return;
+    }
+    downloadText(backupJsonText(), backupFileName());
+    markBackedUp();
     showToast("Exported");
   }
 
-  function importJson(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
+  /** Pick a File the platform says it can share (iOS Safari: application/json). */
+  function shareableBackupFile(text, filename) {
+    if (typeof File !== "function" || !navigator.canShare) return null;
+    for (const type of ["application/json", "text/plain"]) {
       try {
-        const data = JSON.parse(String(reader.result));
-        const arr = Array.isArray(data) ? data : data.items;
-        if (!Array.isArray(arr)) throw new Error("Invalid file");
-        openConfirm(
-          "Replace library?",
-          `Import ${arr.length} items and replace what’s currently saved?`,
-          () => {
-            items = arr.map(normalizeItem);
-            saveStore();
-            closeConfirm();
-            showToast(`Imported ${items.length} items`);
-            render();
-          },
-          "Import"
-        );
+        const file = new File([text], filename, { type });
+        if (navigator.canShare({ files: [file] })) return file;
       } catch {
-        showToast("Import failed — invalid JSON");
+        /* try next type */
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Must be called synchronously from a click handler: navigator.share()
+   * requires a fresh user gesture (iOS shows the share sheet → Save to Files).
+   */
+  function backupToICloud() {
+    if (!items.length) {
+      showToast("Nothing to back up yet");
+      return;
+    }
+    const text = backupJsonText();
+    const filename = backupFileName();
+    const file = shareableBackupFile(text, filename);
+    if (file && typeof navigator.share === "function") {
+      navigator
+        .share({ files: [file], title: "Media Shelf backup" })
+        .then(() => {
+          markBackedUp();
+          showToast("Backup saved ✓");
+        })
+        .catch((err) => {
+          if (err && err.name === "AbortError") return; // user cancelled
+          try {
+            downloadText(text, filename);
+            markBackedUp();
+            showToast("Share sheet unavailable — backup downloaded instead");
+          } catch {
+            showToast("Backup failed — try Export instead");
+          }
+        });
+      return;
+    }
+    try {
+      downloadText(text, filename);
+      markBackedUp();
+      showToast("Backup downloaded — move it to iCloud Drive or Files to keep it safe");
+    } catch {
+      showToast("Backup failed — try Export instead");
+    }
+  }
+
+  function backupReminderDue() {
+    const hasOwnItems = items.some((i) => !i.seed);
+    if (!hasOwnItems) return false;
+    const now = Date.now();
+    const last = parseTime(readLs(LAST_BACKUP_STORAGE));
+    if (last && now - last < BACKUP_STALE_DAYS * DAY_MS) return false;
+    const dismissed = parseTime(readLs(BACKUP_REMINDER_DISMISSED_STORAGE));
+    if (dismissed && now - dismissed < BACKUP_SNOOZE_DAYS * DAY_MS) return false;
+    return true;
+  }
+
+  function dismissBackupReminder() {
+    writeLs(BACKUP_REMINDER_DISMISSED_STORAGE, nowIso());
+    updateBackupUi();
+    showToast("OK — we’ll remind you again in a week");
+  }
+
+  function updateBackupUi() {
+    const lastIso = readLs(LAST_BACKUP_STORAGE);
+    const label = formatBackupDate(lastIso);
+    const fresh = label && Date.now() - parseTime(lastIso) < BACKUP_STALE_DAYS * DAY_MS;
+    if (els.backupLast) {
+      els.backupLast.textContent = `Last backed up: ${label || "Never"}`;
+    }
+    if (els.backupStatus) {
+      els.backupStatus.textContent = label ? (fresh ? "Up to date" : "Due") : "Never";
+      els.backupStatus.dataset.status = fresh ? "set" : "unset";
+    }
+    if (els.backupBanner) {
+      const due = backupReminderDue();
+      els.backupBanner.hidden = !due;
+      if (due) {
+        $("#backup-banner-text").textContent = label
+          ? `It’s been a while since your last backup (${label}).`
+          : "It’s been a while since your last backup — you haven’t backed up this library yet.";
+      }
+    }
+  }
+
+  /**
+   * Parse + validate an Export / Backup file. Accepts:
+   *  - new backup: { app: "media-shelf", version: 1, exportedAt, items: [...] }
+   *  - older Export: { version: 1, exportedAt, app: "Media Shelf", items: [...] }
+   *  - plain array of items
+   * @returns {{ items: object[], exportedAt: string }}
+   */
+  function parseBackupText(text) {
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error("That file isn’t valid JSON.");
+    }
+    let arr;
+    let exportedAt = "";
+    if (Array.isArray(data)) {
+      arr = data;
+    } else if (data && typeof data === "object") {
+      if (data.app && !/^media[\s-]?shelf$/i.test(String(data.app).trim())) {
+        throw new Error("That file isn’t a Media Shelf backup.");
+      }
+      arr = data.items;
+      exportedAt = data.exportedAt || data.savedAt || "";
+    }
+    if (!Array.isArray(arr)) throw new Error("No items found in that file.");
+    const valid = arr.filter(
+      (r) => r && typeof r === "object" && !Array.isArray(r) && (r.title || r.type)
+    );
+    if (arr.length && !valid.length) {
+      throw new Error("That file doesn’t contain Media Shelf items.");
+    }
+    // Normalize and de-dupe by id inside the file (newer dateUpdated wins).
+    const byId = new Map();
+    valid.map(normalizeItem).forEach((it) => {
+      const prev = byId.get(it.id);
+      if (!prev || parseTime(it.dateUpdated) > parseTime(prev.dateUpdated)) byId.set(it.id, it);
+    });
+    return { items: [...byId.values()], exportedAt };
+  }
+
+  /** Merge: add unknown ids; for shared ids keep the newer dateUpdated. */
+  function mergeItems(current, incoming) {
+    const out = current.slice();
+    const index = new Map(out.map((it, i) => [it.id, i]));
+    let added = 0;
+    let updated = 0;
+    incoming.forEach((it) => {
+      if (!index.has(it.id)) {
+        index.set(it.id, out.length);
+        out.push(it);
+        added += 1;
+        return;
+      }
+      const i = index.get(it.id);
+      if (parseTime(it.dateUpdated) > parseTime(out[i].dateUpdated)) {
+        out[i] = it;
+        updated += 1;
+      }
+    });
+    return { items: out, added, updated };
+  }
+
+  /** Shared by header Import and Settings → Restore from iCloud. */
+  function importJson(file) {
+    if (!file) return;
+    if (file.size > MAX_IMPORT_BYTES) {
+      showToast("That file is too large to be a Media Shelf backup");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => showToast("Couldn’t read that file — try again");
+    reader.onload = () => {
+      let parsed;
+      try {
+        parsed = parseBackupText(String(reader.result));
+      } catch (err) {
+        showToast(`Restore failed — ${err && err.message ? err.message : "invalid file"}`);
+        return;
+      }
+      const incoming = parsed.items;
+      if (!incoming.length) {
+        showToast("That backup has no items — nothing to restore");
+        return;
+      }
+      const when = formatBackupDate(parsed.exportedAt);
+      const n = incoming.length;
+      const fromLine = `This backup has ${n} item${n === 1 ? "" : "s"}${when ? ` (saved ${when})` : ""}.`;
+      const hasCurrent = items.length > 0;
+      const desc = hasCurrent
+        ? `${fromLine} Merge keeps your current ${items.length} and adds anything new (the newer copy wins when both have the same item). Replace swaps your whole library for the backup.`
+        : `${fromLine} Restore it to this browser?`;
+      const doReplace = () => {
+        items = incoming.slice();
+        saveStore();
+        closeConfirm();
+        render();
+        showToast(`Restored ${items.length} item${items.length === 1 ? "" : "s"}`);
+      };
+      const doMerge = () => {
+        const res = mergeItems(items, incoming);
+        items = res.items;
+        saveStore();
+        closeConfirm();
+        render();
+        showToast(
+          res.added || res.updated
+            ? `Merged — ${res.added} added, ${res.updated} updated`
+            : "Merged — already up to date"
+        );
+      };
+      if (hasCurrent) {
+        openConfirm("Restore backup", desc, doReplace, "Replace", {
+          altLabel: "Merge",
+          onAlt: doMerge,
+          focusAlt: true,
+        });
+      } else {
+        openConfirm("Restore backup", desc, doReplace, "Restore");
       }
     };
     reader.readAsText(file);
@@ -951,6 +1308,7 @@
     els.settingsModal.hidden = false;
     els.settingsModal.setAttribute("aria-hidden", "false");
     document.body.classList.add("modal-open");
+    updateBackupUi();
     if (focusProvider === "omdb" || focusProvider === "rawg") {
       focusApiCard(focusProvider);
     } else {
@@ -958,7 +1316,9 @@
         if (c) c.classList.remove("is-focus");
       });
       requestAnimationFrame(() => {
-        if (els.fieldOmdbKey) els.fieldOmdbKey.focus();
+        const first = $("#btn-backup-settings");
+        if (first) first.focus();
+        else if (els.fieldOmdbKey) els.fieldOmdbKey.focus();
       });
     }
   }
@@ -2037,6 +2397,15 @@
 
     $("#btn-export").addEventListener("click", exportJson);
     $("#btn-import").addEventListener("click", () => els.importFile.click());
+    // Backup handlers call navigator.share synchronously (user gesture).
+    bindClick("#btn-backup", backupToICloud);
+    bindClick("#btn-backup-settings", backupToICloud);
+    bindClick("#btn-backup-now", backupToICloud);
+    bindClick("#btn-backup-dismiss", dismissBackupReminder);
+    bindClick("#btn-restore", () => els.importFile.click());
+    els.confirmAlt.addEventListener("click", () => {
+      if (typeof confirmAltCallback === "function") confirmAltCallback();
+    });
     els.importFile.addEventListener("change", () => {
       const file = els.importFile.files && els.importFile.files[0];
       if (file) importJson(file);

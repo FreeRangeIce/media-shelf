@@ -33,7 +33,8 @@
         </div>
       </div>
       <div class="header-actions">
-        <button type="button" class="btn btn-ghost" id="btn-settings" title="API keys and settings">Settings</button>
+        <button type="button" class="btn btn-ghost" id="btn-settings" title="Backup, restore, and lookup settings">Settings</button>
+        <button type="button" class="btn btn-ghost" id="btn-backup" title="Back up to iCloud (opens the share sheet — choose Save to Files)">Back up</button>
         <button type="button" class="btn btn-ghost" id="btn-export" title="Export library as JSON">Export</button>
         <button type="button" class="btn btn-ghost" id="btn-import" title="Import library from JSON">Import</button>
         <input type="file" id="import-file" accept="application/json,.json" hidden />
@@ -81,6 +82,13 @@
       <p>Showing sample items so the shelf isn’t empty. Your data stays in this browser.</p>
       <button type="button" class="btn btn-ghost btn-sm" id="btn-clear-seed">Clear samples</button>
     </div>
+    <div id="backup-banner" class="seed-banner backup-banner" role="region" aria-label="Backup reminder" hidden>
+      <p id="backup-banner-text">It’s been a while since your last backup.</p>
+      <div class="backup-banner-actions">
+        <button type="button" class="btn btn-primary btn-sm" id="btn-backup-now">Back up now</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-backup-dismiss" aria-label="Dismiss backup reminder for 7 days">Not now</button>
+      </div>
+    </div>
     <ul id="item-list" class="item-list" aria-live="polite"></ul>
     <div id="empty-state" class="empty-state" hidden>
       <p class="empty-title">Nothing on this shelf yet</p>
@@ -90,7 +98,7 @@
   </main>
 
   <footer class="site-footer">
-    <p>Data stays in your browser (<code>localStorage</code>) · Export JSON to back up · Hosted on GitHub Pages</p>
+    <p>Data stays in your browser (<code>localStorage</code>) · Back up to iCloud or Export JSON · Hosted on GitHub Pages</p>
   </footer>
 
   <!-- Modal -->
@@ -259,6 +267,7 @@
       <div class="form-actions-right confirm-actions">
         <button type="button" class="btn btn-ghost" id="confirm-cancel">Cancel</button>
         <button type="button" class="btn btn-danger" id="confirm-ok">Delete</button>
+        <button type="button" class="btn btn-primary" id="confirm-alt" hidden>Merge</button>
       </div>
     </div>
   </div>
@@ -268,9 +277,45 @@
     <div class="modal-backdrop" data-settings-close="true"></div>
     <div class="modal-panel modal-panel-settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <div class="modal-header">
-        <h2 id="settings-title">Improve Lookup</h2>
+        <h2 id="settings-title">Settings</h2>
         <button type="button" class="btn-icon" id="settings-close" aria-label="Close settings">&times;</button>
       </div>
+
+      <section class="api-key-card backup-card" id="backup-card" aria-labelledby="backup-heading" tabindex="-1">
+        <div class="api-key-card-head">
+          <h3 id="backup-heading">Backup &amp; restore (iCloud)</h3>
+          <span class="api-key-status" id="backup-status" data-status="unset">Never</span>
+        </div>
+        <p class="api-key-blurb">
+          Your library lives only in this browser. Save a backup file to iCloud Drive so you can
+          get it back on a new phone or after clearing Safari.
+          <strong>This is manual, not automatic sync</strong> — back up again after big changes.
+          API keys are not included in backups.
+        </p>
+        <p class="backup-last" id="backup-last" role="status" aria-live="polite">Last backed up: Never</p>
+        <div class="api-key-actions backup-actions">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-backup-settings">Back up to iCloud</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-restore">Restore from iCloud</button>
+        </div>
+        <details class="backup-help">
+          <summary>How it works on iPhone</summary>
+          <p class="backup-help-label">Back up</p>
+          <ol class="api-key-steps">
+            <li>Tap <strong>Back up to iCloud</strong>.</li>
+            <li>In the share sheet, choose <strong>Save to Files</strong>.</li>
+            <li>Pick <strong>iCloud Drive</strong>, choose a folder (for example “Media Shelf”), then tap <strong>Save</strong>.</li>
+          </ol>
+          <p class="backup-help-label">Restore</p>
+          <ol class="api-key-steps">
+            <li>Tap <strong>Restore from iCloud</strong>.</li>
+            <li>In Files, tap <strong>Browse → iCloud Drive</strong> and pick your <code>media-shelf-backup-….json</code> file.</li>
+            <li>Choose <strong>Merge</strong> (keep what’s here and add from the backup) or <strong>Replace</strong> (swap your library for the backup).</li>
+          </ol>
+          <p class="field-hint">On a computer (or a browser without a share sheet), the backup downloads as a file instead — move it to iCloud Drive or another safe place.</p>
+        </details>
+      </section>
+
+      <h3 class="settings-section-title">Improve Lookup</h3>
       <p class="settings-intro">
         Optional free API keys unlock better movie posters (OMDb) and game covers (RAWG).
         Keys stay in <strong>this browser only</strong> — never uploaded. Lookup still works without them.
