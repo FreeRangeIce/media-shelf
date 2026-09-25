@@ -1,7 +1,7 @@
 {
   "name": "Media Shelf",
   "short_name": "Shelf",
-  "description": "Track books, games, and movies — personal library on your device.",
+  "description": "Track books, games, and movies. Your library is saved in this browser.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -959,7 +959,7 @@
     try {
       downloadText(text, filename);
       markBackedUp();
-      showToast("Backup downloaded — move it to iCloud Drive or Files to keep it safe");
+      showToast("Backup downloaded — move it to iCloud Drive or another safe place.");
     } catch {
       showToast("Backup failed — try Export instead");
     }
@@ -995,7 +995,7 @@
       els.backupLast.textContent = `Last backup file created: ${label || "Never"}`;
     }
     if (els.backupStatus) {
-      els.backupStatus.textContent = label ? (fresh ? "Up to date" : "Due") : "Never";
+      els.backupStatus.textContent = label ? (fresh ? "Recent" : "Due") : "Never";
       els.backupStatus.dataset.status = fresh ? "set" : "unset";
     }
     if (els.backupBanner) {
@@ -1003,7 +1003,7 @@
       els.backupBanner.hidden = !due;
       if (due) {
         $("#backup-banner-text").textContent = label
-          ? `Last backup: ${label}. Back up again to keep your copy current.`
+          ? `Last backup file: ${label}. Back up again to keep your copy current.`
           : "You haven’t backed up this library yet. Back up to keep a copy outside this browser.";
       }
     }
@@ -1096,10 +1096,10 @@
       }
       const when = formatBackupDate(parsed.exportedAt);
       const n = incoming.length;
-      const fromLine = `This backup has ${countLabel(n, "item")}${when ? ` (saved ${when})` : ""}.`;
+      const fromLine = `This backup has ${countLabel(n, "item")}${when ? ` (created ${when})` : ""}.`;
       const hasCurrent = items.length > 0;
       const desc = hasCurrent
-        ? `${fromLine} Merge keeps your current ${items.length} and adds anything new (the newer copy wins when both have the same item). Replace swaps your whole library for the backup.`
+        ? `${fromLine} Merge keeps your current ${countLabel(items.length, "item")} and adds anything new (the newer copy wins when both have the same item). Replace swaps your whole library for the backup.`
         : `${fromLine} Restore it to this browser?`;
       const doReplace = () => {
         items = incoming.slice();
@@ -1450,7 +1450,7 @@
             provider,
             false,
             /limit/i.test(err)
-              ? "OMDb says this key’s daily request limit is reached. Try again tomorrow."
+              ? "OMDb says this key’s daily request limit is reached. Try again later."
               : "Key rejected by OMDb. Check that you copied it fully."
           );
           return;
@@ -1526,7 +1526,7 @@
     } else if (type === "game" && !getRawgKey()) {
       if (els.apiKeyHintText) {
         els.apiKeyHintText.textContent =
-          "Add a free RAWG key in Settings and game Lookup will check RAWG first.";
+          "Add a free RAWG key in Settings and game Lookup will try RAWG first.";
       }
       els.apiKeyHint.hidden = false;
       els.apiKeyHint.dataset.focus = "rawg";

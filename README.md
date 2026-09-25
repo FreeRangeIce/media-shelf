@@ -28,15 +28,15 @@ A web app can’t write to iCloud Drive directly, so Media Shelf hands a backup 
 
 Details:
 - Backup format: `{ "app": "media-shelf", "version": 1, "exportedAt": "<ISO>", "items": [...] }` with every item field (format, disc, barcode, coverUrl, coverSource, dates, …). **API keys are never included.** Restore also accepts older Export files and plain item arrays.
-- Uses `navigator.share({ files })` when `navigator.canShare({ files })` allows it (iOS/iPadOS Safari and Home Screen app, most Android browsers). Otherwise — e.g. most desktop browsers — the file downloads instead; move it somewhere safe yourself.
-- **Settings** shows “Last backup file created: …” (`localStorage` key `media-shelf-last-backup`). It’s set when the share sheet completes, when the file downloads, or on Export — it records that a file was created, not that it was saved to iCloud.
+- Uses `navigator.share({ files })` when `navigator.canShare({ files })` allows it (iOS/iPadOS Safari and Home Screen app, Chrome on Android; some desktop browsers such as Safari on Mac may also show a share menu). Otherwise the file downloads instead; move it somewhere safe yourself.
+- **Settings** shows “Last backup file created: …” (`localStorage` key `media-shelf-last-backup`). It’s set when the share sheet reports success, when the file downloads, or on Export — it records that a file was created, not that it was saved to iCloud.
 - A small reminder banner appears when you have your own (non-sample) items and either your last backup file is more than 14 days old, or you’ve never backed up and your first own item was added more than 14 days ago. No reminder on day one. **Not now** snoozes it for 7 days (`media-shelf-backup-reminder-dismissed`).
 
 ## Covers & Lookup (multi-source waterfall)
 
 **Lookup** tries sources in order and stops on the first strong match (prefer a cover; otherwise title + creator). The form stores `coverSource` (`openlibrary` | `googlebooks` | `itunes` | `wikipedia` | `omdb` | `rawg` | `manual`) and shows a status such as “Matched via Google Books”. A failing source is skipped so the next can run, and the status tells refusals/errors (HTTP 401/403/429/5xx, network or blocked) apart from a genuine “No match”. A rejected OMDb key is reported even when another source matches.
 
-Optional API keys (OMDb, RAWG) live in **Settings → Improve Lookup**, a short wizard with signup links and Save / Clear / Test for each key. Keys are saved only in this browser’s `localStorage` (`media-shelf-omdb-key`, `media-shelf-rawg-key`), are never included in backups, and are sent directly from your browser to OMDb or RAWG with each lookup (there is no Media Shelf server). Book Lookup needs no keys; movie and game Lookup without keys is limited (see the iTunes and Wikipedia notes below).
+Optional API keys (OMDb, RAWG) live in **Settings → Improve Lookup**, a short wizard with signup links and Save / Clear / Test for each key. Keys are saved only in this browser’s `localStorage` (`media-shelf-omdb-key`, `media-shelf-rawg-key`), are never included in backups, and are sent directly from your browser to OMDb or RAWG when you use Lookup or Test (there is no Media Shelf server). Book Lookup needs no keys; movie and game Lookup without keys is limited (see the iTunes and Wikipedia notes below).
 
 ### Books
 1. [Open Library](https://openlibrary.org) — ISBN and title search; covers via `covers.openlibrary.org`
@@ -76,7 +76,7 @@ Reference links (no keys): **RAWG** (`https://rawg.io/search?query=…`), **IGDB
 - Reference links: IMDb, ISFDB, RAWG, IGDB (by type)
 - Stats strip by type and status
 - Sample items on first load only (`media-shelf-seeded`); once cleared — or once every item is deleted — they don’t come back
-- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v8`)
+- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v9`)
 - Relative paths only — works from the GitHub Pages project path
 
 ## Add to Home Screen
@@ -89,4 +89,4 @@ Live at [freerangeice.github.io/media-shelf](https://freerangeice.github.io/medi
 
 ## Privacy
 
-No accounts, no cloud sync, no Media Shelf server. Your library and optional OMDb/RAWG keys are saved in this browser’s `localStorage` (backups/exports contain your library only, never API keys). When you press Lookup (or after a scan), your browser sends the title/barcode to Open Library, Google Books, iTunes and Wikipedia, and — when configured — the title plus your key to OMDb / RAWG. Reference links open IMDb, ISFDB, RAWG, or IGDB in a new tab. Note: `localStorage` is per origin, and GitHub Pages project sites under one account share the origin `https://freerangeice.github.io`.
+No accounts, no cloud sync, no Media Shelf server. Your library and optional OMDb/RAWG keys are saved in this browser’s `localStorage` (backups/exports contain your library only, never API keys). When you press Lookup (or after a scan), your browser sends the title or barcode (plus the author for books and the year for movies and games, when set) to Open Library, Google Books, iTunes and Wikipedia, and — when configured — the title plus your key to OMDb / RAWG. Reference links open IMDb, ISFDB, RAWG, or IGDB in a new tab. Note: `localStorage` is per origin, and GitHub Pages project sites under one account share the origin `https://freerangeice.github.io`.

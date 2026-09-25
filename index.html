@@ -287,7 +287,7 @@
           <span class="api-key-status" id="backup-status" data-status="unset">Never</span>
         </div>
         <p class="api-key-blurb">
-          Your library lives only in this browser. Save a backup file to iCloud Drive so you can
+          Your library lives only in this browser. Save a backup file (for example to iCloud Drive) so you can
           get it back on a new phone or after clearing Safari.
           <strong>This is manual, not automatic sync</strong> — back up again after big changes.
           API keys are not included in backups.
@@ -301,24 +301,25 @@
           <summary>How it works on iPhone</summary>
           <p class="backup-help-label">Back up</p>
           <ol class="api-key-steps">
-            <li>Tap <strong>Back up to iCloud</strong>.</li>
+            <li>Tap <strong>Back up (save a file)</strong> (or <strong>Back up</strong> at the top of the page).</li>
             <li>In the share sheet, choose <strong>Save to Files</strong>.</li>
             <li>Pick <strong>iCloud Drive</strong>, choose a folder (for example “Media Shelf”), then tap <strong>Save</strong>.</li>
+            <li>Open the Files app to check the file is there. Media Shelf can’t see where the share sheet saved it.</li>
           </ol>
           <p class="backup-help-label">Restore</p>
           <ol class="api-key-steps">
-            <li>Tap <strong>Restore from iCloud</strong>.</li>
-            <li>In Files, tap <strong>Browse → iCloud Drive</strong> and pick your <code>media-shelf-backup-….json</code> file.</li>
-            <li>Choose <strong>Merge</strong> (keep what’s here and add from the backup) or <strong>Replace</strong> (swap your library for the backup).</li>
+            <li>Tap <strong>Restore from file</strong>.</li>
+            <li>In the file picker, tap <strong>Browse → iCloud Drive</strong> and pick your <code>media-shelf-backup-….json</code> file.</li>
+            <li>Choose <strong>Merge</strong> (keep what’s here and add from the backup) or <strong>Replace</strong> (swap your library for the backup). If this browser has no items yet, just tap <strong>Restore</strong>.</li>
           </ol>
-          <p class="field-hint">On a computer (or a browser without a share sheet), the backup downloads as a file instead — move it to iCloud Drive or another safe place.</p>
+          <p class="field-hint">On a computer, the backup usually downloads as a file — move it to iCloud Drive or another safe place. If your browser opens a share menu instead, pick a place to save it, or use <strong>Export</strong> to download a copy.</p>
         </details>
       </section>
 
       <h3 class="settings-section-title">Improve Lookup</h3>
       <p class="settings-intro">
-        Optional free API keys let movie Lookup check OMDb and game Lookup check RAWG first.
-        Keys are saved only in this browser and aren’t included in backups. When you use Lookup,
+        Optional free API keys let movie Lookup check OMDb first, and game Lookup try RAWG first.
+        Keys are saved only in this browser and aren’t included in backups. When you use Lookup or Test,
         your browser sends the key directly to OMDb or RAWG. Media Shelf has no server.
         Book Lookup works without keys. Movie and game Lookup without keys is limited.
       </p>
@@ -331,7 +332,7 @@
           <p class="api-key-blurb">
             OMDb gives out free API keys (up to 1,000 requests a day). With a key, movie Lookup checks
             OMDb first for poster, title, year and director.
-            Saved in this browser. Sent only to OMDb with lookups.
+            Saved in this browser. Sent only to OMDb, when you use Lookup or Test.
             Without a key, movie Lookup tries iTunes and Wikipedia. Results are hit-or-miss: check the match or paste a cover URL.
           </p>
           <ol class="api-key-steps">
@@ -363,15 +364,15 @@
           </div>
           <p class="api-key-blurb">
             RAWG gives out free API keys for personal projects (up to 20,000 requests a month, credit to
-            RAWG required). With a key, game Lookup checks RAWG first for cover, year and developer.
-            Saved in this browser. Sent only to RAWG with lookups.
+            RAWG required). With a key, game Lookup tries RAWG first for cover, year and developer. Use <strong>Test</strong> to check it works in this browser.
+            Saved in this browser. Sent only to RAWG, when you use Lookup or Test.
             Without a key, game Lookup tries iTunes (App Store games only) and Wikipedia. Check the match or paste a cover URL.
           </p>
           <ol class="api-key-steps">
             <li>Tap <strong>Get free key</strong> (opens RAWG’s API page).</li>
             <li>Tap <strong>Get API Key</strong> and sign in or create a RAWG account.</li>
             <li>Copy your key.</li>
-            <li>Paste it below and press <strong>Save</strong>.</li>
+            <li>Paste it below, press <strong>Save</strong>, then <strong>Test</strong>.</li>
           </ol>
           <div class="form-row api-key-field">
             <label for="field-rawg-key">RAWG API key</label>
