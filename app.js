@@ -127,6 +127,7 @@
     refIsfdb: $("#ref-isfdb"),
     refRawg: $("#ref-rawg"),
     refIgdb: $("#ref-igdb"),
+    refLinksRow: $("#ref-links-row"),
   };
 
   function uid() {
@@ -769,6 +770,8 @@
     setRefLink(els.refIsfdb, isfdb);
     setRefLink(els.refRawg, rawg);
     setRefLink(els.refIgdb, igdb);
+    // Hide the whole Reference row (label + hint) until at least one live link applies.
+    if (els.refLinksRow) els.refLinksRow.hidden = !(imdb || isfdb || rawg || igdb);
   }
 
   /* ---------- Backup / restore (iCloud via share sheet) ---------- */
@@ -2437,6 +2440,13 @@
     });
     els.fieldFormat.addEventListener("change", updateDiscVisibility);
     els.fieldTitle.addEventListener("input", updateReferenceLinks);
+    // A lookup error ("Enter a barcode/ISBN or a title…", "No match…") goes stale once the
+    // user edits what would be looked up. Clear only the error; leave busy/ok states alone.
+    const clearStaleLookupError = () => {
+      if (!lookupBusy && els.lookupStatus.classList.contains("is-error")) setLookupStatus("");
+    };
+    els.fieldBarcode.addEventListener("input", clearStaleLookupError);
+    els.fieldTitle.addEventListener("input", clearStaleLookupError);
     els.fieldYear.addEventListener("input", updateReferenceLinks);
     els.fieldCover.addEventListener("input", () => {
       els.fieldCoverSource.value = els.fieldCover.value.trim() ? "manual" : "";
