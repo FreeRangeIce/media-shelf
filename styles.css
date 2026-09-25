@@ -1368,6 +1368,18 @@ body.modal-open {
   }
 }
 
+/* Balanced last lines for running text (Oholiab polish): avoids one-word last lines
+   like "URL." without changing line counts. Ignored by browsers without support. */
+.api-key-blurb,
+.settings-intro,
+.api-key-steps li,
+.field-hint,
+.api-key-test-status,
+.seed-banner p,
+.site-footer p {
+  text-wrap: pretty;
+}
+
 /* The hidden attribute always wins over component display rules (B1/B2, review fix 1).
    !important so no class-level display (.seed-banner, .ref-link, …) can ever override it;
    nothing in the app or in html5-qrcode shows an element while it carries `hidden`. */
