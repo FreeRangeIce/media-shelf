@@ -493,6 +493,12 @@ body {
   box-shadow: 0 0 0 3px var(--danger-bg);
 }
 
+/* Focused invalid field keeps a distinct, stronger ring (re-review fix 10 polish).
+   0.7 alpha like --focus: 3.74:1 vs the modal (0.45 would be only 2.27:1). */
+.item-form input:user-invalid:focus-visible {
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.7);
+}
+
 /* Main */
 .main {
   max-width: 960px;
@@ -1248,6 +1254,25 @@ body.modal-open {
   margin-bottom: var(--space-3);
 }
 
+/* R1 (re-review): keep Settings action rows on one line at phone widths */
+@media (max-width: 559px) {
+  .api-key-actions {
+    gap: var(--space-1);
+  }
+
+  .api-key-actions .btn-sm {
+    padding-inline: var(--space-2);
+  }
+}
+
+/* Narrowest phones: "Back up (save a file)" + "Restore from file" can't share a row,
+   so stack them as two equal full-width buttons instead of leaving an orphan. */
+@media (max-width: 374px) {
+  .backup-actions .btn {
+    flex: 1 1 100%;
+  }
+}
+
 .backup-help {
   font-size: var(--fs-sm);
   color: var(--text-muted);
@@ -1343,24 +1368,9 @@ body.modal-open {
   }
 }
 
-/* The hidden attribute always wins over component display rules.
-   Every class that sets display on an element the app toggles with `hidden` is listed here. */
-[hidden],
-.seed-banner[hidden],
-.backup-banner[hidden],
-.ref-link[hidden],
-.ref-links-row[hidden],
-.modal[hidden],
-.toast[hidden],
-.lookup-status[hidden],
-.api-key-hint-banner[hidden],
-.api-key-test-status[hidden],
-.cover-preview[hidden],
-.cover-preview-placeholder[hidden],
-.item-cover-placeholder[hidden],
-.btn[hidden],
-.btn-sm[hidden],
-.form-row[hidden],
-.form-grid[hidden] {
-  display: none;
+/* The hidden attribute always wins over component display rules (B1/B2, review fix 1).
+   !important so no class-level display (.seed-banner, .ref-link, …) can ever override it;
+   nothing in the app or in html5-qrcode shows an element while it carries `hidden`. */
+[hidden] {
+  display: none !important;
 }
