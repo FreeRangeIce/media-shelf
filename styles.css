@@ -735,9 +735,9 @@ body {
 
 /* Data credits (RAWG requires an active link). Same size and muted colour as the footer
    text; only the links are accent + underlined. Inline padding widens the tap area
-   (~8px above and below) without making the line or the footer any taller, and the
-   negative inline margin cancels the horizontal padding so the text doesn't move. If
-   the line has to wrap, each credit stays whole and the break falls after the "·". */
+   (~8px above and below, ~33px total; deliberately not 44) without making the line
+   taller, and the negative inline margin cancels the horizontal padding so the text
+   doesn't move. Desktop: one line with a visible "·". Phones: see below. */
 .footer-credit {
   white-space: nowrap;
 }
@@ -754,14 +754,23 @@ body {
   color: var(--accent-hover);
 }
 
-/* Phones: the credit wraps onto two lines (break after the "·"). At the base 18px line
-   pitch, the 8px tap padding of "CC BY-NC 4.0" on line 2 covered the lower half of the
-   RAWG link on line 1 (40% of taps on RAWG went to the licence link). A 26px pitch
-   (17px glyph box + 8px padding + 1px) keeps every link's text clear of its neighbour's
+/* Phones: the two credits stack as centred blocks and the decorative "·" (aria-hidden)
+   is hidden, so there is no stray dot. At the base 18px line pitch, the 8px tap padding
+   of "CC BY-NC 4.0" on line 2 covered the lower half of the RAWG link on line 1 (10/25
+   hit-test points on RAWG went to the licence link). A 2.2 line-height (~26px pitch:
+   17px glyph box + 8px padding + 1px) keeps every link's text clear of its neighbour's
    tap area. */
 @media (max-width: 559px) {
   .footer-credits {
     line-height: 2.2;
+  }
+
+  .footer-credit {
+    display: block;
+  }
+
+  .footer-sep {
+    display: none;
   }
 }
 
@@ -1323,7 +1332,7 @@ body.modal-open {
   .backup-actions .btn {
     min-width: 0;
     min-height: 40px;
-    text-wrap: balance; /* "Back up / (save a file)" if the label can't fit one line */
+    text-wrap: balance; /* at 320 "Restore from file" wraps as "Restore / from file" */
   }
 }
 
