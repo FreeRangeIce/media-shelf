@@ -903,6 +903,7 @@
    *   checkbox; all reset on close so the delete / restore dialogs look as before.
    */
   function openConfirm(title, desc, onOk, okLabel, opts = {}) {
+    dismissPlainToast();
     confirmReturnFocus = document.activeElement;
     $("#confirm-title").textContent = title;
     $("#confirm-desc").textContent = desc;
@@ -970,6 +971,14 @@
   }
 
   /** Toast; optional one action button (e.g. Undo) and a longer duration for it. */
+  /** Oholiab F1: a dialog opening clears a leftover plain toast (it sat on the dialog title
+   *  while a sheet is open). Toasts with an action (Undo) keep their own timer. */
+  function dismissPlainToast() {
+    if (els.toast.hidden || els.toast.querySelector(".toast-action")) return;
+    clearTimeout(toastTimer);
+    els.toast.hidden = true;
+  }
+
   function showToast(msg, opts = {}) {
     els.toast.textContent = "";
     const text = document.createElement("span");
@@ -1303,6 +1312,11 @@
         const refsHtml = cardRefs.length
           ? `<div class="card-refs">${cardRefs.join("")}</div>`
           : "";
+        // Google Books credit (Oholiab F2): only for a Google Books cover with a safe link.
+        const gbUrl = item.coverSource === "googlebooks" ? safeGoogleBooksUrl(item.googleBooksUrl) : "";
+        const creditHtml = gbUrl
+          ? `<p class="card-credit"><a class="card-credit-link" href="${escapeHtml(gbUrl)}" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">Cover from Google Books</span></a></p>`
+          : "";
         return `
 <li>
   <article class="item-card" tabindex="0" data-id="${escapeHtml(item.id)}" role="button" aria-label="Edit ${escapeHtml(item.title)}">
@@ -1326,6 +1340,7 @@
         ${tags ? `<span class="tags">${tags}</span>` : ""}
         ${refsHtml}
       </div>
+      ${creditHtml}
     </div>
   </article>
 </li>`;
@@ -2826,7 +2841,7 @@
     const pool = releases.filter((r) => (Number(r.score) || 0) >= top - 10);
     const exact = want ? pool.filter((r) => normalizeTitle(r.title || "") === want) : [];
     const choices = exact.length ? exact : pool;
-    // Earliest dated release in the best group, so the year is the album's, not a reissue's.
+    // Earliest dated release in the best group (the year itself comes from its release group).
     const dated = choices.filter((r) => mbYear(r.date) != null);
     if (!dated.length) return choices[0];
     return dated.reduce((a, b) => (mbYear(b.date) < mbYear(a.date) ? b : a));
@@ -2857,23 +2872,22 @@
     const rg = release["release-group"] || {};
     let year = mbYear(release.date);
     let yearUncertain = false;
-    if (byBarcode) {
-      // A barcode names one pressing, and the search doesn't return the album's first
-      // release date (many pressings have no date at all). Ask the release group for it.
-      let firstYear = null;
-      if (rg.id) {
-        try {
-          const res = await musicBrainzFetch(
-            `https://musicbrainz.org/ws/2/release-group/${encodeURIComponent(rg.id)}?fmt=json`
-          );
-          if (res.ok) firstYear = mbYear((await res.json())["first-release-date"]);
-        } catch {
-          firstYear = null;
-        }
+    // Barcode and title matches both name one pressing, and the search doesn't return the
+    // album's first release date (many pressings have no date, and title matches can land on
+    // a reissue). Ask the release group for it; the queue keeps MusicBrainz calls 1.1 s apart.
+    let firstYear = null;
+    if (rg.id) {
+      try {
+        const res = await musicBrainzFetch(
+          `https://musicbrainz.org/ws/2/release-group/${encodeURIComponent(rg.id)}?fmt=json`
+        );
+        if (res.ok) firstYear = mbYear((await res.json())["first-release-date"]);
+      } catch {
+        firstYear = null;
       }
-      if (firstYear != null) year = firstYear;
-      else yearUncertain = true; // fell back to this pressing's date, or blank
     }
+    if (firstYear != null) year = firstYear;
+    else yearUncertain = true; // fell back to this pressing's date, or blank
     const coverUrl = await fetchCoverArtArchive(release.id, rg.id);
     return {
       title: release.title || "",
@@ -3372,7 +3386,7 @@
     });
 
     els.list.addEventListener("click", (e) => {
-      if (e.target.closest("a.card-ref, a.ref-link")) return;
+      if (e.target.closest("a.card-ref, a.ref-link, a.card-credit-link")) return;
       const card = e.target.closest(".item-card");
       if (!card) return;
       const item = items.find((i) => i.id === card.dataset.id);
@@ -3380,6 +3394,7 @@
     });
     els.list.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.key !== " ") return;
+      if (e.target.closest("a")) return; // a focused link on the card follows its own href
       const card = e.target.closest(".item-card");
       if (!card) return;
       e.preventDefault();

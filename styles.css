@@ -1468,6 +1468,49 @@ body.modal-open {
   margin-left: auto;
 }
 
+/* Google Books credit on saved cards (Oholiab F2): the last line of the text column, 8px
+   under the chips, 12px --text-dim, always underlined. The 44px tap area is padding-block
+   with a matching negative margin, so it still reads as one 18px line. */
+.card-credit {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-xs);
+  line-height: 18px;
+  min-width: 0;
+}
+
+.card-credit-link {
+  display: inline-block;
+  max-width: 100%;
+  padding-block: calc((var(--tap) - 18px) / 2);
+  margin-block: calc((var(--tap) - 18px) / -2);
+  vertical-align: top;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+/* Underline and focus ring sit on the text, not on the 44px tap box. */
+.card-credit-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  vertical-align: top;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-color: currentColor;
+  border-radius: 3px;
+}
+
+.card-credit-link:focus-visible {
+  outline: none;
+}
+
+.card-credit-link:focus-visible .card-credit-text {
+  box-shadow: var(--focus);
+}
+
 /* Settings: API key wizard */
 .settings-intro {
   margin: 0 0 var(--space-4);
