@@ -324,9 +324,26 @@
    * Typing one in any case stores this spelling, so "steam" and "Steam" match.
    */
   const PLATFORM_SUGGESTIONS = [
-    "Steam", "GOG", "Epic", "itch.io", "Xbox", "PlayStation", "Switch", "Switch 2", "Battle.net",
-    "EA app", "Ubisoft", "Amazon", "Humble", "PC", "Mac", "iOS", "Android",
+    "Steam", "GOG", "Epic", "itch.io", "Xbox", "Xbox Series X|S", "PlayStation", "PlayStation 5",
+    "PlayStation 4", "Nintendo Switch", "Switch 2", "Battle.net", "EA app", "Ubisoft", "Amazon",
+    "Humble", "PC", "Mac", "iOS", "Android",
   ];
+
+  /**
+   * Common short names, compared (and saved from import) as the suggestion they stand for.
+   * Keep this list short. "Switch 2" stays separate from Nintendo Switch; PC is left alone.
+   */
+  const PLATFORM_ALIASES = {
+    ps5: "PlayStation 5",
+    ps4: "PlayStation 4",
+    switch: "Nintendo Switch",
+    xsx: "Xbox Series X|S",
+    xss: "Xbox Series X|S",
+    "series x": "Xbox Series X|S",
+    "series s": "Xbox Series X|S",
+    "xbox series x": "Xbox Series X|S",
+    "xbox series s": "Xbox Series X|S",
+  };
 
   /** Trim, collapse spaces, snap to a suggestion's spelling; old key ids get their label. */
   function normalizePlatform(value) {
@@ -339,8 +356,15 @@
     return v;
   }
 
+  /** The suggestion a platform stands for ("PS5" → "PlayStation 5"); otherwise as normalized. */
+  function canonicalPlatform(value) {
+    const n = normalizePlatform(value);
+    return PLATFORM_ALIASES[n.toLowerCase()] || n;
+  }
+
+  /** Add-form values are saved as typed, but always compared through the aliases. */
   function samePlatform(a, b) {
-    return normalizePlatform(a).toLowerCase() === normalizePlatform(b).toLowerCase();
+    return canonicalPlatform(a).toLowerCase() === canonicalPlatform(b).toLowerCase();
   }
   const ACQUISITIONS = ["purchased", "pass", "shared", "gift", "bundled", "unknown"];
   const COMPONENT_KEYS = ["ownsGame", "ownsCase", "ownsManual"];
@@ -3943,7 +3967,7 @@
 
   function importDefaults() {
     return {
-      platform: normalizePlatform($("#import-default-platform").value),
+      platform: canonicalPlatform($("#import-default-platform").value),
       status: $("#import-default-status").value || "want",
       format: $("#import-default-format").value === "physical" ? "physical" : "digital",
     };
@@ -3954,7 +3978,7 @@
       type: "game",
       title: row.title,
       year: row.year,
-      platform: normalizePlatform(row.platform) || defs.platform,
+      platform: canonicalPlatform(row.platform) || defs.platform,
       format: defs.format,
       disc: null,
       barcode: "",
@@ -4046,7 +4070,7 @@
         return;
       }
       if (ev.kind === "new") newShown++;
-      const meta = [normalizePlatform(row.platform) || importDefaults().platform, row.year].filter(Boolean).join(" · ");
+      const meta = [canonicalPlatform(row.platform) || importDefaults().platform, row.year].filter(Boolean).join(" · ");
       const titleText = row.title || "(no title)";
       let side = "";
       let note = "";
