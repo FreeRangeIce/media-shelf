@@ -620,6 +620,7 @@ body {
 .badge-status.dropped { background: rgba(154, 163, 181, 0.15); color: var(--dropped); }
 
 .badge-format {
+  white-space: normal; /* long "Signed: …" names wrap inside the pill instead of overflowing */
   background: rgba(168, 159, 147, 0.12);
   color: var(--text-muted);
   text-transform: none;
@@ -932,6 +933,12 @@ body {
   flex: 0 0 auto;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+.signed-authors {
+  display: flex;
+  flex-direction: column;
+  padding-left: calc(18px + var(--space-2)); /* sub-toggles sit under the parent's label */
 }
 
 .btn-text {

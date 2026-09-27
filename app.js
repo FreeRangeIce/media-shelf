@@ -216,6 +216,12 @@
     labelOwnsCase: $("#label-owns-case"),
     labelOwnsManual: $("#label-owns-manual"),
     btnCib: $("#btn-cib"),
+    signedRow: $("#signed-row"),
+    signedSingle: $("#signed-single"),
+    signedMulti: $("#signed-multi"),
+    fieldSignedSingle: $("#field-signed-single"),
+    fieldSignedParent: $("#field-signed-parent"),
+    signedAuthors: $("#signed-authors"),
   };
 
   function uid() {
@@ -462,6 +468,11 @@
     if (item.platform) parts.push(PLATFORM_LABELS[item.platform] || item.platform);
     if (item.format === "physical" && item.disc) parts.push(DISC_LABELS[item.disc] || item.disc);
     if (isCib(item)) parts.push("CIB");
+    if (item.type === "book" && item.signed) {
+      // Multi-author: name who signed, in the same quiet pill (Oholiab B2 / handoff §3.5).
+      const who = item.authors.length > 1 ? item.authors.filter((a) => a.signed).map((a) => a.name) : [];
+      parts.push(who.length ? `Signed: ${who.join(", ")}` : "Signed");
+    }
     return parts;
   }
 
@@ -588,6 +599,102 @@
     });
   }
 
+  /* ---------- Book signed copy (handoff §3.5) ---------- */
+  /** Form state: structured authors parsed from creator, plus a bare flag for 0 authors. */
+  let formAuthors = [];
+  let formSignedNoAuthor = false;
+
+  /** Split creator on "," ";" " & " " and " (case-insensitive); trim; drop empties. */
+  function parseCreatorNames(creator) {
+    const seen = new Set();
+    return String(creator || "")
+      .split(/\s*[,;]\s*|\s+&\s+|\s+and\s+/i)
+      .map((n) => n.trim())
+      .filter((n) => {
+        const k = n.toLowerCase();
+        if (!n || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+  }
+
+  /** Re-derive authors from the creator field, keeping signed flags by case-insensitive name. */
+  function syncAuthorsFromCreator() {
+    const names = parseCreatorNames(els.fieldCreator.value);
+    const prev = new Map(formAuthors.map((a) => [a.name.toLowerCase(), a.signed]));
+    const carryBare = formSignedNoAuthor && !formAuthors.length && names.length === 1;
+    formAuthors = names.map((name) => ({
+      name,
+      signed: prev.get(name.toLowerCase()) === true || carryBare,
+    }));
+    if (formAuthors.length) formSignedNoAuthor = false;
+    renderSignedUi();
+  }
+
+  function renderSignedUi() {
+    if (!els.signedRow) return;
+    const isBook = els.fieldType.value === "book";
+    els.signedRow.hidden = !isBook;
+    if (!isBook) return;
+    const multi = formAuthors.length > 1;
+    els.signedSingle.hidden = multi;
+    els.signedMulti.hidden = !multi;
+    if (!multi) {
+      els.fieldSignedSingle.checked = formAuthors.length
+        ? formAuthors[0].signed
+        : formSignedNoAuthor;
+      els.signedAuthors.innerHTML = "";
+      return;
+    }
+    const on = formAuthors.filter((a) => a.signed).length;
+    els.fieldSignedParent.checked = on > 0;
+    els.fieldSignedParent.indeterminate = on > 0 && on < formAuthors.length;
+    els.signedAuthors.innerHTML = formAuthors
+      .map(
+        (a, i) =>
+          `<label class="check"><input type="checkbox" data-author-index="${i}"${a.signed ? " checked" : ""} /> <span>${escapeHtml(a.name)}</span></label>`
+      )
+      .join("");
+  }
+
+  function setAllAuthorsSigned(value) {
+    formAuthors = formAuthors.map((a) => ({ ...a, signed: value }));
+    renderSignedUi();
+  }
+
+  function onSignedParentChange() {
+    const anyOn = formAuthors.some((a) => a.signed);
+    if (els.fieldSignedParent.checked) {
+      // Parent on with nobody ticked: tick every author (untick any who didn't sign).
+      if (!anyOn) setAllAuthorsSigned(true);
+      return;
+    }
+    if (!anyOn) return;
+    // Unchecking the parent clears every author: confirm first (handoff §3.5).
+    els.fieldSignedParent.checked = true;
+    els.fieldSignedParent.indeterminate =
+      formAuthors.some((a) => !a.signed);
+    // PLACEHOLDER copy (Berean).
+    openConfirm(
+      "Clear signed authors?",
+      "This unticks every author on this book.",
+      () => {
+        setAllAuthorsSigned(false);
+        closeConfirm();
+      },
+      "Clear"
+    );
+  }
+
+  function collectAuthors() {
+    if (els.fieldType.value === "book") syncAuthorsFromCreator();
+    const authors = formAuthors.map((a) => ({ ...a }));
+    return {
+      authors,
+      signed: authors.length ? authors.some((a) => a.signed) : formSignedNoAuthor,
+    };
+  }
+
   function updateComponentsUi() {
     if (!els.componentsRow) return;
     const type = els.fieldType.value;
@@ -613,6 +720,10 @@
     els.fieldBarcode.value = item ? item.barcode || "" : "";
     els.fieldTitle.value = item ? item.title : "";
     els.fieldCreator.value = item ? item.creator : "";
+    formAuthors = item && Array.isArray(item.authors) ? item.authors.map((a) => ({ ...a })) : [];
+    formSignedNoAuthor = Boolean(item && !formAuthors.length && item.signed);
+    if (els.fieldType.value === "book") syncAuthorsFromCreator();
+    else renderSignedUi();
     els.fieldYear.value = item && item.year != null ? item.year : "";
     els.fieldStatus.value = item ? item.status : "want";
     els.fieldFormat.value = item ? item.format : els.fieldFormat.value;
@@ -749,6 +860,7 @@
       ownsGame: componentState.ownsGame,
       ownsCase: componentState.ownsCase,
       ownsManual: componentState.ownsManual,
+      ...collectAuthors(),
       seed: false,
     };
   }
@@ -863,6 +975,7 @@
       FORMAT_LABELS[item.format] || "",
       item.disc ? DISC_LABELS[item.disc] || item.disc : "",
       item.platform ? PLATFORM_LABELS[item.platform] || item.platform : "",
+      item.signed ? "signed" : "",
       item.progress || "",
     ]
       .join(" ")
@@ -1442,6 +1555,8 @@
     if (data.barcode && !els.fieldBarcode.value.trim()) {
       els.fieldBarcode.value = data.barcode;
     }
+    // Lookup can change the creator string: re-derive authors (flags kept by name).
+    if (els.fieldType.value === "book") syncAuthorsFromCreator();
   }
 
   function wouldOverwrite(data) {
@@ -2961,6 +3076,8 @@
     els.btnDelete.addEventListener("click", deleteCurrent);
     els.fieldType.addEventListener("change", () => {
       updateFormatOptions();
+      if (els.fieldType.value === "book") syncAuthorsFromCreator();
+      else renderSignedUi();
       updateReferenceLinks();
       updateApiKeyHint();
     });
@@ -2971,6 +3088,27 @@
         componentState[COMPONENT_KEYS[i]] = el.checked;
       });
     });
+    els.fieldCreator.addEventListener("blur", () => {
+      if (els.fieldType.value === "book") syncAuthorsFromCreator();
+    });
+    if (els.fieldSignedSingle) {
+      els.fieldSignedSingle.addEventListener("change", () => {
+        if (formAuthors.length === 1) formAuthors[0].signed = els.fieldSignedSingle.checked;
+        else formSignedNoAuthor = els.fieldSignedSingle.checked;
+      });
+    }
+    if (els.fieldSignedParent) {
+      els.fieldSignedParent.addEventListener("change", onSignedParentChange);
+    }
+    if (els.signedAuthors) {
+      els.signedAuthors.addEventListener("change", (e) => {
+        const box = e.target.closest("input[data-author-index]");
+        if (!box) return;
+        const a = formAuthors[Number(box.dataset.authorIndex)];
+        if (a) a.signed = box.checked;
+        renderSignedUi(); // checking any author turns the parent on
+      });
+    }
     if (els.btnCib) {
       els.btnCib.addEventListener("click", () => {
         setComponentState({ ownsGame: true, ownsCase: true, ownsManual: true });

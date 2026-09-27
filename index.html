@@ -158,6 +158,16 @@
           <input type="text" id="field-creator" maxlength="200" placeholder="e.g. Andy Weir" />
         </div>
 
+        <div class="form-row check-group signed-group" id="signed-row" hidden>
+          <div id="signed-single">
+            <label class="check"><input type="checkbox" id="field-signed-single" /> <span>Signed by author</span></label>
+          </div>
+          <div id="signed-multi" hidden>
+            <label class="check"><input type="checkbox" id="field-signed-parent" /> <span id="label-signed-parent">Signed copy</span></label>
+            <div class="signed-authors" id="signed-authors" role="group" aria-labelledby="label-signed-parent"></div>
+          </div>
+        </div>
+
         <div class="form-grid">
           <div class="form-row">
             <label for="field-year">Year</label>
