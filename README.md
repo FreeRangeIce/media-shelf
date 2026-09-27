@@ -55,7 +55,7 @@ ISFDB serves HTML without CORS for browser apps, so Lookup does not scrape it.
 **IMDb** reference link: `https://www.imdb.com/find/?q={title}` (and year when set). Movie UPC barcodes alone usually will not match — use a title or paste a cover URL.
 
 ### Games
-1. **RAWG** (optional key) — `https://api.rawg.io/api/games?key=…&search=…` plus detail for `background_image` / developers. Free for personal projects with credit to RAWG (up to 20,000 requests/month); key via [rawg.io/apidocs](https://rawg.io/apidocs) → Get API Key. `coverSource: rawg`. **Caveat:** RAWG’s 401 for a bad key carries no CORS header, so the browser can’t tell a rejected key from a blocked request; Test says exactly that. Whether valid-key responses allow browser (CORS) access is **unverified** (needs a real key).
+1. **RAWG** (optional key) — `https://api.rawg.io/api/games?key=…&search=…` plus detail for `background_image` / developers. Free for personal projects with credit to RAWG (up to 20,000 requests/month); key via [rawg.io/apidocs](https://rawg.io/apidocs) → Get API Key. `coverSource: rawg`. **Caveat:** RAWG’s 401 for a bad key carries no CORS header, so the browser can’t tell a rejected key from a blocked request; Test says exactly that. Browser (CORS) access with a valid key: Verified Sep 27, 2026 (search returns results from the live site).
 2. iTunes — `entity=software` by title (App Store apps only, so console games usually won’t match; same 403 caveat as movies)
 3. Wikipedia — tries `{title} ({year} video game)`, `{title} (video game)`, then the bare title only if its description is a game; disambiguation pages are skipped
 4. Open Library — only when the barcode looks like an ISBN
