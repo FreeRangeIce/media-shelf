@@ -1255,6 +1255,14 @@ body.modal-open {
   margin-bottom: var(--space-3);
 }
 
+/* Back up/Restore and Export/Import stay together as pairs above 559px (one row when it
+   fits, otherwise the pairs wrap as units so no button is orphaned). */
+.backup-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: inherit;
+}
+
 /* R1 (re-review): keep Settings action rows on one line at phone widths */
 @media (max-width: 559px) {
   .api-key-actions {
@@ -1266,11 +1274,24 @@ body.modal-open {
   }
 }
 
-/* Narrowest phones: "Back up (save a file)" + "Restore from file" can't share a row,
-   so stack them as two equal full-width buttons instead of leaving an orphan. */
-@media (max-width: 374px) {
+/* Oholiab spec (Sep 27): at 559px and below the four backup buttons form a 2x2 grid of
+   equal-width buttons: row 1 Back up, Restore; row 2 Export, Import. The pair wrappers
+   dissolve into the grid so DOM/focus order stays Back up > Restore > Export > Import. */
+@media (max-width: 559px) {
+  .backup-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch; /* both buttons in a row share one height */
+  }
+
+  .backup-action-group {
+    display: contents;
+  }
+
   .backup-actions .btn {
-    flex: 1 1 100%;
+    min-width: 0;
+    min-height: 40px;
+    text-wrap: balance; /* "Back up / (save a file)" if the label can't fit one line */
   }
 }
 

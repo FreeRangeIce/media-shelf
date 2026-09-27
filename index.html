@@ -35,9 +35,6 @@
       <div class="header-actions">
         <button type="button" class="btn btn-ghost" id="btn-settings" title="Backup, restore, and lookup settings">Settings</button>
         <button type="button" class="btn btn-ghost" id="btn-backup" title="Back up: save a backup file (on iPhone choose Save to Files → iCloud Drive)">Back up</button>
-        <button type="button" class="btn btn-ghost" id="btn-export" title="Export library as JSON">Export</button>
-        <button type="button" class="btn btn-ghost" id="btn-import" title="Import library from JSON">Import</button>
-        <input type="file" id="import-file" accept="application/json,.json" hidden />
         <button type="button" class="btn btn-primary" id="btn-add">+ Add</button>
       </div>
     </div>
@@ -294,8 +291,15 @@
         </p>
         <p class="backup-last" id="backup-last" role="status" aria-live="polite">Last backup file created: Never</p>
         <div class="api-key-actions backup-actions">
-          <button type="button" class="btn btn-primary btn-sm" id="btn-backup-settings">Back up (save a file)</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="btn-restore">Restore from file</button>
+          <div class="backup-action-group">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-backup-settings">Back up (save a file)</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-restore">Restore from file</button>
+          </div>
+          <div class="backup-action-group">
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-export" title="Export library as JSON">Export</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-import" title="Import library from JSON">Import</button>
+          </div>
+          <input type="file" id="import-file" accept="application/json,.json" hidden />
         </div>
         <details class="backup-help">
           <summary>How it works on iPhone</summary>

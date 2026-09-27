@@ -2,7 +2,7 @@
 
 Personal tracker for **books**, **video games**, and **movies** — statuses, ratings, notes, tags, format (physical / digital / audiobook; Blu-ray / DVD / VHS for physical movies), plus optional **ISBN/barcode** and **cover images**.
 
-Your library is saved in this browser (`localStorage` key `media-tracker-v1`). Use **Back up** (saves a backup file — on iPhone through the share sheet, e.g. Save to Files → iCloud Drive) or Export / Import JSON to keep a copy or move devices (includes barcode + cover fields). See [Backup & restore](#backup--restore).
+Your library is saved in this browser (`localStorage` key `media-tracker-v1`). Use **Back up** (saves a backup file — on iPhone through the share sheet, e.g. Save to Files → iCloud Drive) or **Settings → Export / Import** (JSON) to keep a copy or move devices (includes barcode + cover fields). See [Backup & restore](#backup--restore).
 
 ## Open locally
 
@@ -22,7 +22,7 @@ A web app can’t write to iCloud Drive directly, so Media Shelf hands a backup 
 
 **Back up (iPhone):** tap **Back up** in the header (or **Settings → Back up (save a file)**) → choose **Save to Files** → pick **iCloud Drive** and a folder → **Save**. The file is named `media-shelf-backup-YYYY-MM-DD.json`. Then open Files to check the file is there.
 
-**Restore (iPhone):** **Settings → Restore from file** (or header **Import**) → in Files, **Browse → iCloud Drive** → pick the backup → choose:
+**Restore (iPhone):** **Settings → Restore from file** (or **Settings → Import**) → in Files, **Browse → iCloud Drive** → pick the backup → choose:
 - **Merge** — keeps your current library, adds items whose `id` isn’t present, and for items in both keeps whichever has the newer `dateUpdated`.
 - **Replace** — overwrites the library with the backup.
 
