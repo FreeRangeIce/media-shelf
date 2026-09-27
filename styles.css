@@ -754,6 +754,17 @@ body {
   color: var(--accent-hover);
 }
 
+/* Phones: the credit wraps onto two lines (break after the "·"). At the base 18px line
+   pitch, the 8px tap padding of "CC BY-NC 4.0" on line 2 covered the lower half of the
+   RAWG link on line 1 (40% of taps on RAWG went to the licence link). A 26px pitch
+   (17px glyph box + 8px padding + 1px) keeps every link's text clear of its neighbour's
+   tap area. */
+@media (max-width: 559px) {
+  .footer-credits {
+    line-height: 2.2;
+  }
+}
+
 /* Modal */
 .modal {
   position: fixed;
