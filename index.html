@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="FreeRangeMedia — track books, games, and movies in one place." />
+  <meta name="description" content="FreeRangeMedia — track books, games, movies, and music in one place." />
   <meta name="theme-color" content="#14110e" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="FreeRange" />
-  <title>FreeRangeMedia — Books · Games · Movies</title>
+  <title>FreeRangeMedia — Books · Games · Movies · Music</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
@@ -21,15 +21,16 @@
     <div class="header-inner">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">
-          <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
+          <svg width="34" height="28" viewBox="0 0 39 32" fill="none">
             <rect x="4" y="6" width="8" height="20" rx="1.5" fill="#e8a87c"/>
             <rect x="13" y="6" width="6" height="20" rx="1.5" fill="#c38d9e"/>
             <rect x="20" y="6" width="8" height="20" rx="1.5" fill="#85cfc0"/>
+            <rect x="29" y="6" width="6" height="20" rx="1.5" fill="#a8a0d8"/>
           </svg>
         </span>
         <div>
           <h1>FreeRangeMedia</h1>
-          <p class="tagline">Books · Games · Movies — your personal shelf</p>
+          <p class="tagline">Books · Games · Movies · Music — your personal shelf</p>
         </div>
       </div>
       <div class="header-actions">
@@ -48,6 +49,7 @@
       <button type="button" class="chip" data-type="book" role="tab" aria-selected="false">Books</button>
       <button type="button" class="chip" data-type="game" role="tab" aria-selected="false">Games</button>
       <button type="button" class="chip" data-type="movie" role="tab" aria-selected="false">Movies</button>
+      <button type="button" class="chip" data-type="music" role="tab" aria-selected="false">Music</button>
     </nav>
 
     <div class="filters-row">
@@ -89,7 +91,7 @@
     <ul id="item-list" class="item-list" aria-live="polite"></ul>
     <div id="empty-state" class="empty-state" hidden>
       <p class="empty-title">Nothing on this shelf yet</p>
-      <p class="empty-hint">Add a book, game, or movie to get started.</p>
+      <p class="empty-hint">Add a book, game, movie, or album to get started.</p>
       <button type="button" class="btn btn-primary" id="btn-empty-add">+ Add your first item</button>
     </div>
   </main>
@@ -116,6 +118,7 @@
             <option value="book">Book</option>
             <option value="game">Game</option>
             <option value="movie">Movie</option>
+            <option value="music">Music</option>
           </select>
         </div>
 
@@ -181,7 +184,7 @@
             </select>
           </div>
           <div class="form-row" id="disc-row" hidden>
-            <label for="field-disc">Disc <span class="req">*</span></label>
+            <label for="field-disc" id="label-disc">Disc <span class="req">*</span></label>
             <select id="field-disc">
               <option value="blu-ray">Blu-ray</option>
               <option value="dvd">DVD</option>

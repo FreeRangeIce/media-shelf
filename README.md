@@ -1,6 +1,6 @@
 # FreeRangeMedia
 
-FreeRangeMedia (formerly Media Shelf) is a personal tracker for **books**, **video games**, and **movies** — statuses, ratings, notes, tags, format (physical / digital / audiobook; Blu-ray / DVD / VHS for physical movies), plus optional **ISBN/barcode** and **cover images**.
+FreeRangeMedia (formerly Media Shelf) is a personal tracker for **books**, **video games**, **movies**, and **music** — statuses, ratings, notes, tags, format (physical / digital / audiobook; Blu-ray / DVD / VHS for physical movies, cart / disc / code for physical games, CD / vinyl / cassette for physical music), plus optional **ISBN/barcode** and **cover images**.
 
 Your library is saved in this browser (`localStorage` key `media-tracker-v1`). Use **Back up** (saves a backup file — on iPhone through the share sheet, e.g. Save to Files → iCloud Drive) or **Settings → Export / Import** (JSON) to keep a copy or move devices (includes barcode + cover fields). See [Backup & restore](#backup--restore).
 

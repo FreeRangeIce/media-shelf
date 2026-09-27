@@ -27,7 +27,7 @@
   const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
   const HTML5_QRCODE_CDN =
     "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js";
-  const TYPE_LABELS = { book: "Book", game: "Game", movie: "Movie" };
+  const TYPE_LABELS = { book: "Book", game: "Game", movie: "Movie", music: "Music" };
   const STATUS_LABELS = {
     want: "Want",
     in_progress: "In progress",
@@ -43,16 +43,46 @@
     "blu-ray": "Blu-ray",
     dvd: "DVD",
     vhs: "VHS",
+    cart: "Cart",
+    disc: "Disc",
+    code: "Code",
+    cd: "CD",
+    vinyl: "Vinyl",
+    cassette: "Cassette",
+  };
+  /** Label of the reused `disc` select per type. PLACEHOLDER copy (Berean) except "Disc". */
+  const DISC_FIELD_LABELS = {
+    movie: "Disc",
+    game: "Cart / disc / code",
+    music: "CD / vinyl / cassette",
+  };
+  const PLATFORM_LABELS = {
+    steam: "Steam",
+    psn: "PlayStation",
+    xbox: "Xbox",
+    nintendo: "Nintendo",
+    gog: "GOG",
+    epic: "Epic",
+    battlenet: "Battle.net",
+    ea: "EA",
+    ubisoft: "Ubisoft",
+    amazon: "Amazon",
+    itch: "itch.io",
+    humble: "Humble",
+    rockstar: "Rockstar",
+    other: "Other",
   };
   const CREATOR_HINTS = {
     book: "Author",
     game: "Developer / publisher",
     movie: "Director / studio",
+    music: "Artist",
   };
   const CREATOR_PLACEHOLDERS = {
     book: "e.g. Andy Weir",
     game: "e.g. Supergiant Games",
     movie: "e.g. Denis Villeneuve",
+    music: "e.g. Fleetwood Mac", // PLACEHOLDER example (Berean)
   };
 
   /**
@@ -65,6 +95,7 @@
     book: ["book", "books"],
     game: ["game", "games"],
     movie: ["movie", "movies"],
+    music: ["album", "albums"], // PLACEHOLDER count noun for the stats strip (Berean)
     item: ["item", "items"],
     want: ["want", "want"],
     in_progress: ["in progress", "in progress"],
@@ -137,6 +168,7 @@
     fieldStatus: $("#field-status"),
     fieldFormat: $("#field-format"),
     fieldDisc: $("#field-disc"),
+    labelDisc: $("#label-disc"),
     discRow: $("#disc-row"),
     fieldRating: $("#field-rating"),
     fieldProgress: $("#field-progress"),
@@ -398,12 +430,19 @@
     return "★".repeat(full) + "☆".repeat(5 - full);
   }
 
+  /**
+   * The quiet secondary pill (Oholiab B2): only type and status get coloured chips; format,
+   * platform, disc, CIB and Signed are plain text joined with " · ".
+   */
+  function formatBadgeParts(item) {
+    const parts = [FORMAT_LABELS[item.format] || item.format];
+    if (item.platform) parts.push(PLATFORM_LABELS[item.platform] || item.platform);
+    if (item.format === "physical" && item.disc) parts.push(DISC_LABELS[item.disc] || item.disc);
+    return parts;
+  }
+
   function formatBadgeText(item) {
-    const f = FORMAT_LABELS[item.format] || item.format;
-    if (item.type === "movie" && item.format === "physical" && item.disc) {
-      return `${f} · ${DISC_LABELS[item.disc] || item.disc}`;
-    }
-    return f;
+    return formatBadgeParts(item).join(" · ");
   }
 
   function normalizeBarcode(raw) {
@@ -471,14 +510,35 @@
     els.fieldFormat.value = allowed.includes(current) ? current : allowed[0];
     els.labelCreator.textContent = CREATOR_HINTS[type] || "Creator";
     els.fieldCreator.placeholder = CREATOR_PLACEHOLDERS[type] || "";
+    updateDiscOptions();
     updateDiscVisibility();
+  }
+
+  /**
+   * Rebuild the format-detail select for the current type. A value that isn't valid for
+   * the new type is cleared (movies fall back to Blu-ray, since a movie disc is required).
+   */
+  function updateDiscOptions() {
+    const type = els.fieldType.value;
+    const opts = DISC_OPTIONS[type] || [];
+    const current = els.fieldDisc.value;
+    const required = type === "movie";
+    els.fieldDisc.innerHTML =
+      (required ? "" : `<option value="">—</option>`) +
+      opts.map((v) => `<option value="${v}">${DISC_LABELS[v]}</option>`).join("");
+    els.fieldDisc.value = opts.includes(current) ? current : required ? opts[0] : "";
+    if (els.labelDisc) {
+      els.labelDisc.innerHTML =
+        escapeHtml(DISC_FIELD_LABELS[type] || "Disc") +
+        (required ? ` <span class="req">*</span>` : "");
+    }
   }
 
   function updateDiscVisibility() {
     const show =
-      els.fieldType.value === "movie" && els.fieldFormat.value === "physical";
+      Boolean(DISC_OPTIONS[els.fieldType.value]) && els.fieldFormat.value === "physical";
     els.discRow.hidden = !show;
-    els.fieldDisc.required = show;
+    els.fieldDisc.required = show && els.fieldType.value === "movie";
   }
 
   function openModal(item) {
@@ -497,7 +557,8 @@
     els.fieldStatus.value = item ? item.status : "want";
     els.fieldFormat.value = item ? item.format : els.fieldFormat.value;
     updateDiscVisibility();
-    els.fieldDisc.value = item && item.disc ? item.disc : "blu-ray";
+    els.fieldDisc.value =
+      item && item.disc ? item.disc : els.fieldType.value === "movie" ? "blu-ray" : "";
     els.fieldRating.value =
       item && item.rating != null ? String(item.rating) : "";
     els.fieldProgress.value = item ? item.progress || "" : "";
@@ -597,9 +658,9 @@
       if (!["physical", "digital"].includes(format)) format = "digital";
     }
     let disc = null;
-    if (type === "movie" && format === "physical") {
+    if (format === "physical" && DISC_OPTIONS[type]) {
       disc = els.fieldDisc.value;
-      if (!["blu-ray", "dvd", "vhs"].includes(disc)) disc = "blu-ray";
+      if (!DISC_OPTIONS[type].includes(disc)) disc = type === "movie" ? "blu-ray" : null;
     }
     const ratingRaw = els.fieldRating.value;
     const yearRaw = els.fieldYear.value.trim();
@@ -735,6 +796,7 @@
       ...(item.tags || []),
       FORMAT_LABELS[item.format] || "",
       item.disc ? DISC_LABELS[item.disc] || item.disc : "",
+      item.platform ? PLATFORM_LABELS[item.platform] || item.platform : "",
       item.progress || "",
     ]
       .join(" ")
@@ -769,7 +831,7 @@
   }
 
   function renderStats() {
-    const byType = { book: 0, game: 0, movie: 0 };
+    const byType = { book: 0, game: 0, movie: 0, music: 0 };
     const byStatus = { want: 0, in_progress: 0, done: 0, dropped: 0 };
     for (const i of items) {
       byType[i.type] = (byType[i.type] || 0) + 1;
@@ -781,6 +843,7 @@
       pill("book", byType.book, "book"),
       pill("game", byType.game, "game"),
       pill("movie", byType.movie, "movie"),
+      pill("music", byType.music, "music"),
       pill("", byStatus.want, "want"),
       pill("", byStatus.in_progress, "in_progress"),
       pill("", byStatus.done, "done"),
@@ -819,7 +882,7 @@
         : "Nothing on this shelf yet";
       $(".empty-hint", els.empty).textContent = totalFilteredOut
         ? "Try a different filter or search."
-        : "Add a book, game, or movie to get started.";
+        : "Add a book, game, movie, or album to get started."; // PLACEHOLDER (Berean)
       $("#btn-empty-add").hidden = totalFilteredOut;
       return;
     }
@@ -2556,6 +2619,14 @@
           return;
         }
         result = await runLookupWaterfall(steps, tried);
+      } else if (type === "music") {
+        // Music Lookup sources wait on Micah's pick (handoff §6 / step 12).
+        // PLACEHOLDER copy (Berean).
+        setLookupStatus(
+          "Lookup doesn’t cover music yet. Enter the details yourself, or paste a cover URL.",
+          "error"
+        );
+        return;
       } else {
         setLookupStatus("Unsupported type for lookup.", "error");
         return;

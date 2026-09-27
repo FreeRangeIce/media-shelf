@@ -1,7 +1,7 @@
 {
   "name": "FreeRangeMedia",
   "short_name": "FreeRange",
-  "description": "Track books, games, and movies. Your library is saved in this browser.",
+  "description": "Track books, games, movies, and music. Your library is saved in this browser.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
