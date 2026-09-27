@@ -324,7 +324,7 @@
    * Typing one in any case stores this spelling, so "steam" and "Steam" match.
    */
   const PLATFORM_SUGGESTIONS = [
-    "Steam", "GOG", "Epic", "itch.io", "Xbox", "PlayStation", "Switch", "Battle.net",
+    "Steam", "GOG", "Epic", "itch.io", "Xbox", "PlayStation", "Switch", "Switch 2", "Battle.net",
     "EA app", "Ubisoft", "Amazon", "Humble", "PC", "Mac", "iOS", "Android",
   ];
 
