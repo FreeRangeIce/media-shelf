@@ -431,21 +431,21 @@
   }
 
   async function seedIfEmpty() {
+    // Opening the app never writes storage (v1.2): old items get the new-field defaults in
+    // memory only, and the stored string stays byte-identical until the user saves,
+    // deletes, restores or clears. So a still-open older tab reads exactly what it wrote.
     const store = loadStore();
     if (store && Array.isArray(store.items) && store.items.length > 0) {
       items = store.items.map(normalizeItem);
-      saveStore();
-      if (!readLs(SEEDED_STORAGE)) writeLs(SEEDED_STORAGE, nowIso());
       return;
     }
     // Samples are offered once. A saved (even empty) library means this browser has
     // already been set up — e.g. samples cleared or every item deleted — so don't re-seed.
     if (readLs(SEEDED_STORAGE) || store) {
       items = store ? store.items.map(normalizeItem) : [];
-      if (!readLs(SEEDED_STORAGE)) writeLs(SEEDED_STORAGE, nowIso());
-      saveStore();
       return;
     }
+    // First visit only (nothing stored yet): save the samples, as before.
     try {
       const res = await fetch("./data/seed.json");
       if (!res.ok) throw new Error("seed fetch failed");
