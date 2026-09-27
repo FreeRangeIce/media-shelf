@@ -612,18 +612,31 @@
   let formSignedNoAuthor = false;
 
   /** Split creator on "," ";" " & " " and " (case-insensitive); trim; drop empties. */
+  /** Name suffixes that follow a comma but belong to the name before it ("King, Jr."). */
+  const NAME_SUFFIX_RE = /^(jr|sr|ii|iii|iv|ph\.?d|md)\.?$/i;
+
   function parseCreatorNames(creator) {
+    // Keep the separators so a suffix after a comma can rejoin the previous name.
+    const parts = String(creator || "").split(/(\s*[,;]\s*|\s+&\s+|\s+and\s+)/i);
+    const names = [];
+    for (let i = 0; i < parts.length; i += 2) {
+      const name = parts[i].trim();
+      const sep = i > 0 ? parts[i - 1].trim() : "";
+      if (sep === "," && names.length && NAME_SUFFIX_RE.test(name)) {
+        names[names.length - 1] += `, ${name}`;
+      } else {
+        names.push(name);
+      }
+    }
     const seen = new Set();
-    return String(creator || "")
-      .split(/\s*[,;]\s*|\s+&\s+|\s+and\s+/i)
-      .map((n) => n.trim())
-      .filter((n) => {
-        const k = n.toLowerCase();
-        if (!n || seen.has(k)) return false;
-        seen.add(k);
-        return true;
-      });
+    return names.filter((n) => {
+      const k = n.toLowerCase();
+      if (!n || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
   }
+
 
   /** Re-derive authors from the creator field, keeping signed flags by case-insensitive name. */
   function syncAuthorsFromCreator() {
