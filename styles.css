@@ -1861,6 +1861,21 @@ body.modal-open {
   }
 }
 
+/* Remove last import: 16px under Preview, muted line, Delete-style button */
+.import-last {
+  margin-top: var(--space-4);
+}
+
+.import-last[hidden] {
+  display: none;
+}
+
+.import-last-line {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
 /* Toast with one action (Undo) */
 .toast.has-action {
   display: flex;

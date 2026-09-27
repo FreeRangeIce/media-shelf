@@ -3832,6 +3832,10 @@
       if (syncFromStorage()) render();
       return;
     }
+    if (e.key === LAST_IMPORT_STORAGE) {
+      updateLastImportUi();
+      return;
+    }
     if (e.key === LAST_BACKUP_STORAGE || e.key === BACKUP_REMINDER_DISMISSED_STORAGE) {
       updateBackupUi();
     }
@@ -3901,6 +3905,12 @@
   const IMPORT_MAX_LINES = 5000;
   const IMPORT_SHOW_NEW = 100; // new rows listed one by one; the rest are summarised
   const IMPORT_UNDO_MS = 10000;
+  /**
+   * Last import record (Nathan N1): its own key, never in backups and never inside
+   * media-tracker-v1. { v: 1, at, added: [{ id, fp }], updated: [{ id, fp, before }] }.
+   * fp fingerprints the game as the import left it, so "changed since" can be told apart.
+   */
+  const LAST_IMPORT_STORAGE = "freerangemedia-last-import";
   let importRows = []; // parsed rows: { line, title, platform, year, error }
   let importEval = []; // per row: { kind: "new" | "dup" | "error", dup, reason }
   let importChoices = new Map(); // line -> "add" | "skip" | "update" (user overrides)
@@ -4226,6 +4236,13 @@
       raw: lastSyncedRaw,
       until: Date.now() + IMPORT_UNDO_MS,
     };
+    const byId = new Map(items.map((it) => [it.id, it]));
+    writeLastImport({
+      v: 1,
+      at: now,
+      added: toAdd.map((it) => ({ id: it.id, fp: itemFingerprint(byId.get(it.id) || it) })),
+      updated: [...previous.entries()].map(([id, before]) => ({ id, fp: itemFingerprint(byId.get(id)), before })),
+    });
     render();
     $("#import-games-text").value = "";
     importRows = [];
@@ -4260,8 +4277,133 @@
     commitItems((list) =>
       list.filter((it) => !u.addedIds.has(it.id)).map((it) => u.previous.get(it.id) || it)
     );
+    writeLastImport(null); // the import is gone, so there's nothing left to remove
     render();
     showToast("Import undone");
+  }
+
+  /* ---------- Remove last import (Nathan N1) ---------- */
+  function itemFingerprint(item) {
+    if (!item) return "";
+    const str = JSON.stringify(normalizeItem(item));
+    let h = 0x811c9dc5; // FNV-1a
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return `${str.length}:${(h >>> 0).toString(16)}`;
+  }
+
+  function readLastImport() {
+    try {
+      const rec = JSON.parse(localStorage.getItem(LAST_IMPORT_STORAGE) || "null");
+      if (!rec || rec.v !== 1 || !Array.isArray(rec.added) || !Array.isArray(rec.updated)) return null;
+      if (!rec.added.length && !rec.updated.length) return null;
+      return rec;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeLastImport(rec) {
+    try {
+      if (rec) localStorage.setItem(LAST_IMPORT_STORAGE, JSON.stringify(rec));
+      else localStorage.removeItem(LAST_IMPORT_STORAGE);
+    } catch {
+      /* storage full or blocked: the button just won't show */
+    }
+    updateLastImportUi();
+  }
+
+  /** "today at 10:02", "yesterday at 9:15", "on Sep 25 at 10:02" (PLACEHOLDER). */
+  function relativeDayTime(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const days = Math.round((startOf(new Date()) - startOf(d)) / 86400000);
+    if (days === 0) return `today at ${time}`;
+    if (days === 1) return `yesterday at ${time}`;
+    const opts = { month: "short", day: "numeric" };
+    if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+    return `on ${d.toLocaleDateString([], opts)} at ${time}`;
+  }
+
+  function updateLastImportUi() {
+    const box = $("#import-last");
+    if (!box) return;
+    const rec = readLastImport();
+    box.hidden = !rec;
+    if (!rec) return;
+    const n = rec.added.length + rec.updated.length;
+    $("#import-last-line").textContent = `Last import: ${plural(n, "game", "games")}, ${relativeDayTime(rec.at)}.`;
+    $("#btn-import-remove-last").textContent = `Remove last import (${plural(n, "game", "games")})`;
+  }
+
+  /** What removing the last import would do right now, against fresh storage. */
+  function planRemoveLastImport(rec) {
+    const byId = new Map(items.map((it) => [it.id, it]));
+    const plan = { remove: [], revert: [], kept: 0 };
+    for (const a of rec.added) {
+      const cur = byId.get(a.id);
+      if (!cur) continue; // already deleted
+      if (itemFingerprint(cur) === a.fp) plan.remove.push(a.id);
+      else plan.kept++;
+    }
+    for (const u of rec.updated) {
+      const cur = byId.get(u.id);
+      if (!cur) continue;
+      if (itemFingerprint(cur) === u.fp && u.before) plan.revert.push(u);
+      else plan.kept++;
+    }
+    return plan;
+  }
+
+  function removeLastImport() {
+    if (syncFromStorage()) render();
+    const rec = readLastImport();
+    if (!rec) {
+      updateLastImportUi();
+      return;
+    }
+    const plan = planRemoveLastImport(rec);
+    const n = plan.remove.length;
+    const m = plan.revert.length;
+    // PLACEHOLDER copy (Berean)
+    if (!n && !m) {
+      writeLastImport(null);
+      showToast("Nothing to remove. Every game from your last import was changed or deleted since.");
+      return;
+    }
+    const title = n ? `Remove ${plural(n, "game", "games")} from your last import?` : "Undo the updates from your last import?";
+    const parts = [];
+    if (m) parts.push(`${plural(m, "game", "games")} it updated ${m === 1 ? "goes" : "go"} back to how ${m === 1 ? "it was" : "they were"}.`);
+    if (plan.kept) parts.push(`${plural(plan.kept, "game", "games")} you’ve changed since will be kept.`);
+    if (!parts.length) parts.push("This can’t be undone.");
+    openConfirm(title, parts.join(" "), () => {
+      closeConfirm();
+      // Two-tab rule: re-read and re-check right before writing; never touch a game another
+      // tab changed after the import.
+      let done = { removed: 0, reverted: 0, kept: 0 };
+      commitItems((list) => {
+        const fresh = readLastImport();
+        if (!fresh) return list;
+        items = list;
+        const p = planRemoveLastImport(fresh);
+        done = { removed: p.remove.length, reverted: p.revert.length, kept: p.kept };
+        const drop = new Set(p.remove);
+        const back = new Map(p.revert.map((u) => [u.id, normalizeItem(u.before)]));
+        return list.filter((it) => !drop.has(it.id)).map((it) => back.get(it.id) || it);
+      });
+      writeLastImport(null);
+      render();
+      const msg = [];
+      if (done.removed) msg.push(`Removed ${plural(done.removed, "game", "games")}`);
+      if (done.reverted) msg.push(`${done.removed ? "restored" : "Restored"} ${plural(done.reverted, "updated game", "updated games")}`);
+      let text = msg.length ? `${msg.join(" and ")} from your last import.` : "Nothing was removed.";
+      if (done.kept) text += ` Kept ${plural(done.kept, "game", "games")} you changed since.`;
+      showToast(text);
+    }, n ? "Remove" : "Undo updates");
   }
 
   function readImportFile(file) {
@@ -4289,6 +4431,8 @@
     });
     $("#btn-import-preview").addEventListener("click", previewImport);
     $("#btn-import-commit").addEventListener("click", commitImport);
+    $("#btn-import-remove-last").addEventListener("click", removeLastImport);
+    updateLastImportUi();
     $("#btn-import-template").addEventListener("click", () =>
       downloadText("title,platform,year\r\n", "freerangemedia-games-template.csv", "text/csv")
     );
