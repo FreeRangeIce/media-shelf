@@ -3991,15 +3991,23 @@
   /** Classify every row: error, possible duplicate (of the shelf or an earlier line), or new. */
   function evaluateImport() {
     const defs = importDefaults();
-    const seen = new Map();
+    const earlier = []; // { title, platform, year, line } of lines already classed as new
     importEval = importRows.map((row) => {
       if (row.error) return { kind: "error" };
       const cand = importCandidate(row, defs);
       const dup = findDuplicate(cand, null);
       if (dup) return { kind: "dup", dup: dup.item };
-      const key = `${normalizeTitle(row.title)}|${cand.platform.toLowerCase()}|${row.year ?? ""}`;
-      if (seen.has(key)) return { kind: "dup", repeatOf: seen.get(key) };
-      seen.set(key, row.line);
+      // Same rule as the shelf check (Nathan N3): same title and platform, and a line with
+      // no year matches one with a year; two different years are different games.
+      const title = normalizeTitle(row.title);
+      const hit = earlier.find(
+        (e) =>
+          e.title === title &&
+          samePlatform(e.platform, cand.platform) &&
+          (e.year == null || row.year == null || e.year === row.year)
+      );
+      if (hit) return { kind: "dup", repeatOf: hit.line };
+      earlier.push({ title, platform: cand.platform, year: row.year, line: row.line });
       return { kind: "new" };
     });
   }
