@@ -136,6 +136,8 @@
   /** B10: per-lookup record of sources that refused / errored (label -> issue). */
   let lookupIssues = null;
   let lookupSource = "";
+  /** Music Lookup's year is a fallback or blank: the duplicate check ignores year (N2b). */
+  let lookupYearLoose = false;
   let apiHintDismissed = false;
   try {
     apiHintDismissed = sessionStorage.getItem("media-shelf-api-hint-dismissed") === "1";
@@ -862,6 +864,7 @@
     els.fieldCover.value = item ? item.coverUrl || "" : "";
     els.fieldCoverSource.value = item ? item.coverSource || "" : "";
     els.fieldGbUrl.value = item ? item.googleBooksUrl || "" : "";
+    lookupYearLoose = false;
     setLookupStatus("");
     updateCoverPreview();
     updateReferenceLinks();
@@ -1053,7 +1056,7 @@
     }
     if (!editingId) {
       if (syncFromStorage()) render(); // a copy added in another tab counts too
-      const dup = findDuplicate(data, null);
+      const dup = findDuplicate(withLookupYearRule(data), null);
       if (dup && dup.item.id !== dupAcceptedSeparateId) {
         openDuplicatePrompt(data, dup, "save");
         return;
@@ -1747,6 +1750,7 @@
     if (data.barcode && !els.fieldBarcode.value.trim()) {
       els.fieldBarcode.value = data.barcode;
     }
+    if (els.fieldType.value === "music") lookupYearLoose = Boolean(data._yearUncertain);
     if (data.googleBooksUrl && els.fieldType.value === "book") {
       els.fieldGbUrl.value = data.googleBooksUrl;
     }
@@ -2851,15 +2855,35 @@
     }
     if (!release) return null;
     const rg = release["release-group"] || {};
+    let year = mbYear(release.date);
+    let yearUncertain = false;
+    if (byBarcode) {
+      // A barcode names one pressing, and the search doesn't return the album's first
+      // release date (many pressings have no date at all). Ask the release group for it.
+      let firstYear = null;
+      if (rg.id) {
+        try {
+          const res = await musicBrainzFetch(
+            `https://musicbrainz.org/ws/2/release-group/${encodeURIComponent(rg.id)}?fmt=json`
+          );
+          if (res.ok) firstYear = mbYear((await res.json())["first-release-date"]);
+        } catch {
+          firstYear = null;
+        }
+      }
+      if (firstYear != null) year = firstYear;
+      else yearUncertain = true; // fell back to this pressing's date, or blank
+    }
     const coverUrl = await fetchCoverArtArchive(release.id, rg.id);
     return {
       title: release.title || "",
       creator: mbArtistCredit(release),
-      year: mbYear(release.date),
+      year,
       coverUrl,
       coverSource: coverUrl ? "coverartarchive" : "",
       _musicNoCover: !coverUrl,
       _byBarcode: byBarcode,
+      _yearUncertain: yearUncertain,
       _score: Number(release.score) || 0,
     };
   }
@@ -3366,6 +3390,7 @@
     els.form.addEventListener("submit", saveItem);
     els.btnDelete.addEventListener("click", deleteCurrent);
     els.fieldType.addEventListener("change", () => {
+      lookupYearLoose = false;
       updateFormatOptions();
       updateCoverFrame();
       updateGoogleBooksAttr();
@@ -3415,7 +3440,10 @@
     };
     els.fieldBarcode.addEventListener("input", clearStaleLookupError);
     els.fieldTitle.addEventListener("input", clearStaleLookupError);
-    els.fieldYear.addEventListener("input", updateReferenceLinks);
+    els.fieldYear.addEventListener("input", () => {
+      lookupYearLoose = false; // a year the user typed is compared normally
+      updateReferenceLinks();
+    });
     els.fieldCover.addEventListener("input", () => {
       els.fieldCoverSource.value = els.fieldCover.value.trim() ? "manual" : "";
       updateCoverPreview();
@@ -3576,9 +3604,15 @@
     }
     const title = normalizeTitle(candidate.title);
     if (!title) return null;
-    const sameType = pool.filter((i) => i.type === candidate.type);
+    // Music Lookup whose year is a pressing's date or blank (N2b): match on title plus
+    // artist and ignore the year.
+    const ignoreYear = candidate._ignoreYear === true;
+    const artist = ignoreYear ? normalizeTitle(candidate.creator || "") : "";
+    const sameType = pool.filter(
+      (i) => i.type === candidate.type && (!artist || !i.creator || normalizeTitle(i.creator) === artist)
+    );
     const exact = sameType.filter((i) => normalizeTitle(i.title) === title);
-    const year = candidate.year == null ? null : Number(candidate.year);
+    const year = ignoreYear || candidate.year == null ? null : Number(candidate.year);
     // Same title with a different year (e.g. a remake) is not a duplicate.
     const compatible = exact.filter((i) => year == null || i.year == null || i.year === year);
     if (compatible.length) {
@@ -3779,8 +3813,13 @@
     if (syncFromStorage()) render();
     const data = collectForm();
     if (!data.title && !data.barcode) return;
-    const dup = findDuplicate(data, null);
+    const dup = findDuplicate(withLookupYearRule(data), null);
     if (dup && dup.item.id !== dupAcceptedSeparateId) openDuplicatePrompt(data, dup, "lookup");
+  }
+
+  /** Form data for the duplicate check, flagged when a music Lookup's year isn't reliable. */
+  function withLookupYearRule(data) {
+    return lookupYearLoose && data.type === "music" ? { ...data, _ignoreYear: true } : data;
   }
 
   /**
