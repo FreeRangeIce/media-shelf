@@ -1324,8 +1324,13 @@
     };
   }
 
+  // Filenames are for people only; Restore reads the file's contents, never its name.
   function backupFileName() {
-    return `media-shelf-backup-${localDateStamp()}.json`;
+    return `freerangemedia-backup-${localDateStamp()}.json`;
+  }
+
+  function exportFileName() {
+    return `freerangemedia-export-${localDateStamp()}.json`;
   }
 
   function backupJsonText() {
@@ -1356,7 +1361,7 @@
       showToast("Nothing to export yet");
       return;
     }
-    downloadText(backupJsonText(), backupFileName());
+    downloadText(backupJsonText(), exportFileName());
     markBackedUp();
     showToast("Exported");
   }
