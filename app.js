@@ -4052,18 +4052,17 @@
       let note = "";
       if (ev.kind === "error") {
         note = `<p class="import-reason">${escapeHtml(row.error)}</p>`;
-      } else {
-        const opts =
-          ev.kind === "dup"
-            ? [["skip", "Skip"], ["add", "Add"], ...(ev.dup ? [["update", "Update"]] : [])]
-            : [["add", "Add"], ["skip", "Skip"]];
+      } else if (ev.kind === "dup") {
+        // Only duplicates get a menu; new rows are plain text (Oholiab O2). A line to leave
+        // out can be deleted from the paste.
+        const opts = [["skip", "Skip"], ["add", "Add"], ...(ev.dup ? [["update", "Update"]] : [])];
         const id = `import-choice-${i}`;
         side =
           `<label class="sr-only" for="${id}">Line ${row.line}: ${escapeHtml(titleText)}</label>` +
           `<select class="select import-choice" id="${id}" data-row="${i}">` +
           opts.map(([v, l]) => `<option value="${v}"${v === choice ? " selected" : ""}>${l}</option>`).join("") +
           `</select>`;
-        if (ev.kind === "dup") note = `<p class="import-dup">${escapeHtml(importDupText(ev, choice))}</p>`;
+        note = `<p class="import-dup">${escapeHtml(importDupText(ev, choice))}</p>`;
       }
       html.push(
         `<li class="import-row is-${ev.kind}">` +
