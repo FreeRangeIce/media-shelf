@@ -1201,8 +1201,20 @@ label.check input[type="checkbox"]:focus-visible {
 }
 
 .confirm-option {
-  margin-top: var(--space-4); /* 16px so it doesn't read as part of the Incoming block (Oholiab O3) */
   color: var(--text-muted);
+}
+
+/* Oholiab O3: 16px of clear space between the Incoming block and the checkbox. The row
+   centres the 20px box (36px row: 8px above it), and label.check's margin:0 used to win. */
+label.check.confirm-option {
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 559px) {
+  /* 44px row: 12px above the box, so 4px more makes 16 */
+  label.check.confirm-option {
+    margin-top: var(--space-1);
+  }
 }
 
 #confirm-title {
