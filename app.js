@@ -545,6 +545,12 @@
     els.lookupStatus.classList.toggle("is-ok", kind === "ok");
   }
 
+  /** Music covers preview in a 1:1 frame, other types in 2:3. */
+  function updateCoverFrame() {
+    const wrap = els.coverPreview && els.coverPreview.closest(".cover-preview-wrap");
+    if (wrap) wrap.dataset.type = els.fieldType.value;
+  }
+
   function updateCoverPreview() {
     const url = els.fieldCover.value.trim();
     if (url) {
@@ -775,6 +781,7 @@
     els.fieldId.value = item ? item.id : "";
     els.fieldType.value = item ? item.type : "book";
     updateFormatOptions();
+    updateCoverFrame();
     els.fieldBarcode.value = item ? item.barcode || "" : "";
     els.fieldTitle.value = item ? item.title : "";
     els.fieldCreator.value = item ? item.creator : "";
@@ -1156,10 +1163,15 @@
     const label = escapeHtml(TYPE_LABELS[item.type] || item.type);
     const type = escapeHtml(item.type);
     const url = (item.coverUrl || "").trim();
+    // The column keeps the 2:3 height for every type, so mixed lists line up; music
+    // covers (square album art) sit top-aligned in it as a 1:1 frame.
+    const col = (inner) => `<div class="item-cover-col" data-type="${type}">${inner}</div>`;
     if (!url) {
-      return `<div class="item-cover-placeholder ${type}" aria-hidden="true">${label}</div>`;
+      return col(`<div class="item-cover-placeholder ${type}" aria-hidden="true">${label}</div>`);
     }
-    return `<img class="item-cover" src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none';var p=this.nextElementSibling;if(p)p.hidden=false;" /><div class="item-cover-placeholder ${type}" hidden aria-hidden="true">${label}</div>`;
+    return col(
+      `<img class="item-cover" src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none';var p=this.nextElementSibling;if(p)p.hidden=false;" /><div class="item-cover-placeholder ${type}" hidden aria-hidden="true">${label}</div>`
+    );
   }
 
   function renderList() {
@@ -3348,6 +3360,7 @@
     els.btnDelete.addEventListener("click", deleteCurrent);
     els.fieldType.addEventListener("change", () => {
       updateFormatOptions();
+      updateCoverFrame();
       if (els.fieldType.value === "book") syncAuthorsFromCreator();
       else renderSignedUi();
       updateReferenceLinks();

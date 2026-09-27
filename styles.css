@@ -726,9 +726,20 @@ body {
   overflow: hidden;
 }
 
+/* Cover column on cards: always the 2:3 height, so mixed lists keep one card
+   rhythm. The cover sits at the top of it. */
+.item-cover-col {
+  flex: 0 0 64px;
+  width: 64px;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
 /* Cover thumbnails on cards */
 .item-cover {
-  flex: 0 0 64px;
   width: 64px;
   height: 96px;
   border-radius: 6px;
@@ -739,7 +750,6 @@ body {
 
 /* Missing cover: a neutral well — the type badge already carries the hue */
 .item-cover-placeholder {
-  flex: 0 0 64px;
   width: 64px;
   height: 96px;
   border-radius: 6px;
@@ -760,12 +770,28 @@ body {
   min-width: 0;
 }
 
+/* Album art is square: music gets a 1:1 frame at the same width */
+.item-cover-col[data-type="music"] .item-cover,
+.item-cover-col[data-type="music"] .item-cover-placeholder {
+  height: 64px;
+}
+
 @media (min-width: 560px) {
-  .item-cover,
-  .item-cover-placeholder {
+  .item-cover-col {
     flex-basis: 72px;
     width: 72px;
+    min-height: 108px;
+  }
+
+  .item-cover,
+  .item-cover-placeholder {
+    width: 72px;
     height: 108px;
+  }
+
+  .item-cover-col[data-type="music"] .item-cover,
+  .item-cover-col[data-type="music"] .item-cover-placeholder {
+    height: 72px;
   }
 }
 
@@ -1285,6 +1311,12 @@ body.modal-open {
   justify-content: center;
   font-size: var(--fs-xs);
   color: var(--text-dim);
+}
+
+/* Music: square preview (album art is 1:1); same width as the 2:3 frames */
+.cover-preview-wrap[data-type="music"] .cover-preview,
+.cover-preview-wrap[data-type="music"] .cover-preview-placeholder {
+  height: 72px;
 }
 
 /* Scan modal */
