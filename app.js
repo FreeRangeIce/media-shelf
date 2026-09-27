@@ -818,6 +818,13 @@
       els.confirmAlt.hidden = true;
       confirmAltCallback = null;
     }
+    // Wide (duplicate) prompt: suggested choice last in DOM and on screen, so Tab order
+    // matches what you see.
+    const actions = els.confirmOk.parentNode;
+    const cancelBtn = $("#confirm-cancel");
+    if (opts.wide && opts.focusAlt) actions.append(cancelBtn, els.confirmOk, els.confirmAlt);
+    else if (opts.wide) actions.append(cancelBtn, els.confirmAlt, els.confirmOk);
+    else actions.append(cancelBtn, els.confirmOk, els.confirmAlt);
     els.confirm.hidden = false;
     els.confirm.setAttribute("aria-hidden", "false");
     document.body.classList.add("modal-open");

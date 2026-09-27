@@ -1024,6 +1024,15 @@ label.check input[type="checkbox"] {
   max-width: 480px;
 }
 
+/* Phones: three long labels don't fit one row, so stack them full width. The DOM order is
+   Cancel, secondary, suggested (see openConfirm), so reversing puts the suggestion on top. */
+@media (max-width: 479px) {
+  #confirm-panel.is-wide .confirm-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+}
+
 .confirm-detail {
   margin: var(--space-3) 0 0;
   display: grid;
