@@ -3405,14 +3405,16 @@
     let parts = "";
     const labels = COMPONENT_LABELS[it.type];
     if (it.format === "physical" && labels && COMPONENT_KEYS.some((k) => it[k] != null)) {
-      const mark = (v) => (v === true ? "✓" : v === false ? "✗" : "?");
-      const word = (v) => (v === true ? "yes" : v === false ? "no" : "unknown");
+      // ✓ / ✗ / dim en dash; screen readers hear yes / no / not recorded instead of symbols.
+      const mark = (v) =>
+        v === true
+          ? `<span class="dup-mark" aria-hidden="true">✓</span><span class="sr-only">yes</span>`
+          : v === false
+            ? `<span class="dup-mark" aria-hidden="true">✗</span><span class="sr-only">no</span>`
+            : `<span class="dup-mark is-unknown" aria-hidden="true">–</span><span class="sr-only">not recorded</span>`;
       parts = `<span class="dup-parts">${labels
-        .map((l, i) => {
-          const v = it[COMPONENT_KEYS[i]];
-          return `<span aria-label="${escapeHtml(`${l}: ${word(v)}`)}">${escapeHtml(l)} ${mark(v)}</span>`;
-        })
-        .join("  ")}</span>`;
+        .map((l, i) => `<span class="dup-part">${escapeHtml(l)} ${mark(it[COMPONENT_KEYS[i]])}</span>`)
+        .join(" ")}</span>`;
     }
     const year = it.year != null ? ` (${it.year})` : "";
     return `<span class="dup-title">${escapeHtml(it.title)}${year}</span><span class="dup-meta">${escapeHtml(meta.join(" · "))}</span>${parts}`;

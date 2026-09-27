@@ -1114,6 +1114,18 @@ label.check input[type="checkbox"] {
   font-size: var(--fs-sm);
 }
 
+.dup-part + .dup-part {
+  margin-left: var(--space-3);
+}
+
+.dup-mark {
+  color: var(--text-muted);
+}
+
+.dup-mark.is-unknown {
+  color: var(--text-dim);
+}
+
 .confirm-option {
   margin-top: var(--space-3);
   color: var(--text-muted);
