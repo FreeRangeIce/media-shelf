@@ -3291,9 +3291,19 @@
   }
 
   /** Near-identical titles only (typos, spacing). "Hades" vs "Hades II" is NOT fuzzy-equal. */
+  /** Sequel / volume markers: numbers, roman numerals, single letters ("Tab A"). */
+  function titleMarkers(t) {
+    return t
+      .split(" ")
+      .filter((w) => /^\d+$/.test(w) || w.length === 1 || /^(?=[ivx]+$)x{0,3}(ix|iv|v?i{0,3})$/.test(w))
+      .sort()
+      .join(" ");
+  }
   function fuzzyTitleEqual(a, b) {
     if (!a || !b) return false;
     if (a.replace(/\s/g, "") === b.replace(/\s/g, "")) return true;
+    // "Mario Kart 7" vs "8", "Final Fantasy VII" vs "VIII" are different games, not typos.
+    if (titleMarkers(a) !== titleMarkers(b)) return false;
     const len = Math.min(a.length, b.length);
     const max = len >= 12 ? 2 : len >= 6 ? 1 : 0;
     return max > 0 && editDistance(a, b, max) <= max;
