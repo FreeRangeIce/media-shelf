@@ -1825,9 +1825,10 @@ body.modal-open {
   color: var(--danger);
 }
 
+/* Fixed width (fits "Update") so every row menu shares one left edge (Oholiab O1) */
 .import-choice {
-  flex: 0 0 auto;
-  width: auto;
+  flex: 0 0 112px;
+  width: 112px;
 }
 
 .import-actions {
