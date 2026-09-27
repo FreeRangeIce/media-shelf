@@ -181,6 +181,10 @@
     coverPreview: $("#cover-preview"),
     coverPreviewPlaceholder: $("#cover-preview-placeholder"),
     lookupStatus: $("#lookup-status"),
+    gbAttr: $("#gb-attr"),
+    gbLink: $("#gb-link"),
+    gbCoverNote: $("#gb-cover-note"),
+    fieldGbUrl: $("#field-gb-url"),
     apiKeyHint: $("#api-key-hint"),
     btnScan: $("#btn-scan"),
     btnLookup: $("#btn-lookup"),
@@ -452,7 +456,26 @@
       rawgId: String(raw.rawgId ?? "").trim(),
       authors,
       signed,
+      googleBooksUrl: safeGoogleBooksUrl(raw.googleBooksUrl),
     };
+  }
+
+  /**
+   * The book's Google Books page (volumeInfo.canonicalVolumeLink or infoLink), stored so the
+   * edit form can link to it. Only https links on Google hosts are kept: a restored backup
+   * must never turn this into a javascript: or look-alike link.
+   */
+  function safeGoogleBooksUrl(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return "";
+    try {
+      const u = new URL(s.replace(/^http:\/\//i, "https://"));
+      if (u.protocol !== "https:") return "";
+      if (!/^(books|play|www)\.google\.(com|[a-z]{2,3}(\.[a-z]{2})?)$/i.test(u.hostname)) return "";
+      return u.toString();
+    } catch {
+      return "";
+    }
   }
 
   async function seedIfEmpty() {
@@ -551,7 +574,22 @@
     if (wrap) wrap.dataset.type = els.fieldType.value;
   }
 
+  /** Google Books attribution: mark + link under Lookup, and a note beside a Google Books cover. */
+  function updateGoogleBooksAttr() {
+    const isBook = els.fieldType.value === "book";
+    const link = isBook ? safeGoogleBooksUrl(els.fieldGbUrl.value) : "";
+    els.gbAttr.hidden = !link;
+    if (link) els.gbLink.href = link;
+    else els.gbLink.removeAttribute("href");
+    els.gbCoverNote.hidden = !(
+      isBook &&
+      els.fieldCoverSource.value === "googlebooks" &&
+      els.fieldCover.value.trim()
+    );
+  }
+
   function updateCoverPreview() {
+    updateGoogleBooksAttr();
     const url = els.fieldCover.value.trim();
     if (url) {
       els.coverPreview.src = url;
@@ -804,6 +842,7 @@
     els.fieldNotes.value = item ? item.notes || "" : "";
     els.fieldCover.value = item ? item.coverUrl || "" : "";
     els.fieldCoverSource.value = item ? item.coverSource || "" : "";
+    els.fieldGbUrl.value = item ? item.googleBooksUrl || "" : "";
     setLookupStatus("");
     updateCoverPreview();
     updateReferenceLinks();
@@ -968,6 +1007,7 @@
       barcode: els.fieldBarcode.value.trim(),
       coverUrl: els.fieldCover.value.trim(),
       coverSource: els.fieldCoverSource.value.trim(),
+      googleBooksUrl: type === "book" ? safeGoogleBooksUrl(els.fieldGbUrl.value) : "",
       platform: type === "game" ? normalizePlatform(els.fieldPlatform.value) : "",
       // Kept even while the trio is hidden (digital / book), so switching format never
       // silently clears what the user ticked.
@@ -1688,6 +1728,10 @@
     if (data.barcode && !els.fieldBarcode.value.trim()) {
       els.fieldBarcode.value = data.barcode;
     }
+    if (data.googleBooksUrl && els.fieldType.value === "book") {
+      els.fieldGbUrl.value = data.googleBooksUrl;
+    }
+    updateGoogleBooksAttr();
     // Lookup can change the creator string: re-derive authors (flags kept by name).
     if (els.fieldType.value === "book") syncAuthorsFromCreator();
   }
@@ -1762,14 +1806,14 @@
     return Boolean(data && (data.coverUrl || data.title || data.creator || data.year != null));
   }
 
+  /**
+   * Google Books cover: the API's own image link, only upgraded to https. Forcing zoom=0 (as
+   * before) often returned Google's "image not available" placeholder, and the Google Books
+   * branding rules say results must not be altered.
+   */
   function upgradeGoogleBooksImage(url) {
     if (!url) return "";
-    let u = String(url).replace(/^http:\/\//i, "https://");
-    u = u.replace(/([?&])zoom=\d+/i, "$1zoom=0");
-    if (!/[?&]zoom=/i.test(u)) {
-      u += (u.includes("?") ? "&" : "?") + "zoom=0";
-    }
-    return u;
+    return String(url).replace(/^http:\/\//i, "https://");
   }
 
   function getOmdbKey() {
@@ -2489,6 +2533,7 @@
         coverUrl,
         coverSource: "googlebooks",
         barcode: isbn && looksLikeIsbn(isbn) ? normalizeBarcode(isbn) : undefined,
+        googleBooksUrl: safeGoogleBooksUrl(info.canonicalVolumeLink || info.infoLink || ""),
       };
     } catch {
       return null;
@@ -2865,6 +2910,7 @@
           ? extra.coverSource
           : base.coverSource || extra.coverSource || "",
       barcode: base.barcode || extra.barcode,
+      googleBooksUrl: base.googleBooksUrl || extra.googleBooksUrl || "",
       _score: Math.max(base._score || 0, extra._score || 0),
     };
   }
@@ -3361,6 +3407,7 @@
     els.fieldType.addEventListener("change", () => {
       updateFormatOptions();
       updateCoverFrame();
+      updateGoogleBooksAttr();
       if (els.fieldType.value === "book") syncAuthorsFromCreator();
       else renderSignedUi();
       updateReferenceLinks();
@@ -3636,7 +3683,7 @@
   function mergeIncomingIntoExisting(existing, incoming, alsoReplace) {
     const out = { ...existing };
     const empty = (v) => v == null || v === "" || (Array.isArray(v) && !v.length);
-    for (const k of ["creator", "year", "barcode", "progress", "externalId", "rawgId", "acquisition", "lastUsed"]) {
+    for (const k of ["creator", "year", "barcode", "progress", "externalId", "rawgId", "acquisition", "lastUsed", "googleBooksUrl"]) {
       if (empty(out[k]) && !empty(incoming[k])) out[k] = incoming[k];
     }
     if (empty(out.coverUrl) && !empty(incoming.coverUrl)) {

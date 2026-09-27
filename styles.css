@@ -1313,6 +1313,63 @@ body.modal-open {
   color: var(--text-dim);
 }
 
+/* Google Books attribution (plain text, --text-muted, no new colour). The official mark is
+   grey + Google colours on transparent, made for light pages; it sits on a --text plate so it
+   stays "full and clearly visible" on the dark theme, unaltered. */
+.gb-attr {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.gb-attr[hidden],
+.gb-cover-note[hidden] {
+  display: none;
+}
+
+.gb-mark-plate {
+  display: inline-flex;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: var(--text);
+}
+
+.gb-mark {
+  display: block;
+  width: 62px;
+  height: 30px;
+}
+
+.gb-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.gb-link:hover {
+  color: var(--text);
+}
+
+.gb-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-radius: 4px;
+}
+
+.gb-cover-note {
+  margin: 0;
+  align-self: center;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
 /* Music: square preview (album art is 1:1); same width as the 2:3 frames */
 .cover-preview-wrap[data-type="music"] .cover-preview,
 .cover-preview-wrap[data-type="music"] .cover-preview-placeholder {

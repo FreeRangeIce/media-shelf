@@ -138,6 +138,14 @@
           </div>
           <p class="field-hint">Camera scan needs a secure page (HTTPS or localhost) and camera permission. On plain HTTP, such as a LAN address, the browser blocks the camera.</p>
           <p id="lookup-status" class="lookup-status" role="status" aria-live="polite" hidden></p>
+          <!-- Google Books attribution (developers.google.com/books/branding): the unmodified
+               "powered by Google" mark beside Google Books results, plus a link to the book's
+               Google Books page. PLACEHOLDER copy (Berean). -->
+          <p id="gb-attr" class="gb-attr" hidden>
+            <span class="gb-mark-plate"><img class="gb-mark" src="icons/powered-by-google.png" width="62" height="30" alt="Powered by Google" /></span>
+            <a id="gb-link" class="gb-link" href="#" target="_blank" rel="noopener noreferrer">View on Google Books</a>
+          </p>
+          <input type="hidden" id="field-gb-url" />
           <div id="api-key-hint" class="api-key-hint-banner" hidden>
             <span id="api-key-hint-text">Add free OMDb or RAWG keys in Settings and Lookup will try those sources first.</span>
             <button type="button" class="btn btn-ghost btn-sm" id="btn-open-api-settings">Open Settings</button>
@@ -261,6 +269,7 @@
           <div class="cover-preview-wrap">
             <img id="cover-preview" class="cover-preview" alt="" hidden />
             <div id="cover-preview-placeholder" class="cover-preview-placeholder" aria-hidden="true">No cover</div>
+            <p id="gb-cover-note" class="gb-cover-note" hidden>Cover from Google Books</p>
           </div>
         </div>
 
