@@ -34,9 +34,9 @@ Details:
 
 ## Covers & Lookup (multi-source waterfall)
 
-**Lookup** tries sources in order and stops on the first strong match (prefer a cover; otherwise title + creator). The form stores `coverSource` (`openlibrary` | `googlebooks` | `itunes` | `wikipedia` | `omdb` | `rawg` | `manual`) and shows a status such as “Matched via Google Books”. A failing source is skipped so the next can run, and the status tells refusals/errors (HTTP 401/403/429/5xx, network or blocked) apart from a genuine “No match”. A rejected OMDb key is reported even when another source matches.
+**Lookup** tries sources in order and stops on the first strong match (prefer a cover; otherwise title + creator). The form stores `coverSource` (`openlibrary` | `googlebooks` | `wikipedia` | `omdb` | `rawg` | `musicbrainz` | `coverartarchive` | `manual`) and shows a status such as “Matched via Google Books”. A failing source is skipped so the next can run, and the status tells refusals/errors (HTTP 401/403/429/5xx, network or blocked) apart from a genuine “No match”. A rejected OMDb key is reported even when another source matches.
 
-Optional API keys (OMDb, RAWG) live in **Settings → Improve Lookup**, a short wizard with signup links and Save / Clear / Test for each key. Keys are saved only in this browser’s `localStorage` (`media-shelf-omdb-key`, `media-shelf-rawg-key`), are never included in backups, and are sent directly from your browser to OMDb or RAWG when you use Lookup or Test (there is no FreeRangeMedia server). Book Lookup needs no keys; movie and game Lookup without keys is limited (see the iTunes and Wikipedia notes below).
+Optional API keys (OMDb, RAWG) live in **Settings → Improve Lookup**, a short wizard with signup links and Save / Clear / Test for each key. Keys are saved only in this browser’s `localStorage` (`media-shelf-omdb-key`, `media-shelf-rawg-key`), are never included in backups, and are sent directly from your browser to OMDb or RAWG when you use Lookup or Test (there is no FreeRangeMedia server). Book Lookup needs no keys; movie and game Lookup without keys is limited: Wikipedia can fill the title, year and director, but covers come only from OMDb (movies) and RAWG (games).
 
 ### Books
 1. [Open Library](https://openlibrary.org) — ISBN and title search; covers via `covers.openlibrary.org`
@@ -49,16 +49,16 @@ ISFDB serves HTML without CORS for browser apps, so Lookup does not scrape it.
 
 ### Movies
 1. **OMDb** (optional key) — title/year lookup with poster, year and director. Free key = 1,000 requests/day, emailed after signup at [omdbapi.com/apikey.aspx](https://www.omdbapi.com/apikey.aspx) (OMDb isn’t affiliated with IMDb). A bad key (HTTP 401) is reported in Test and in Lookup. `coverSource: omdb`
-2. [iTunes Search](https://performance-partners.apple.com/search-api) — `entity=movie`. **Caveat:** Apple limits the API to about 20 calls/minute, and from our test machine uncached queries returned HTTP 403; whether it works from your device/network is unverified. A 403 now shows as “iTunes refused the request”, not “No match”.
-3. Wikipedia — one MediaWiki query tries `{title} ({year} film)`, `{title} (film)`, then the bare title only if its description is a film; disambiguation pages are skipped; OpenSearch fallback ranks “(film)” titles first. The director is read from the short description (“2023 film by Christopher Nolan”) or the article’s first sentence (“… film directed by Denis Villeneuve …”); the “(film)” part of the page title isn’t copied into your item.
+2. Wikipedia (details only, no cover) — one MediaWiki query tries `{title} ({year} film)`, `{title} (film)`, then the bare title only if its description is a film; disambiguation pages are skipped; OpenSearch fallback ranks “(film)” titles first. The director is read from the short description (“2023 film by Christopher Nolan”) or the article’s first sentence (“… film directed by Denis Villeneuve …”); the “(film)” part of the page title isn’t copied into your item.
 
 **IMDb** reference link: `https://www.imdb.com/find/?q={title}` (and year when set). Movie UPC barcodes alone usually will not match — use a title or paste a cover URL.
 
 ### Games
 1. **RAWG** (optional key) — `https://api.rawg.io/api/games?key=…&search=…` plus detail for `background_image` / developers. Free for personal projects with credit to RAWG (up to 20,000 requests/month); key via [rawg.io/apidocs](https://rawg.io/apidocs) → Get API Key. `coverSource: rawg`. **Caveat:** RAWG’s 401 for a bad key carries no CORS header, so the browser can’t tell a rejected key from a blocked request; Test says exactly that. Browser (CORS) access with a valid key: Verified Sep 27, 2026 (Test and a Lookup worked in iPhone Safari on the live site).
-2. iTunes — `entity=software` by title (App Store apps only, so console games usually won’t match; same 403 caveat as movies)
-3. Wikipedia — tries `{title} ({year} video game)`, `{title} (video game)`, then the bare title only if its description is a game; disambiguation pages are skipped
-4. Open Library — only when the barcode looks like an ISBN
+2. Wikipedia (details only, no cover) — tries `{title} ({year} video game)`, `{title} (video game)`, then the bare title only if its description is a game; disambiguation pages are skipped
+3. Open Library (details only, no cover) — only when the barcode looks like an ISBN
+
+Movie covers come only from OMDb and game covers only from RAWG. Without a key there's no cover; paste a cover URL if you have one.
 
 Reference links (no keys): **RAWG** (`https://rawg.io/search?query=…`), **IGDB** (`https://www.igdb.com/search?type=games&q=…`, search UI only — IGDB’s API needs Twitch OAuth and is not used), and **IMDb** when useful.
 
@@ -89,4 +89,4 @@ Live at [freerangeice.github.io/media-shelf](https://freerangeice.github.io/medi
 
 ## Privacy
 
-No accounts, no cloud sync, no FreeRangeMedia server. Your library and optional OMDb/RAWG keys are saved in this browser’s `localStorage` (backups/exports contain your library only, never API keys). When you press Lookup (or after a scan), your browser sends the title or barcode (plus the author for books and the year for movies and games, when set) to Open Library, Google Books, iTunes and Wikipedia, and — when configured — the title plus your key to OMDb / RAWG. Reference links open IMDb, ISFDB, RAWG, or IGDB in a new tab. Note: `localStorage` is per origin, and GitHub Pages project sites under one account share the origin `https://freerangeice.github.io`.
+No accounts, no cloud sync, no FreeRangeMedia server. Your library and optional OMDb/RAWG keys are saved in this browser’s `localStorage` (backups/exports contain your library only, never API keys). When you press Lookup (or after a scan), your browser sends the title or barcode (plus the author for books and the year for movies and games, when set) to Open Library, Google Books and Wikipedia, and — when configured — the title plus your key to OMDb / RAWG. Reference links open IMDb, ISFDB, RAWG, or IGDB in a new tab. Note: `localStorage` is per origin, and GitHub Pages project sites under one account share the origin `https://freerangeice.github.io`.

@@ -550,11 +550,6 @@
     return false;
   }
 
-  function upgradeItunesArtwork(url) {
-    if (!url) return "";
-    return String(url).replace(/100x100bb/g, "600x600bb").replace(/100x100/g, "600x600");
-  }
-
   function setLookupStatus(msg, kind) {
     if (!msg) {
       els.lookupStatus.hidden = true;
@@ -1782,7 +1777,6 @@
   const COVER_SOURCE_LABELS = {
     openlibrary: "Open Library",
     googlebooks: "Google Books",
-    itunes: "iTunes",
     wikipedia: "Wikipedia",
     omdb: "OMDb",
     rawg: "RAWG",
@@ -2708,53 +2702,13 @@
     return fetchWikipediaOpenSearch(t, k);
   }
 
-  function scoreItunesMatch(result, term) {
-    const name = String(result.trackName || result.collectionName || "").toLowerCase();
-    const t = term.toLowerCase();
-    let score = 0;
-    if (name === t) score += 100;
-    if (name.includes(t) || t.includes(name)) score += 40;
-    const words = t.split(/\s+/).filter(Boolean);
-    for (const w of words) {
-      if (name.includes(w)) score += 8;
-    }
-    return score;
-  }
-
-  async function fetchItunes(term, entity) {
-    try {
-      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=${encodeURIComponent(entity)}&limit=5`;
-      const res = await lookupFetch(url);
-      if (!res.ok) throw new Error("network");
-      const data = await res.json();
-      const results = Array.isArray(data.results) ? data.results : [];
-      if (!results.length) return null;
-      let best = results[0];
-      let bestScore = -1;
-      for (const r of results) {
-        const s = scoreItunesMatch(r, term);
-        if (s > bestScore) {
-          bestScore = s;
-          best = r;
-        }
-      }
-      const art = upgradeItunesArtwork(best.artworkUrl100 || best.artworkUrl60 || "");
-      let year = null;
-      if (best.releaseDate) {
-        const m = String(best.releaseDate).match(/^(18|19|20)\d{2}/);
-        if (m) year = Number(m[0]);
-      }
-      return {
-        title: best.trackName || best.collectionName || "",
-        creator: best.artistName || "",
-        year,
-        coverUrl: art,
-        coverSource: "itunes",
-        _score: bestScore,
-      };
-    } catch {
-      return null;
-    }
+  /**
+   * Movie covers come from OMDb only and game covers from RAWG only (v1.2: the App Store
+   * artwork fallback is gone). Other sources may still fill title, year and creator.
+   */
+  function withoutCover(data) {
+    if (!data) return data;
+    return { ...data, coverUrl: "", coverSource: "" };
   }
 
   /* ---------- Music: MusicBrainz + Cover Art Archive ---------- */
@@ -3054,19 +3008,14 @@
             run: () => fetchOmdb({ title: term, year: yearVal }),
           });
         }
-        steps.push(
-          {
-            label: "iTunes",
-            slug: "itunes",
-            run: () => fetchItunes(term, "movie"),
-          },
-          {
-            label: "Wikipedia",
-            slug: "wikipedia",
-            run: (knownTitle) =>
-              fetchWikipedia({ title: term || knownTitle || "", kind: "movie", year: yearVal }),
-          }
-        );
+        steps.push({
+          label: "Wikipedia",
+          slug: "wikipedia",
+          run: async (knownTitle) =>
+            withoutCover(
+              await fetchWikipedia({ title: term || knownTitle || "", kind: "movie", year: yearVal })
+            ),
+        });
         result = await runLookupWaterfall(steps, tried);
       } else if (type === "game") {
         const term = title || "";
@@ -3080,35 +3029,23 @@
         }
         if (term) {
           steps.push({
-            label: "iTunes",
-            slug: "itunes",
-            run: async () => {
-              let data = await fetchItunes(`${term} game`, "software");
-              if (!data || data._score < 20) {
-                const retry = await fetchItunes(term, "software");
-                if (retry && retry._score >= 20) data = retry;
-                else if (!data) data = retry;
-              }
-              if (data && data._score < 15 && !data.coverUrl) return null;
-              return data;
-            },
-          });
-          steps.push({
             label: "Wikipedia",
             slug: "wikipedia",
-            run: (knownTitle) =>
-              fetchWikipedia({
-                title: term || knownTitle || "",
-                kind: "game",
-                year: els.fieldYear.value.trim(),
-              }),
+            run: async (knownTitle) =>
+              withoutCover(
+                await fetchWikipedia({
+                  title: term || knownTitle || "",
+                  kind: "game",
+                  year: els.fieldYear.value.trim(),
+                })
+              ),
           });
         }
         if (isbnShaped) {
           steps.push({
             label: "Open Library",
             slug: "openlibrary",
-            run: () => fetchOpenLibraryByIsbn(barcode),
+            run: async () => withoutCover(await fetchOpenLibraryByIsbn(barcode)),
           });
         }
         if (!steps.length) {
