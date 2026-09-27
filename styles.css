@@ -972,16 +972,73 @@ label.check {
   cursor: pointer;
 }
 
+/* One checkbox look everywhere (form and dialogs), same on iPhone and desktop. The tick is
+   drawn with borders, so it survives forced-colors / high-contrast modes. */
 label.check input[type="checkbox"] {
-  appearance: auto;
-  width: 18px;
-  height: 18px;
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 20px;
+  height: 20px;
   min-height: 0;
   margin: 0;
   padding: 0;
   flex: 0 0 auto;
-  accent-color: var(--accent);
+  border: 1.5px solid var(--border-control);
+  border-radius: 4px;
+  background: transparent;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+label.check input[type="checkbox"]::before {
+  content: "";
+  width: 5px;
+  height: 10px;
+  margin-top: -2px;
+  border: solid var(--text-on-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+}
+
+label.check input[type="checkbox"]:checked,
+label.check input[type="checkbox"]:indeterminate {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+label.check input[type="checkbox"]:checked::before {
+  transform: rotate(45deg) scale(1);
+}
+
+/* Partly signed parent: a bar instead of a tick */
+label.check input[type="checkbox"]:indeterminate::before {
+  width: 10px;
+  height: 0;
+  margin-top: 0;
+  border-width: 0 0 2px 0;
+  transform: none;
+}
+
+label.check input[type="checkbox"]:focus-visible {
+  outline: 2px solid transparent; /* becomes visible in forced-colors mode */
+  outline-offset: 2px;
+  box-shadow: var(--focus);
+}
+
+@media (forced-colors: active) {
+  label.check input[type="checkbox"] {
+    border-color: CanvasText;
+  }
+  label.check input[type="checkbox"]:checked,
+  label.check input[type="checkbox"]:indeterminate {
+    background: Highlight;
+    border-color: Highlight;
+  }
+  label.check input[type="checkbox"]::before {
+    border-color: HighlightText;
+  }
 }
 
 .signed-authors {
