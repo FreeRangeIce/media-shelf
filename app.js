@@ -476,9 +476,11 @@
     if (item.format === "physical" && item.disc) parts.push(DISC_LABELS[item.disc] || item.disc);
     if (isCib(item)) parts.push("CIB");
     if (item.type === "book" && item.signed) {
-      // Multi-author: name who signed, in the same quiet pill (Oholiab B2 / handoff §3.5).
-      const who = item.authors.length > 1 ? item.authors.filter((a) => a.signed).map((a) => a.name) : [];
-      parts.push(who.length ? `Signed: ${who.join(", ")}` : "Signed");
+      // "Signed" when every listed author signed; names only for a subset (Oholiab Pass 1
+      // fix 4). The full list stays in the edit form.
+      const who = item.authors.filter((a) => a.signed).map((a) => a.name);
+      const some = item.authors.length > 1 && who.length < item.authors.length;
+      parts.push(some && who.length ? `Signed: ${who.join(", ")}` : "Signed");
     }
     return parts;
   }
