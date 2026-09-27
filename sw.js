@@ -1,5 +1,5 @@
-/* FreeRangeMedia service worker — cache version v14 */
-const CACHE = "media-shelf-v14";
+/* FreeRangeMedia service worker — cache version v15 */
+const CACHE = "media-shelf-v15";
 const ASSETS = [
   "./",
   "./index.html",
@@ -16,7 +16,13 @@ const ASSETS = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+    // cache: "reload" fetches every asset from the network, never from the browser's HTTP
+    // cache, so a new version can't be installed with an older app.js or styles.css.
+    // addAll rejects if any fetch fails, which fails the install and keeps the old worker.
+    caches
+      .open(CACHE)
+      .then((cache) => cache.addAll(ASSETS.map((url) => new Request(url, { cache: "reload" }))))
+      .then(() => self.skipWaiting())
   );
 });
 
