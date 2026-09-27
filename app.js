@@ -901,13 +901,29 @@
     }
   }
 
-  function showToast(msg) {
-    els.toast.textContent = msg;
+  /** Toast; optional one action button (e.g. Undo) and a longer duration for it. */
+  function showToast(msg, opts = {}) {
+    els.toast.textContent = "";
+    const text = document.createElement("span");
+    text.textContent = msg;
+    els.toast.appendChild(text);
+    els.toast.classList.toggle("has-action", Boolean(opts.actionLabel));
+    if (opts.actionLabel && typeof opts.onAction === "function") {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-ghost btn-sm toast-action";
+      btn.textContent = opts.actionLabel;
+      btn.addEventListener("click", () => {
+        els.toast.hidden = true;
+        opts.onAction();
+      });
+      els.toast.appendChild(btn);
+    }
     els.toast.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       els.toast.hidden = true;
-    }, 2600);
+    }, opts.duration || 2600);
   }
 
   function collectForm() {
@@ -1367,8 +1383,8 @@
     return JSON.stringify(buildBackupPayload(), null, 2);
   }
 
-  function downloadText(text, filename) {
-    const blob = new Blob([text], { type: "application/json" });
+  function downloadText(text, filename, type = "application/json") {
+    const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -3672,6 +3688,422 @@
     navigator.serviceWorker.register("./sw.js").catch(() => {});
   }
 
+  /* ---------- Step 7: games import (paste or .csv) ----------
+   * Columns: title, platform, year. Nothing is saved until "Add N games"; then one toast
+   * with Undo (until the next save anywhere, or 10 seconds). All copy PLACEHOLDER (Berean).
+   */
+  const IMPORT_MAX_LINES = 5000;
+  const IMPORT_SHOW_NEW = 100; // new rows listed one by one; the rest are summarised
+  const IMPORT_UNDO_MS = 10000;
+  let importRows = []; // parsed rows: { line, title, platform, year, error }
+  let importEval = []; // per row: { kind: "new" | "dup" | "error", dup, reason }
+  let importChoices = new Map(); // line -> "add" | "skip" | "update" (user overrides)
+  let importFresh = false;
+  let importUndo = null;
+
+  function importYearMax() {
+    return new Date().getFullYear() + 1;
+  }
+
+  /** CSV / TSV records with their starting line numbers. Quotes may wrap commas, tabs, newlines. */
+  function parseDelimited(text, delim) {
+    const out = [];
+    let cells = [];
+    let cell = "";
+    let inQuotes = false;
+    let atFieldStart = true;
+    let line = 1;
+    let recordLine = 1;
+    const endCell = () => {
+      cells.push(cell);
+      cell = "";
+      atFieldStart = true;
+    };
+    const endRecord = () => {
+      endCell();
+      if (cells.some((c) => c.trim())) out.push({ line: recordLine, cells });
+      cells = [];
+    };
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') {
+            cell += '"';
+            i++;
+          } else inQuotes = false;
+        } else {
+          if (ch === "\n") line++;
+          cell += ch;
+        }
+        continue;
+      }
+      if (ch === '"' && atFieldStart) {
+        inQuotes = true;
+        atFieldStart = false;
+      } else if (ch === delim) {
+        endCell();
+      } else if (ch === "\n") {
+        endRecord();
+        line++;
+        recordLine = line;
+      } else {
+        cell += ch;
+        if (ch !== " ") atFieldStart = false;
+      }
+    }
+    endRecord();
+    return out;
+  }
+
+  const IMPORT_HEADER_TITLE = new Set(["title", "name", "game", "game title"]);
+  const IMPORT_HEADER_OTHER = new Set(["", "platform", "system", "store", "year", "release year"]);
+
+  /** @returns {{ rows: object[] } | { error: string }} */
+  function parseImportText(raw) {
+    const text = String(raw || "").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+    const lineCount = text.split("\n").filter((l) => l.trim()).length;
+    if (!lineCount) return { error: "Paste some games first, or choose a .csv file." };
+    if (lineCount > IMPORT_MAX_LINES) {
+      return {
+        error: `That’s ${lineCount.toLocaleString()} lines. The limit is ${IMPORT_MAX_LINES.toLocaleString()} at a time, so split the list and import it in parts.`,
+      };
+    }
+    const delim = text.includes("\t") ? "\t" : ",";
+    let records = parseDelimited(text, delim);
+    const first = records[0];
+    if (first) {
+      const low = first.cells.map((c) => c.trim().toLowerCase());
+      if (IMPORT_HEADER_TITLE.has(low[0]) && low.slice(1).every((c) => IMPORT_HEADER_OTHER.has(c))) {
+        records = records.slice(1);
+      }
+    }
+    const maxYear = importYearMax();
+    const rows = records.map(({ line, cells }) => {
+      const title = String(cells[0] || "").replace(/\s+/g, " ").trim();
+      const platform = String(cells[1] || "").trim();
+      const yearText = String(cells[2] || "").trim();
+      let error = "";
+      let year = null;
+      if (!title) error = "No title.";
+      else if (yearText) {
+        const y = Number(yearText);
+        if (!/^\d{4}$/.test(yearText) || y < 1950 || y > maxYear) {
+          error = `Year should be a 4-digit year from 1950 to ${maxYear}.`;
+        } else year = y;
+      }
+      return { line, title, platform, year, error };
+    });
+    if (!rows.length) return { error: "Paste some games first, or choose a .csv file." };
+    return { rows };
+  }
+
+  function importDefaults() {
+    return {
+      platform: normalizePlatform($("#import-default-platform").value),
+      status: $("#import-default-status").value || "want",
+      format: $("#import-default-format").value === "physical" ? "physical" : "digital",
+    };
+  }
+
+  function importCandidate(row, defs) {
+    return {
+      type: "game",
+      title: row.title,
+      year: row.year,
+      platform: normalizePlatform(row.platform) || defs.platform,
+      format: defs.format,
+      disc: null,
+      barcode: "",
+      externalId: "",
+      status: defs.status,
+      sources: ["csv"],
+    };
+  }
+
+  /** Classify every row: error, possible duplicate (of the shelf or an earlier line), or new. */
+  function evaluateImport() {
+    const defs = importDefaults();
+    const seen = new Map();
+    importEval = importRows.map((row) => {
+      if (row.error) return { kind: "error" };
+      const cand = importCandidate(row, defs);
+      const dup = findDuplicate(cand, null);
+      if (dup) return { kind: "dup", dup: dup.item };
+      const key = `${normalizeTitle(row.title)}|${cand.platform.toLowerCase()}|${row.year ?? ""}`;
+      if (seen.has(key)) return { kind: "dup", repeatOf: seen.get(key) };
+      seen.set(key, row.line);
+      return { kind: "new" };
+    });
+  }
+
+  function importChoice(i) {
+    const ev = importEval[i];
+    if (ev.kind === "error") return "skip";
+    const own = importChoices.get(importRows[i].line);
+    if (own && (own !== "update" || ev.dup)) return own;
+    return ev.kind === "dup" ? "skip" : "add";
+  }
+
+  function importCounts() {
+    const c = { add: 0, update: 0, dupSkipped: 0, skipped: 0, errors: 0 };
+    importEval.forEach((ev, i) => {
+      const ch = importChoice(i);
+      if (ev.kind === "error") c.errors++;
+      else if (ch === "add") c.add++;
+      else if (ch === "update") c.update++;
+      else if (ev.kind === "dup") c.dupSkipped++;
+      else c.skipped++;
+    });
+    return c;
+  }
+
+  function plural(n, one, many) {
+    return `${n.toLocaleString()} ${n === 1 ? one : many}`;
+  }
+
+  function setImportMessage(msg, kind = "error") {
+    const el = $("#import-message");
+    el.textContent = msg || "";
+    el.dataset.kind = kind;
+    el.hidden = !msg;
+  }
+
+  function setImportFresh(fresh) {
+    importFresh = fresh;
+    $("#btn-import-preview").hidden = fresh;
+    $("#btn-import-commit").hidden = !fresh;
+  }
+
+  function importDupText(ev, choice) {
+    const verb = choice === "add" ? "Will add" : choice === "update" ? "Will update" : "Skipped";
+    if (ev.repeatOf) return `${verb} · Also on line ${ev.repeatOf}`;
+    const it = ev.dup;
+    const meta = [it.platform, FORMAT_LABELS[it.format] || it.format, it.year].filter(Boolean).join(" · ");
+    return `${verb} · You already have “${it.title}”${meta ? ` (${meta})` : ""}`;
+  }
+
+  function renderImportPreview() {
+    const c = importCounts();
+    const parts = [`${c.add.toLocaleString()} to add`];
+    if (c.update) parts.push(`${c.update.toLocaleString()} to update`);
+    if (c.dupSkipped) parts.push(plural(c.dupSkipped, "duplicate skipped", "duplicates skipped"));
+    if (c.skipped) parts.push(`${c.skipped.toLocaleString()} skipped`);
+    if (c.errors) parts.push(`${c.errors.toLocaleString()} ${c.errors === 1 ? "needs" : "need"} fixing`);
+    $("#import-summary").textContent = parts.join(" · ");
+
+    const html = [];
+    let newShown = 0;
+    let newHidden = 0;
+    importRows.forEach((row, i) => {
+      const ev = importEval[i];
+      const choice = importChoice(i);
+      if (ev.kind === "new" && newShown >= IMPORT_SHOW_NEW) {
+        newHidden++;
+        return;
+      }
+      if (ev.kind === "new") newShown++;
+      const meta = [normalizePlatform(row.platform) || importDefaults().platform, row.year].filter(Boolean).join(" · ");
+      const titleText = row.title || "(no title)";
+      let side = "";
+      let note = "";
+      if (ev.kind === "error") {
+        note = `<p class="import-reason">${escapeHtml(row.error)}</p>`;
+      } else {
+        const opts =
+          ev.kind === "dup"
+            ? [["skip", "Skip"], ["add", "Add"], ...(ev.dup ? [["update", "Update"]] : [])]
+            : [["add", "Add"], ["skip", "Skip"]];
+        const id = `import-choice-${i}`;
+        side =
+          `<label class="sr-only" for="${id}">Line ${row.line}: ${escapeHtml(titleText)}</label>` +
+          `<select class="select import-choice" id="${id}" data-row="${i}">` +
+          opts.map(([v, l]) => `<option value="${v}"${v === choice ? " selected" : ""}>${l}</option>`).join("") +
+          `</select>`;
+        if (ev.kind === "dup") note = `<p class="import-dup">${escapeHtml(importDupText(ev, choice))}</p>`;
+      }
+      html.push(
+        `<li class="import-row is-${ev.kind}">` +
+          `<div class="import-row-text"><span class="import-line">Line ${row.line}</span> ` +
+          `<span class="import-title">${escapeHtml(titleText)}</span>` +
+          (meta ? `<span class="import-meta"> · ${escapeHtml(String(meta))}</span>` : "") +
+          note +
+          `</div>${side}</li>`
+      );
+    });
+    if (newHidden) {
+      html.push(`<li class="import-row import-more">…and ${plural(newHidden, "more new game", "more new games")} to add.</li>`);
+    }
+    $("#import-rows").innerHTML = html.join("");
+
+    const btn = $("#btn-import-commit");
+    const total = c.add + c.update;
+    btn.disabled = total === 0;
+    btn.textContent = !total
+      ? "Nothing to add"
+      : c.add && c.update
+        ? `Add ${c.add.toLocaleString()} and update ${plural(c.update, "game", "games")}`
+        : c.update
+          ? `Update ${plural(c.update, "game", "games")}`
+          : `Add ${plural(c.add, "game", "games")}`;
+    if (!c.add && !c.update && !c.dupSkipped && !c.skipped && c.errors) {
+      setImportMessage("Nothing can be added yet. Fix the lines below, then preview again.");
+    } else setImportMessage("");
+  }
+
+  function previewImport() {
+    if (syncFromStorage()) render();
+    const parsed = parseImportText($("#import-games-text").value);
+    importChoices = new Map();
+    if (parsed.error) {
+      importRows = [];
+      importEval = [];
+      $("#import-preview").hidden = true;
+      setImportFresh(false);
+      setImportMessage(parsed.error);
+      return;
+    }
+    importRows = parsed.rows;
+    evaluateImport();
+    $("#import-preview").hidden = false;
+    setImportFresh(true);
+    renderImportPreview();
+  }
+
+  function commitImport() {
+    if (!importFresh || !importRows.length) return;
+    // Another tab may have changed the shelf since the preview: re-check first.
+    if (syncFromStorage()) {
+      render();
+      const before = importEval.map((e) => e.kind).join();
+      evaluateImport();
+      if (importEval.map((e) => e.kind).join() !== before) {
+        renderImportPreview();
+        setImportMessage("Your library changed in another tab. Check the preview again, then add.");
+        return;
+      }
+    }
+    const defs = importDefaults();
+    const now = nowIso();
+    const toAdd = [];
+    const toUpdate = new Map(); // existing id -> incoming candidate
+    importRows.forEach((row, i) => {
+      const ch = importChoice(i);
+      const cand = importCandidate(row, defs);
+      if (ch === "add") {
+        toAdd.push(normalizeItem({ ...cand, id: uid(), dateAdded: now, dateUpdated: now, seed: false }));
+      } else if (ch === "update" && importEval[i].dup && !toUpdate.has(importEval[i].dup.id)) {
+        toUpdate.set(importEval[i].dup.id, normalizeItem({ ...cand, id: "incoming" }));
+      }
+    });
+    if (!toAdd.length && !toUpdate.size) return;
+    const previous = new Map();
+    commitItems((list) => {
+      const next = list.map((it) => {
+        const inc = toUpdate.get(it.id);
+        if (!inc) return it;
+        previous.set(it.id, JSON.parse(JSON.stringify(it)));
+        return normalizeItem({ ...mergeIncomingIntoExisting(it, inc, false), dateUpdated: now });
+      });
+      return [...toAdd, ...next];
+    });
+    importUndo = {
+      addedIds: new Set(toAdd.map((i) => i.id)),
+      previous,
+      raw: lastSyncedRaw,
+      until: Date.now() + IMPORT_UNDO_MS,
+    };
+    render();
+    $("#import-games-text").value = "";
+    importRows = [];
+    importEval = [];
+    $("#import-preview").hidden = true;
+    setImportFresh(false);
+    setImportMessage("");
+    const n = toAdd.length;
+    const u = previous.size;
+    const msg = n && u
+      ? `Added ${plural(n, "game", "games")} and updated ${u.toLocaleString()}`
+      : n
+        ? `Added ${plural(n, "game", "games")}`
+        : `Updated ${plural(u, "game", "games")}`;
+    showToast(msg, { actionLabel: "Undo", onAction: undoImport, duration: IMPORT_UNDO_MS });
+  }
+
+  function undoImport() {
+    const u = importUndo;
+    importUndo = null;
+    let current = null;
+    try {
+      current = localStorage.getItem(STORAGE_KEY);
+    } catch {
+      current = null;
+    }
+    // Only while nothing else has been saved since (in this tab or another) and within 10 s.
+    if (!u || Date.now() > u.until || current !== u.raw) {
+      showToast("Undo isn’t available anymore. Something changed since the import.");
+      return;
+    }
+    commitItems((list) =>
+      list.filter((it) => !u.addedIds.has(it.id)).map((it) => u.previous.get(it.id) || it)
+    );
+    render();
+    showToast("Import undone");
+  }
+
+  function readImportFile(file) {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setImportMessage("That file is too large. Split it into smaller files, or paste the rows instead.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => setImportMessage("Couldn’t read that file. Try again, or paste the rows instead.");
+    reader.onload = () => {
+      $("#import-games-text").value = String(reader.result || "");
+      previewImport();
+    };
+    reader.readAsText(file);
+  }
+
+  function bindImport() {
+    const statusSel = $("#import-default-status");
+    if (!statusSel) return;
+    statusSel.innerHTML = Object.keys(STATUS_LABELS).map((s) => `<option value="${s}">${STATUS_LABELS[s]}</option>`).join("");
+    statusSel.value = "want";
+    $("#import-games-text").addEventListener("input", () => {
+      if (importFresh) setImportFresh(false);
+    });
+    $("#btn-import-preview").addEventListener("click", previewImport);
+    $("#btn-import-commit").addEventListener("click", commitImport);
+    $("#btn-import-template").addEventListener("click", () =>
+      downloadText("title,platform,year\r\n", "freerangemedia-games-template.csv", "text/csv")
+    );
+    $("#btn-import-csv").addEventListener("click", () => $("#import-csv-file").click());
+    $("#import-csv-file").addEventListener("change", (e) => {
+      const f = e.target.files && e.target.files[0];
+      e.target.value = "";
+      readImportFile(f);
+    });
+    const reeval = () => {
+      if (!importRows.length) return;
+      evaluateImport();
+      renderImportPreview();
+    };
+    $("#import-default-platform").addEventListener("change", reeval);
+    $("#import-default-format").addEventListener("change", reeval);
+    $("#import-default-status").addEventListener("change", reeval);
+    $("#import-rows").addEventListener("change", (e) => {
+      const sel = e.target.closest(".import-choice");
+      if (!sel) return;
+      const i = Number(sel.dataset.row);
+      importChoices.set(importRows[i].line, sel.value);
+      renderImportPreview();
+      const again = document.getElementById(`import-choice-${i}`);
+      if (again) again.focus();
+    });
+  }
+
   function fillPlatformOptions() {
     const dl = document.getElementById("platform-options");
     if (dl) dl.innerHTML = PLATFORM_SUGGESTIONS.map((p) => `<option value="${escapeHtml(p)}"></option>`).join("");
@@ -3680,6 +4112,7 @@
   async function init() {
     fillPlatformOptions();
     bind();
+    bindImport();
     window.addEventListener("storage", onStorageEvent);
     updateFormatOptions();
     await seedIfEmpty();

@@ -359,6 +359,55 @@
         </details>
       </section>
 
+      <!-- Step 7: games import (paste or CSV). All copy PLACEHOLDER (Berean). -->
+      <section class="api-key-card backup-card import-card" id="import-card" aria-labelledby="import-heading" tabindex="-1">
+        <div class="api-key-card-head">
+          <h3 id="import-heading">Import games</h3>
+        </div>
+        <p class="api-key-blurb">
+          Add many games at once: one game per line, with title, platform and year. Platform and year are optional.
+          Paste rows copied from a spreadsheet, or type them with commas between the parts.
+        </p>
+        <div class="import-field">
+          <label for="import-games-text">Games to add</label>
+          <textarea id="import-games-text" rows="6" spellcheck="false" autocomplete="off" placeholder="Hades II, Steam, 2025&#10;Celeste, Switch"></textarea>
+        </div>
+        <div class="api-key-actions backup-actions import-file-actions">
+          <div class="backup-action-group">
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-import-template">Download template</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-import-csv">Choose .csv file</button>
+          </div>
+          <input type="file" id="import-csv-file" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden />
+        </div>
+        <p id="import-message" class="import-message" role="status" aria-live="polite" hidden></p>
+        <div id="import-preview" class="import-preview" hidden>
+          <div class="import-defaults">
+            <div class="import-default">
+              <label for="import-default-platform">Platform</label>
+              <input type="text" id="import-default-platform" class="import-input" list="platform-options" maxlength="40" autocomplete="off" placeholder="e.g. Steam" aria-describedby="import-defaults-hint" />
+            </div>
+            <div class="import-default">
+              <label for="import-default-status">Status</label>
+              <select id="import-default-status" class="select"></select>
+            </div>
+            <div class="import-default">
+              <label for="import-default-format">Format</label>
+              <select id="import-default-format" class="select">
+                <option value="digital">Digital</option>
+                <option value="physical">Physical</option>
+              </select>
+            </div>
+          </div>
+          <p id="import-defaults-hint" class="import-defaults-hint">Platform only fills in lines that don't name one. Status and format apply to every game added.</p>
+          <p id="import-summary" class="import-summary" aria-live="polite"></p>
+          <ul id="import-rows" class="import-rows"></ul>
+        </div>
+        <div class="import-actions">
+          <button type="button" class="btn btn-primary" id="btn-import-preview">Preview</button>
+          <button type="button" class="btn btn-primary" id="btn-import-commit" hidden>Add games</button>
+        </div>
+      </section>
+
       <h3 class="settings-section-title">Improve Lookup</h3>
       <p class="settings-intro">
         Optional free API keys let movie Lookup check OMDb first, and game Lookup try RAWG first.

@@ -508,7 +508,9 @@ body {
 .item-form input,
 .item-form select,
 .item-form textarea,
-.api-key-field input {
+.api-key-field input,
+.import-card textarea,
+.import-input {
   appearance: none;
   font: inherit;
   font-size: var(--fs-md);
@@ -542,7 +544,9 @@ body {
 .item-form input:focus-visible,
 .item-form select:focus-visible,
 .item-form textarea:focus-visible,
-.api-key-field input:focus-visible {
+.api-key-field input:focus-visible,
+.import-card textarea:focus-visible,
+.import-input:focus-visible {
   outline: none;
   box-shadow: var(--focus);
   border-color: var(--accent); /* the 45% accent border fell to 2.77:1 on focus */
@@ -1579,6 +1583,179 @@ body.modal-open {
     min-height: 40px;
     text-wrap: balance; /* at 320 "Restore from file" wraps as "Restore / from file" */
   }
+}
+
+/* Step 7: games import card (same card as Backup; list preview, no chips) */
+.import-field,
+.import-default {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.import-field {
+  margin-bottom: var(--space-3);
+}
+
+.import-field label,
+.import-default label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+}
+
+.import-card textarea {
+  width: 100%;
+  min-height: calc(6 * 1.5em + 2 * var(--space-2));
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.import-card textarea::placeholder,
+.import-input::placeholder {
+  color: var(--text-dim);
+}
+
+.import-message {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+
+.import-message[data-kind="error"] {
+  color: var(--danger);
+}
+
+/* One row of three (Oholiab step 7). "In progress" needs ~122px of select,
+   so below 560px Platform takes its own line, and below 380px each one does. */
+.import-defaults {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+@media (max-width: 559px) {
+  .import-defaults {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .import-default:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 379px) {
+  .import-defaults {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.import-defaults .select,
+.import-defaults .import-input {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.import-defaults-hint {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.import-summary {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+.import-rows {
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+.import-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-md);
+}
+
+.import-row-text {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.import-row.is-dup .import-row-text,
+.import-more {
+  color: var(--text-muted);
+}
+
+.import-line {
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.import-meta {
+  color: var(--text-muted);
+}
+
+.import-reason,
+.import-dup {
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-sm);
+}
+
+.import-reason {
+  color: var(--danger);
+}
+
+.import-choice {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.import-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 559px) {
+  .import-card .btn,
+  .import-choice,
+  .import-input,
+  .import-default .select {
+    min-height: var(--tap);
+  }
+
+  .import-actions .btn {
+    width: 100%;
+  }
+}
+
+/* Toast with one action (Undo) */
+.toast.has-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+}
+
+/* .toast prefix so the phone .btn-sm rule (40px) doesn't shrink it below 44px */
+.toast .toast-action {
+  flex: 0 0 auto;
+  min-height: var(--tap);
 }
 
 .backup-help {
