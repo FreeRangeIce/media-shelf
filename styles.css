@@ -990,28 +990,10 @@ label.check input[type="checkbox"] {
   padding-left: calc(18px + var(--space-2)); /* sub-toggles sit under the parent's label */
 }
 
-.btn-text {
-  appearance: none;
-  border: 0;
-  background: none;
-  padding: var(--space-1) 0;
-  font: inherit;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-medium);
-  color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-
-.btn-text:hover {
-  color: var(--accent-hover);
-}
-
-.btn-text:focus-visible {
-  outline: none;
-  box-shadow: var(--focus);
-  border-radius: 4px;
+/* "Complete in box": a small ghost button, left-aligned, 8px under the checkbox row */
+.btn-cib {
+  display: block;
+  margin-top: var(--space-2);
 }
 
 .item-form input,
@@ -1590,9 +1572,9 @@ body.modal-open {
     min-height: var(--tap);
   }
 
-  /* v1.2 checkbox rows and the "Complete in box" text button: 44px targets on phones */
+  /* v1.2 checkbox rows and the "Complete in box" button: 44px targets on phones */
   label.check,
-  .btn-text {
+  .btn-cib {
     min-height: var(--tap);
   }
 
