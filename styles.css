@@ -446,6 +446,62 @@ body {
   box-shadow: var(--focus);
 }
 
+/* Phones: one segmented row of five equal columns instead of wrapping pills (no orphan
+   "Music" row, no sideways scroll). Same active colours, focus ring drawn inside the
+   segment so the container doesn't clip it. */
+@media (max-width: 479px) {
+  .type-tabs {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-elevated);
+  }
+
+  .type-tabs .chip {
+    min-width: 0;
+    min-height: var(--tap);
+    padding: 0 var(--space-2);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  /* Divider as an inset shadow so it doesn't take width from the label. */
+  .type-tabs .chip + .chip {
+    box-shadow: inset 1px 0 0 var(--border);
+  }
+
+  .type-tabs .chip:first-child {
+    border-radius: calc(var(--radius-sm) - 1px) 0 0 calc(var(--radius-sm) - 1px);
+  }
+
+  .type-tabs .chip:last-child {
+    border-radius: 0 calc(var(--radius-sm) - 1px) calc(var(--radius-sm) - 1px) 0;
+  }
+
+  .type-tabs .chip.active {
+    background: var(--accent-dim);
+    color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent-border);
+  }
+
+  .type-tabs .chip:focus-visible {
+    box-shadow: inset 0 0 0 3px rgba(232, 168, 124, 0.7);
+  }
+}
+
+/* 320-class phones: "Movies" (47px at 14px, the smallest size we allow) needs the padding
+   one step down to sit inside a 56px column. */
+@media (max-width: 359px) {
+  .type-tabs .chip {
+    padding: 0 var(--space-1);
+  }
+}
+
 .filters-row {
   display: flex;
   flex-wrap: wrap;
