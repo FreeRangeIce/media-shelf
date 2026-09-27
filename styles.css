@@ -1,4 +1,4 @@
-/* Media Shelf — warm dark theme, mobile-first */
+/* FreeRangeMedia (formerly Media Shelf) — warm dark theme, mobile-first */
 
 :root {
   color-scheme: dark; /* native controls, placeholders, spinners and popups follow the dark theme */
@@ -179,6 +179,16 @@ body {
   font-size: var(--fs-xl);
   font-weight: var(--fw-bold);
   letter-spacing: -0.02em;
+  white-space: nowrap; /* "FreeRangeMedia" never wraps or abbreviates */
+}
+
+/* Narrowest phones only (Oholiab B1): keep "FreeRangeMedia" on one line with >=12px before
+   the pinned "+ Add". At 20px it needs ~164px (Noto Sans, the widest of the SF-like
+   fonts measured); 17px (~140px) leaves ~22px at 320 with the four-bar mark. */
+@media (max-width: 359px) {
+  .brand h1 {
+    font-size: 1.0625rem; /* 17px */
+  }
 }
 
 .tagline {

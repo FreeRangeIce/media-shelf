@@ -1,4 +1,4 @@
-/* Media Shelf — vanilla SPA, localStorage persistence */
+/* FreeRangeMedia (formerly Media Shelf) — vanilla SPA, localStorage persistence */
 (() => {
   "use strict";
 

@@ -1,4 +1,4 @@
-/* Media Shelf service worker — cache version v12 */
+/* FreeRangeMedia service worker — cache version v12 */
 const CACHE = "media-shelf-v12";
 const ASSETS = [
   "./",

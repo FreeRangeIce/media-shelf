@@ -1,6 +1,6 @@
-# Media Shelf
+# FreeRangeMedia
 
-Personal tracker for **books**, **video games**, and **movies** — statuses, ratings, notes, tags, format (physical / digital / audiobook; Blu-ray / DVD / VHS for physical movies), plus optional **ISBN/barcode** and **cover images**.
+FreeRangeMedia (formerly Media Shelf) is a personal tracker for **books**, **video games**, and **movies** — statuses, ratings, notes, tags, format (physical / digital / audiobook; Blu-ray / DVD / VHS for physical movies), plus optional **ISBN/barcode** and **cover images**.
 
 Your library is saved in this browser (`localStorage` key `media-tracker-v1`). Use **Back up** (saves a backup file — on iPhone through the share sheet, e.g. Save to Files → iCloud Drive) or **Settings → Export / Import** (JSON) to keep a copy or move devices (includes barcode + cover fields). See [Backup & restore](#backup--restore).
 
@@ -18,7 +18,7 @@ A static file server is preferred so `seed.json` and the service worker load cor
 
 ## Backup & restore
 
-A web app can’t write to iCloud Drive directly, so Media Shelf hands a backup file to the iPhone share sheet. **Backups are manual — there is no automatic sync.** The app can’t see where the file ends up (the Web Share API doesn’t report the chosen target), so check that it landed in iCloud Drive or Files.
+A web app can’t write to iCloud Drive directly, so FreeRangeMedia hands a backup file to the iPhone share sheet. **Backups are manual — there is no automatic sync.** The app can’t see where the file ends up (the Web Share API doesn’t report the chosen target), so check that it landed in iCloud Drive or Files.
 
 **Back up (iPhone):** tap **Back up** in the header (or **Settings → Back up**) → choose **Save to Files** → pick **iCloud Drive** and a folder → **Save**. The file is named `media-shelf-backup-YYYY-MM-DD.json`. Then open Files to check the file is there.
 
@@ -27,7 +27,7 @@ A web app can’t write to iCloud Drive directly, so Media Shelf hands a backup 
 - **Replace** — overwrites the library with the backup.
 
 Details:
-- Backup format: `{ "app": "media-shelf", "version": 1, "exportedAt": "<ISO>", "items": [...] }` with every item field (format, disc, barcode, coverUrl, coverSource, dates, …). **API keys are never included.** Restore also accepts older Export files and plain item arrays.
+- Backup format: `{ "app": "freerangemedia", "version": 2, "exportedAt": "<ISO>", "items": [...] }` with every item field (format, disc, barcode, coverUrl, coverSource, dates, …). **API keys are never included.** Back up and Export always write this object form. Restore also accepts Media Shelf backups (`"app": "media-shelf"`, version 1), older Export files and plain item arrays. The older Media Shelf app refuses version 2 files instead of silently dropping new fields.
 - Uses `navigator.share({ files })` when `navigator.canShare({ files })` allows it (iOS/iPadOS Safari and Home Screen app, Chrome on Android; some desktop browsers such as Safari on Mac may also show a share menu). Otherwise the file downloads instead; move it somewhere safe yourself.
 - **Settings** shows “Last backup file created: …” (`localStorage` key `media-shelf-last-backup`). It’s set when the share sheet reports success, when the file downloads, or on Export — it records that a file was created, not that it was saved to iCloud.
 - A small reminder banner appears when you have your own (non-sample) items and either your last backup file is more than 14 days old, or you’ve never backed up and your first own item was added more than 14 days ago. No reminder on day one. **Not now** snoozes it for 7 days (`media-shelf-backup-reminder-dismissed`).
@@ -36,7 +36,7 @@ Details:
 
 **Lookup** tries sources in order and stops on the first strong match (prefer a cover; otherwise title + creator). The form stores `coverSource` (`openlibrary` | `googlebooks` | `itunes` | `wikipedia` | `omdb` | `rawg` | `manual`) and shows a status such as “Matched via Google Books”. A failing source is skipped so the next can run, and the status tells refusals/errors (HTTP 401/403/429/5xx, network or blocked) apart from a genuine “No match”. A rejected OMDb key is reported even when another source matches.
 
-Optional API keys (OMDb, RAWG) live in **Settings → Improve Lookup**, a short wizard with signup links and Save / Clear / Test for each key. Keys are saved only in this browser’s `localStorage` (`media-shelf-omdb-key`, `media-shelf-rawg-key`), are never included in backups, and are sent directly from your browser to OMDb or RAWG when you use Lookup or Test (there is no Media Shelf server). Book Lookup needs no keys; movie and game Lookup without keys is limited (see the iTunes and Wikipedia notes below).
+Optional API keys (OMDb, RAWG) live in **Settings → Improve Lookup**, a short wizard with signup links and Save / Clear / Test for each key. Keys are saved only in this browser’s `localStorage` (`media-shelf-omdb-key`, `media-shelf-rawg-key`), are never included in backups, and are sent directly from your browser to OMDb or RAWG when you use Lookup or Test (there is no FreeRangeMedia server). Book Lookup needs no keys; movie and game Lookup without keys is limited (see the iTunes and Wikipedia notes below).
 
 ### Books
 1. [Open Library](https://openlibrary.org) — ISBN and title search; covers via `covers.openlibrary.org`
@@ -89,4 +89,4 @@ Live at [freerangeice.github.io/media-shelf](https://freerangeice.github.io/medi
 
 ## Privacy
 
-No accounts, no cloud sync, no Media Shelf server. Your library and optional OMDb/RAWG keys are saved in this browser’s `localStorage` (backups/exports contain your library only, never API keys). When you press Lookup (or after a scan), your browser sends the title or barcode (plus the author for books and the year for movies and games, when set) to Open Library, Google Books, iTunes and Wikipedia, and — when configured — the title plus your key to OMDb / RAWG. Reference links open IMDb, ISFDB, RAWG, or IGDB in a new tab. Note: `localStorage` is per origin, and GitHub Pages project sites under one account share the origin `https://freerangeice.github.io`.
+No accounts, no cloud sync, no FreeRangeMedia server. Your library and optional OMDb/RAWG keys are saved in this browser’s `localStorage` (backups/exports contain your library only, never API keys). When you press Lookup (or after a scan), your browser sends the title or barcode (plus the author for books and the year for movies and games, when set) to Open Library, Google Books, iTunes and Wikipedia, and — when configured — the title plus your key to OMDb / RAWG. Reference links open IMDb, ISFDB, RAWG, or IGDB in a new tab. Note: `localStorage` is per origin, and GitHub Pages project sites under one account share the origin `https://freerangeice.github.io`.
