@@ -1490,8 +1490,8 @@
         throw new Error("That file isn’t a FreeRangeMedia backup.");
       }
       if (BACKUP_APP_RE.test(app) && Number(data.version) > BACKUP_VERSION) {
-        // PLACEHOLDER copy (Berean): not in the v1.2 spec.
-        throw new Error("That backup was made by a newer version of FreeRangeMedia. Update the app, then try again.");
+        // Copy from Berean's Pass 1 review.
+        throw new Error("That backup was made by a newer version of FreeRangeMedia. Close and reopen the app to get the latest version, then try again.");
       }
       arr = data.items;
       exportedAt = data.exportedAt || data.savedAt || "";
