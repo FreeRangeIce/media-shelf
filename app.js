@@ -1730,6 +1730,8 @@
     wikipedia: "Wikipedia",
     omdb: "OMDb",
     rawg: "RAWG",
+    musicbrainz: "MusicBrainz",
+    coverartarchive: "Cover Art Archive",
     manual: "manual",
   };
 
@@ -2091,6 +2093,10 @@
     const st = issue.status;
     if (st === 401 || st === 403) return `${source} refused the request (HTTP ${st}).`;
     if (st === 429) return `${source} is limiting requests (HTTP 429). Try again later.`;
+    // PLACEHOLDER copy (Berean). MusicBrainz answers 503 when it's rate limiting.
+    if (st === 503 && source === "MusicBrainz") {
+      return "MusicBrainz is busy right now (HTTP 503). Try again in a minute.";
+    }
     if (st >= 500) return `${source} had a server error (HTTP ${st}).`;
     return `${source} returned an error (HTTP ${st}).`;
   }
@@ -2694,6 +2700,135 @@
     }
   }
 
+  /* ---------- Music: MusicBrainz + Cover Art Archive ---------- */
+  // MusicBrainz asks for at most one request per second per client, so requests
+  // queue ~1.1s apart. No custom headers: a browser can't set User-Agent, and a
+  // custom header would add a CORS preflight. The browser's own User-Agent is sent.
+  const MB_GAP_MS = 1100;
+  let mbNextAt = 0;
+
+  async function musicBrainzFetch(url) {
+    const now = Date.now();
+    const at = Math.max(now, mbNextAt);
+    mbNextAt = at + MB_GAP_MS;
+    if (at > now) await new Promise((r) => setTimeout(r, at - now));
+    return lookupFetch(url);
+  }
+
+  function mbPhrase(text) {
+    return `"${String(text).replace(/[\\"]/g, "\\$&")}"`;
+  }
+
+  function mbArtistCredit(release) {
+    const credit = Array.isArray(release["artist-credit"]) ? release["artist-credit"] : [];
+    return credit
+      .map((c) => `${c.name || (c.artist && c.artist.name) || ""}${c.joinphrase || ""}`)
+      .join("")
+      .trim();
+  }
+
+  function mbYear(date) {
+    const m = String(date || "").match(/^(\d{4})/);
+    if (!m) return null;
+    const y = Number(m[1]);
+    return y >= 1860 && y <= new Date().getFullYear() + 1 ? y : null;
+  }
+
+  /** UPC-A and EAN-13 spellings of the same code (MusicBrainz stores whichever was entered). */
+  function barcodeVariants(raw) {
+    const d = String(raw || "").replace(/\D/g, "");
+    if (d.length < 8 || d.length > 14) return [];
+    const out = new Set([d]);
+    if (d.length === 12) out.add(`0${d}`);
+    if (d.length === 13 && d.startsWith("0")) out.add(d.slice(1));
+    return [...out];
+  }
+
+  function httpsUrl(u) {
+    return String(u || "").replace(/^http:\/\//i, "https://");
+  }
+
+  /** Front cover from the Cover Art Archive: release first, then its release group. */
+  async function fetchCoverArtArchive(releaseId, releaseGroupId) {
+    const targets = [];
+    if (releaseId) targets.push(`https://coverartarchive.org/release/${encodeURIComponent(releaseId)}`);
+    if (releaseGroupId) targets.push(`https://coverartarchive.org/release-group/${encodeURIComponent(releaseGroupId)}`);
+    for (const url of targets) {
+      try {
+        // Plain fetch: a missing cover (404) or a CAA hiccup isn't a Lookup failure.
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const data = await res.json();
+        const images = Array.isArray(data.images) ? data.images : [];
+        const front = images.find((i) => i.front) || null;
+        if (!front) continue;
+        const t = front.thumbnails || {};
+        const src = t["500"] || t.large || front.image || "";
+        if (src) return httpsUrl(src);
+      } catch {
+        /* try the next target */
+      }
+    }
+    return "";
+  }
+
+  async function searchMusicBrainz(query, limit) {
+    const params = new URLSearchParams({ query, fmt: "json", limit: String(limit) });
+    const res = await musicBrainzFetch(`https://musicbrainz.org/ws/2/release/?${params.toString()}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return Array.isArray(data.releases) ? data.releases : [];
+  }
+
+  function pickMusicBrainzRelease(releases, title) {
+    if (!releases.length) return null;
+    const top = Math.max(...releases.map((r) => Number(r.score) || 0));
+    const want = normalizeTitle(title || "");
+    const pool = releases.filter((r) => (Number(r.score) || 0) >= top - 10);
+    const exact = want ? pool.filter((r) => normalizeTitle(r.title || "") === want) : [];
+    const choices = exact.length ? exact : pool;
+    // Earliest dated release in the best group, so the year is the album's, not a reissue's.
+    const dated = choices.filter((r) => mbYear(r.date) != null);
+    if (!dated.length) return choices[0];
+    return dated.reduce((a, b) => (mbYear(b.date) < mbYear(a.date) ? b : a));
+  }
+
+  async function fetchMusicBrainz({ barcode, title, artist }) {
+    let release = null;
+    let byBarcode = false;
+    const codes = barcodeVariants(barcode);
+    if (codes.length) {
+      const q = codes.length > 1 ? `barcode:(${codes.join(" OR ")})` : `barcode:${codes[0]}`;
+      const found = await searchMusicBrainz(q, 5);
+      if (found === null) return null;
+      const exact = found.filter((r) => codes.includes(String(r.barcode || "")));
+      if (exact.length) {
+        release = exact.find((r) => mbYear(r.date) != null) || exact[0];
+        byBarcode = true;
+      }
+    }
+    if (!release && title) {
+      let q = `release:${mbPhrase(title)}`;
+      if (artist) q += ` AND artist:${mbPhrase(artist)}`;
+      const found = await searchMusicBrainz(q, 5);
+      if (found === null) return null;
+      release = pickMusicBrainzRelease(found, title);
+    }
+    if (!release) return null;
+    const rg = release["release-group"] || {};
+    const coverUrl = await fetchCoverArtArchive(release.id, rg.id);
+    return {
+      title: release.title || "",
+      creator: mbArtistCredit(release),
+      year: mbYear(release.date),
+      coverUrl,
+      coverSource: coverUrl ? "coverartarchive" : "",
+      _musicNoCover: !coverUrl,
+      _byBarcode: byBarcode,
+      _score: Number(release.score) || 0,
+    };
+  }
+
   function lookupRank(d) {
     if (!d) return 0;
     return (
@@ -2924,13 +3059,20 @@
         }
         result = await runLookupWaterfall(steps, tried);
       } else if (type === "music") {
-        // Music Lookup sources wait on Micah's pick (handoff §6 / step 12).
-        // PLACEHOLDER copy (Berean).
-        setLookupStatus(
-          "Lookup doesn’t cover music yet. Enter the details yourself, or paste a cover URL.",
-          "error"
-        );
-        return;
+        // Music: MusicBrainz for details, Cover Art Archive for the front cover (step 7c).
+        if (!barcodeVariants(barcode).length && !title) {
+          // PLACEHOLDER copy (Berean)
+          setLookupStatus("Enter a barcode or an album title to look up music.", "error");
+          return;
+        }
+        const steps = [
+          {
+            label: "MusicBrainz",
+            slug: "musicbrainz",
+            run: () => fetchMusicBrainz({ barcode, title, artist: author }),
+          },
+        ];
+        result = await runLookupWaterfall(steps, tried);
       } else {
         setLookupStatus("Unsupported type for lookup.", "error");
         return;
@@ -2943,6 +3085,10 @@
         const keyNotes = issues
           .filter(([src]) => src === "OMDb" || src === "RAWG")
           .map(([src, issue]) => describeLookupIssue(src, issue));
+        // PLACEHOLDER copy (Berean): a music match without a front cover says so.
+        if (result.data._musicNoCover) {
+          keyNotes.push("No cover in the Cover Art Archive. You can paste a cover URL.");
+        }
         commitLookup(
           result.data,
           keyNotes.length ? `Matched via ${label}. ${keyNotes.join(" ")}` : `Matched via ${label}`,
@@ -3048,7 +3194,7 @@
           setLookupStatus("Barcode scanned. Looking up…", "ok");
           await runLookup();
           // Lookup already checked if it filled the form; this covers a scan whose lookup
-          // found nothing (or music, which has no Lookup yet) but whose barcode is on file.
+          // found nothing but whose barcode is on file.
           if (els.confirm.hidden) checkDuplicateFromForm();
         },
         () => {}

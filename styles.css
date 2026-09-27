@@ -1375,6 +1375,21 @@ body.modal-open {
   line-height: var(--lh-base);
 }
 
+/* Music Lookup credit under the key cards (links styled like the footer credits) */
+.settings-credit {
+  margin-top: var(--space-4);
+}
+
+.settings-credit a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.settings-credit a:hover {
+  color: var(--accent-hover);
+}
+
 .api-key-cards {
   display: flex;
   flex-direction: column;
