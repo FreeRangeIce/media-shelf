@@ -9,8 +9,18 @@
   const BACKUP_REMINDER_DISMISSED_STORAGE = "media-shelf-backup-reminder-dismissed";
   /** New key (B3): set once samples have been offered, so clearing them is permanent. */
   const SEEDED_STORAGE = "media-shelf-seeded";
-  const BACKUP_APP_ID = "media-shelf";
-  const BACKUP_VERSION = 1;
+  /**
+   * Backup guard (v1.2): every file we write is an object with app "freerangemedia" and
+   * version 2. Live Media Shelf (f8427ef) only accepts app names matching
+   * /^media[\s-]?shelf$/i, plain arrays, or objects with no app field — so it refuses
+   * these files with its clear "isn’t a Media Shelf backup" error instead of silently
+   * stripping music / component / signed data. Never write a bare array or omit app.
+   */
+  const BACKUP_APP_ID = "freerangemedia";
+  const BACKUP_VERSION = 2;
+  /** Restore still accepts the old name (v1) and the new one (v2). */
+  const LEGACY_BACKUP_APP_RE = /^media[\s-]?shelf$/i;
+  const BACKUP_APP_RE = /^free[\s-]?range[\s-]?media$/i;
   const BACKUP_STALE_DAYS = 14;
   const BACKUP_SNOOZE_DAYS = 7;
   const DAY_MS = 24 * 60 * 60 * 1000;
@@ -79,6 +89,8 @@
   let searchQuery = "";
   let searchTimer = null;
   let editingId = null;
+  /** Copy of the item as it was when the edit form opened (two-tab merge base). */
+  let editingSnapshot = null;
   let lastFocus = null;
   let confirmCallback = null;
   let confirmAltCallback = null;
@@ -178,6 +190,7 @@
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
+      lastSyncedRaw = raw;
       const parsed = JSON.parse(raw);
       if (!parsed || !Array.isArray(parsed.items)) return null;
       return parsed;
@@ -186,17 +199,90 @@
     }
   }
 
+  /**
+   * Two-tab guard (v1.2). `lastSyncedRaw` is the exact store string this tab last read or
+   * wrote. Every change goes through commitItems(): it re-reads localStorage first, and if
+   * another tab wrote in the meantime it applies this tab's change to the fresh items
+   * instead of overwriting them with a stale in-memory list.
+   */
+  let lastSyncedRaw = null;
+
   function saveStore() {
+    // Store envelope stays { version: 1, savedAt, items } so the key and its shape are
+    // unchanged for any reader; only the item fields grew (all additive).
     const payload = {
       version: 1,
       savedAt: nowIso(),
       items,
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    const raw = JSON.stringify(payload);
+    localStorage.setItem(STORAGE_KEY, raw);
+    lastSyncedRaw = raw;
+  }
+
+  /** Re-read items from storage if another tab changed them. Returns true if reloaded. */
+  function syncFromStorage() {
+    let raw = null;
+    try {
+      raw = localStorage.getItem(STORAGE_KEY);
+    } catch {
+      return false;
+    }
+    if (raw === lastSyncedRaw) return false;
+    const store = loadStore();
+    if (!store) return false; // missing or unreadable: keep what this tab has
+    items = store.items.map(normalizeItem);
+    lastSyncedRaw = raw;
+    return true;
+  }
+
+  /**
+   * The only way to change the library: sync with storage, apply `mutate` to the fresh
+   * items (it may return a new array), save.
+   * @param {(list: object[]) => (object[] | void)} mutate
+   */
+  function commitItems(mutate) {
+    syncFromStorage();
+    const next = mutate(items);
+    if (Array.isArray(next)) items = next;
+    saveStore();
+  }
+
+  /* ---------- v1.2 schema (additive; old items and backups lack these keys) ---------- */
+  const TYPES = ["book", "game", "movie", "music"];
+  /** Physical "format detail" (the reused `disc` field) allowed per type. */
+  const DISC_OPTIONS = {
+    game: ["cart", "disc", "code"],
+    movie: ["blu-ray", "dvd", "vhs"],
+    music: ["cd", "vinyl", "cassette"],
+  };
+  const PLATFORMS = [
+    "steam", "psn", "xbox", "nintendo", "gog", "epic", "battlenet", "ea",
+    "ubisoft", "amazon", "itch", "humble", "rockstar", "other",
+  ];
+  const ACQUISITIONS = ["purchased", "pass", "shared", "gift", "bundled", "unknown"];
+
+  /** true / false / null (unknown). Anything else is unknown, never a guess. */
+  function triState(v) {
+    return v === true || v === false ? v : null;
+  }
+
+  function normalizeAuthors(raw) {
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const a of raw) {
+      const name = String((a && typeof a === "object" ? a.name : a) || "").trim();
+      const key = name.toLowerCase();
+      if (!name || seen.has(key)) continue;
+      seen.add(key);
+      out.push({ name, signed: Boolean(a && typeof a === "object" && a.signed === true) });
+    }
+    return out;
   }
 
   function normalizeItem(raw) {
-    const type = ["book", "game", "movie"].includes(raw.type) ? raw.type : "book";
+    const type = TYPES.includes(raw.type) ? raw.type : "book";
     let format = raw.format;
     if (type === "book") {
       if (!["physical", "digital", "audiobook"].includes(format)) format = "physical";
@@ -204,8 +290,12 @@
       if (!["physical", "digital"].includes(format)) format = "digital";
     }
     let disc = raw.disc ?? raw.mediaFormat ?? null;
-    if (type === "movie" && format === "physical") {
-      if (!["blu-ray", "dvd", "vhs"].includes(disc)) disc = "blu-ray";
+    if (format === "physical" && DISC_OPTIONS[type]) {
+      if (!DISC_OPTIONS[type].includes(disc)) {
+        // Movies have always required a disc (old items default to Blu-ray, as before).
+        // Game cart/disc/code and music CD/vinyl/cassette are optional.
+        disc = type === "movie" ? "blu-ray" : null;
+      }
     } else {
       disc = null;
     }
@@ -218,6 +308,18 @@
         ? null
         : Number(raw.year);
     const coverSource = String(raw.coverSource || "").trim();
+    const playtime =
+      raw.playtimeMinutes === null || raw.playtimeMinutes === undefined || raw.playtimeMinutes === ""
+        ? null
+        : Number(raw.playtimeMinutes);
+    const sources = Array.isArray(raw.sources)
+      ? [...new Set(raw.sources.map((x) => String(x).trim()).filter(Boolean))]
+      : [];
+    const authors = normalizeAuthors(raw.authors);
+    // `signed` is derived from authors[]; a bare flag only survives when no author is known.
+    const signed = authors.length
+      ? authors.some((a) => a.signed)
+      : raw.signed === true;
     return {
       id: String(raw.id || uid()),
       type,
@@ -244,6 +346,19 @@
       dateAdded: raw.dateAdded || nowIso(),
       dateUpdated: raw.dateUpdated || raw.dateAdded || nowIso(),
       seed: Boolean(raw.seed),
+      // v1.2 additive fields (defaults are "unknown", never a guess)
+      platform: PLATFORMS.includes(raw.platform) ? raw.platform : "",
+      externalId: String(raw.externalId ?? "").trim(),
+      acquisition: ACQUISITIONS.includes(raw.acquisition) ? raw.acquisition : "",
+      playtimeMinutes: Number.isFinite(playtime) && playtime >= 0 ? Math.round(playtime) : null,
+      lastUsed: String(raw.lastUsed || "").trim(),
+      ownsGame: triState(raw.ownsGame),
+      ownsCase: triState(raw.ownsCase),
+      ownsManual: triState(raw.ownsManual),
+      sources: sources.length ? sources : ["manual"],
+      rawgId: String(raw.rawgId ?? "").trim(),
+      authors,
+      signed,
     };
   }
 
@@ -369,6 +484,7 @@
   function openModal(item) {
     lastFocus = document.activeElement;
     editingId = item ? item.id : null;
+    editingSnapshot = item ? JSON.parse(JSON.stringify(item)) : null;
     els.modalTitle.textContent = item ? "Edit item" : "Add item";
     els.btnDelete.hidden = !item;
     els.fieldId.value = item ? item.id : "";
@@ -407,6 +523,7 @@
     els.modal.setAttribute("aria-hidden", "true");
     document.body.classList.remove("modal-open");
     editingId = null;
+    editingSnapshot = null;
     setLookupStatus("");
     if (lastFocus && typeof lastFocus.focus === "function") {
       lastFocus.focus();
@@ -524,32 +641,57 @@
     }
     const ts = nowIso();
     if (editingId) {
-      const idx = items.findIndex((i) => i.id === editingId);
-      if (idx >= 0) {
-        const prev = items[idx];
-        items[idx] = normalizeItem({
-          ...prev,
-          ...data,
-          id: prev.id,
-          dateAdded: prev.dateAdded,
-          dateUpdated: ts,
-          seed: false,
-        });
-      }
+      const id = editingId;
+      const snapshot = editingSnapshot;
+      commitItems((list) => {
+        const idx = list.findIndex((i) => i.id === id);
+        list.splice(idx >= 0 ? idx : 0, idx >= 0 ? 1 : 0, mergeEditOntoFresh(snapshot, list[idx], data, ts));
+      });
       showToast("Updated");
     } else {
-      items.unshift(
-        normalizeItem({
-          ...data,
-          dateAdded: ts,
-          dateUpdated: ts,
-        })
-      );
+      commitItems((list) => {
+        list.unshift(
+          normalizeItem({
+            ...data,
+            dateAdded: ts,
+            dateUpdated: ts,
+          })
+        );
+      });
       showToast("Added");
     }
-    saveStore();
     closeModal();
     render();
+  }
+
+  const MERGE_SKIP_KEYS = new Set(["id", "dateAdded", "dateUpdated", "seed"]);
+
+  /**
+   * Two-tab merge for an edit: apply only the fields this form actually changed (form vs
+   * the item as it was when the form opened) onto the freshest stored copy. If another tab
+   * edited other fields of the same item, those edits survive. If another tab deleted the
+   * item, the edit is kept (re-added) rather than lost.
+   */
+  function mergeEditOntoFresh(snapshot, fresh, data, ts) {
+    const base = snapshot || fresh || {};
+    const formItem = normalizeItem({ ...base, ...data, id: base.id || data.id });
+    if (!fresh) {
+      return normalizeItem({ ...formItem, dateAdded: base.dateAdded || ts, dateUpdated: ts, seed: false });
+    }
+    const changed = {};
+    const baseNorm = snapshot ? normalizeItem(snapshot) : normalizeItem(fresh);
+    for (const k of Object.keys(formItem)) {
+      if (MERGE_SKIP_KEYS.has(k)) continue;
+      if (JSON.stringify(formItem[k]) !== JSON.stringify(baseNorm[k])) changed[k] = formItem[k];
+    }
+    return normalizeItem({
+      ...fresh,
+      ...changed,
+      id: fresh.id,
+      dateAdded: fresh.dateAdded,
+      dateUpdated: ts,
+      seed: false,
+    });
   }
 
   function deleteCurrent() {
@@ -559,8 +701,7 @@
       "Delete item?",
       "This cannot be undone.",
       () => {
-        items = items.filter((i) => i.id !== id);
-        saveStore();
+        commitItems((list) => list.filter((i) => i.id !== id));
         closeConfirm();
         closeModal();
         showToast("Deleted");
@@ -575,8 +716,7 @@
       "Clear sample items?",
       "Removes seeded examples. Your own items stay.",
       () => {
-        items = items.filter((i) => !i.seed);
-        saveStore();
+        commitItems((list) => list.filter((i) => !i.seed));
         closeConfirm();
         showToast("Samples cleared");
         render();
@@ -938,7 +1078,7 @@
     const file = shareableBackupFile(text, filename);
     if (file && typeof navigator.share === "function") {
       navigator
-        .share({ files: [file], title: "Media Shelf backup" })
+        .share({ files: [file], title: "FreeRangeMedia backup" })
         .then(() => {
           // Web Share can't tell us where the file went, so record "file created", not "saved".
           markBackedUp();
@@ -1011,9 +1151,10 @@
 
   /**
    * Parse + validate an Export / Backup file. Accepts:
-   *  - new backup: { app: "media-shelf", version: 1, exportedAt, items: [...] }
+   *  - v1.2 backup/export: { app: "freerangemedia", version: 2, exportedAt, items: [...] }
+   *  - Media Shelf backup: { app: "media-shelf", version: 1, exportedAt, items: [...] }
    *  - older Export: { version: 1, exportedAt, app: "Media Shelf", items: [...] }
-   *  - plain array of items
+   *  - plain array of items (read only; we never write one — see BACKUP_APP_ID)
    * @returns {{ items: object[], exportedAt: string }}
    */
   function parseBackupText(text) {
@@ -1028,8 +1169,13 @@
     if (Array.isArray(data)) {
       arr = data;
     } else if (data && typeof data === "object") {
-      if (data.app && !/^media[\s-]?shelf$/i.test(String(data.app).trim())) {
-        throw new Error("That file isn’t a Media Shelf backup.");
+      const app = String(data.app || "").trim();
+      if (app && !LEGACY_BACKUP_APP_RE.test(app) && !BACKUP_APP_RE.test(app)) {
+        throw new Error("That file isn’t a FreeRangeMedia backup.");
+      }
+      if (BACKUP_APP_RE.test(app) && Number(data.version) > BACKUP_VERSION) {
+        // PLACEHOLDER copy (Berean): not in the v1.2 spec.
+        throw new Error("That backup was made by a newer version of FreeRangeMedia. Update the app, then try again.");
       }
       arr = data.items;
       exportedAt = data.exportedAt || data.savedAt || "";
@@ -1039,7 +1185,7 @@
       (r) => r && typeof r === "object" && !Array.isArray(r) && (r.title || r.type)
     );
     if (arr.length && !valid.length) {
-      throw new Error("That file doesn’t contain Media Shelf items.");
+      throw new Error("That file doesn’t contain FreeRangeMedia items.");
     }
     // Normalize and de-dupe by id inside the file (newer dateUpdated wins).
     const byId = new Map();
@@ -1076,7 +1222,7 @@
   function importJson(file) {
     if (!file) return;
     if (file.size > MAX_IMPORT_BYTES) {
-      showToast("That file is too large to be a Media Shelf backup");
+      showToast("That file is too large to be a FreeRangeMedia backup");
       return;
     }
     const reader = new FileReader();
@@ -1102,16 +1248,17 @@
         ? `${fromLine} Merge keeps your current ${countLabel(items.length, "item")} and adds anything new (the newer copy wins when both have the same item). Replace swaps your whole library for the backup.`
         : `${fromLine} Restore it to this browser?`;
       const doReplace = () => {
-        items = incoming.slice();
-        saveStore();
+        commitItems(() => incoming.slice());
         closeConfirm();
         render();
         showToast(`Restored ${countLabel(items.length, "item")}`);
       };
       const doMerge = () => {
-        const res = mergeItems(items, incoming);
-        items = res.items;
-        saveStore();
+        let res = { added: 0, updated: 0 };
+        commitItems((list) => {
+          res = mergeItems(list, incoming);
+          return res.items;
+        });
         closeConfirm();
         render();
         showToast(
@@ -2763,6 +2910,21 @@
     });
   }
 
+  /**
+   * Another tab changed storage: reload and re-render. An open edit form is left alone;
+   * its next Save merges against fresh storage (see commitItems / mergeEditOntoFresh).
+   */
+  function onStorageEvent(e) {
+    if (e.storageArea && e.storageArea !== localStorage) return;
+    if (e.key === STORAGE_KEY || e.key === null) {
+      if (syncFromStorage()) render();
+      return;
+    }
+    if (e.key === LAST_BACKUP_STORAGE || e.key === BACKUP_REMINDER_DISMISSED_STORAGE) {
+      updateBackupUi();
+    }
+  }
+
   function registerSW() {
     if (!("serviceWorker" in navigator)) return;
     if (!/^https?:$/.test(location.protocol)) return;
@@ -2771,6 +2933,7 @@
 
   async function init() {
     bind();
+    window.addEventListener("storage", onStorageEvent);
     updateFormatOptions();
     await seedIfEmpty();
     render();
