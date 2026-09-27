@@ -582,7 +582,8 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
-  flex-shrink: 0;
+  flex-shrink: 1; /* was 0: at 320px the badge row overflowed the card (docW 349) */
+  min-width: 0;
 }
 
 .badge {
