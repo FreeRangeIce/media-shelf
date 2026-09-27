@@ -223,6 +223,8 @@
     labelOwnsCase: $("#label-owns-case"),
     labelOwnsManual: $("#label-owns-manual"),
     btnCib: $("#btn-cib"),
+    fieldPlatform: $("#field-platform"),
+    platformRow: $("#platform-row"),
     signedRow: $("#signed-row"),
     signedSingle: $("#signed-single"),
     signedMulti: $("#signed-multi"),
@@ -313,6 +315,29 @@
     "steam", "psn", "xbox", "nintendo", "gog", "epic", "battlenet", "ea",
     "ubisoft", "amazon", "itch", "humble", "rockstar", "other",
   ];
+  /**
+   * Platform is free text (Micah, step 7 option A) with these suggestions in a datalist.
+   * Typing one in any case stores this spelling, so "steam" and "Steam" match.
+   */
+  const PLATFORM_SUGGESTIONS = [
+    "Steam", "GOG", "Epic", "itch.io", "Xbox", "PlayStation", "Switch", "Battle.net",
+    "EA app", "Ubisoft", "Amazon", "Humble", "PC", "Mac", "iOS", "Android",
+  ];
+
+  /** Trim, collapse spaces, snap to a suggestion's spelling; old key ids get their label. */
+  function normalizePlatform(value) {
+    const v = String(value ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (!v) return "";
+    const low = v.toLowerCase();
+    const hit = PLATFORM_SUGGESTIONS.find((p) => p.toLowerCase() === low);
+    if (hit) return hit;
+    if (PLATFORMS.includes(low) && low !== "other") return PLATFORM_LABELS[low] || v;
+    return v;
+  }
+
+  function samePlatform(a, b) {
+    return normalizePlatform(a).toLowerCase() === normalizePlatform(b).toLowerCase();
+  }
   const ACQUISITIONS = ["purchased", "pass", "shared", "gift", "bundled", "unknown"];
   const COMPONENT_KEYS = ["ownsGame", "ownsCase", "ownsManual"];
   /** "What’s on the shelf?" labels per type (handoff §3.4). Books have no trio in v1. */
@@ -415,7 +440,7 @@
       dateUpdated: raw.dateUpdated || raw.dateAdded || nowIso(),
       seed: Boolean(raw.seed),
       // v1.2 additive fields (defaults are "unknown", never a guess)
-      platform: PLATFORMS.includes(raw.platform) ? raw.platform : "",
+      platform: normalizePlatform(raw.platform),
       externalId: String(raw.externalId ?? "").trim(),
       acquisition: ACQUISITIONS.includes(raw.acquisition) ? raw.acquisition : "",
       playtimeMinutes: Number.isFinite(playtime) && playtime >= 0 ? Math.round(playtime) : null,
@@ -579,6 +604,7 @@
   }
 
   function updateDiscVisibility() {
+    if (els.platformRow) els.platformRow.hidden = els.fieldType.value !== "game";
     const show =
       Boolean(DISC_OPTIONS[els.fieldType.value]) && els.fieldFormat.value === "physical";
     els.discRow.hidden = !show;
@@ -763,6 +789,7 @@
     els.fieldDisc.value =
       item && item.disc ? item.disc : els.fieldType.value === "movie" ? "blu-ray" : "";
     setComponentState(item || {});
+    els.fieldPlatform.value = item ? item.platform || "" : "";
     els.fieldRating.value =
       item && item.rating != null ? String(item.rating) : "";
     els.fieldProgress.value = item ? item.progress || "" : "";
@@ -918,6 +945,7 @@
       barcode: els.fieldBarcode.value.trim(),
       coverUrl: els.fieldCover.value.trim(),
       coverSource: els.fieldCoverSource.value.trim(),
+      platform: type === "game" ? normalizePlatform(els.fieldPlatform.value) : "",
       // Kept even while the trio is hidden (digital / book), so switching format never
       // silently clears what the user ticked.
       ownsGame: componentState.ownsGame,
@@ -3359,7 +3387,7 @@
     }
     if (candidate.platform && candidate.externalId) {
       const hit = pool.find(
-        (i) => i.platform === candidate.platform && i.externalId && i.externalId === candidate.externalId
+        (i) => samePlatform(i.platform, candidate.platform) && i.externalId && i.externalId === candidate.externalId
       );
       if (hit) return { item: hit, reason: "external" };
     }
@@ -3392,7 +3420,7 @@
 
   /** Steam vs Switch, digital vs physical, CD vs vinyl: two rows is the right answer. */
   function looksLikeDifferentCopy(existing, incoming) {
-    if (existing.platform && incoming.platform && existing.platform !== incoming.platform) return true;
+    if (existing.platform && incoming.platform && !samePlatform(existing.platform, incoming.platform)) return true;
     if (existing.format !== incoming.format) return true;
     if (existing.disc && incoming.disc && existing.disc !== incoming.disc) return true;
     return false;
@@ -3442,7 +3470,7 @@
     }
     if (out.format === incoming.format && empty(out.disc) && !empty(incoming.disc)) out.disc = incoming.disc;
     if (empty(out.platform) && !empty(incoming.platform)) out.platform = incoming.platform;
-    if (out.platform && out.platform === incoming.platform && out.externalId && out.externalId === incoming.externalId) {
+    if (out.platform && samePlatform(out.platform, incoming.platform) && out.externalId && out.externalId === incoming.externalId) {
       if (incoming.playtimeMinutes != null) out.playtimeMinutes = incoming.playtimeMinutes;
       if (!empty(incoming.lastUsed)) out.lastUsed = incoming.lastUsed;
     } else if (out.playtimeMinutes == null && incoming.playtimeMinutes != null) {
@@ -3644,7 +3672,13 @@
     navigator.serviceWorker.register("./sw.js").catch(() => {});
   }
 
+  function fillPlatformOptions() {
+    const dl = document.getElementById("platform-options");
+    if (dl) dl.innerHTML = PLATFORM_SUGGESTIONS.map((p) => `<option value="${escapeHtml(p)}"></option>`).join("");
+  }
+
   async function init() {
+    fillPlatformOptions();
     bind();
     window.addEventListener("storage", onStorageEvent);
     updateFormatOptions();
