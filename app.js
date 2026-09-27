@@ -1457,7 +1457,8 @@
       els.backupStatus.dataset.status = fresh ? "set" : "unset";
     }
     if (els.backupBanner) {
-      const due = backupReminderDue();
+      // Never alongside the "new version" banner: Reload wins.
+      const due = backupReminderDue() && !updateBannerShown();
       els.backupBanner.hidden = !due;
       if (due) {
         $("#backup-banner-text").textContent = label
@@ -3586,6 +3587,57 @@
     }
   }
 
+  /* ---------- "A new version is ready" (v1.2) ----------
+   * sw.js calls skipWaiting() + clients.claim(), so when a later release activates, open
+   * pages get `controllerchange` while still running the old files. Offer a Reload instead
+   * of letting an old page keep saving. Never reload by itself, and wait while a form or
+   * dialog is open so nothing typed is lost.
+   */
+  let swHadController = false;
+  let updateReady = false;
+
+  function updateBannerShown() {
+    const el = document.getElementById("update-banner");
+    return Boolean(el && !el.hidden);
+  }
+
+  function anyModalOpen() {
+    return Boolean(document.querySelector(".modal:not([hidden])"));
+  }
+
+  function maybeShowUpdateBanner() {
+    if (!updateReady || updateBannerShown() || anyModalOpen()) return;
+    const banner = document.getElementById("update-banner");
+    if (!banner) return;
+    // PLACEHOLDER copy (Berean).
+    document.getElementById("update-banner-text").textContent = "A new version is ready.";
+    banner.hidden = false;
+    updateBackupUi(); // hides the backup reminder while this shows
+  }
+
+  function onControllerChange() {
+    // The very first install also claims the page; that isn't an update.
+    if (!swHadController) {
+      swHadController = true;
+      return;
+    }
+    updateReady = true;
+    maybeShowUpdateBanner();
+  }
+
+  function watchForUpdates() {
+    if (!("serviceWorker" in navigator)) return;
+    swHadController = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+    // A form or dialog was open when the update arrived: show the banner once it closes.
+    const mo = new MutationObserver(() => maybeShowUpdateBanner());
+    document.querySelectorAll(".modal").forEach((m) =>
+      mo.observe(m, { attributes: true, attributeFilter: ["hidden"] })
+    );
+    const btn = document.getElementById("btn-update-reload");
+    if (btn) btn.addEventListener("click", () => location.reload());
+  }
+
   function registerSW() {
     if (!("serviceWorker" in navigator)) return;
     if (!/^https?:$/.test(location.protocol)) return;
@@ -3598,6 +3650,7 @@
     updateFormatOptions();
     await seedIfEmpty();
     render();
+    watchForUpdates();
     registerSW();
   }
 

@@ -77,6 +77,13 @@
   </div>
 
   <main id="main" class="main">
+    <!-- Shown when a newer version has taken over this page (service worker controllerchange). -->
+    <div id="update-live" aria-live="polite">
+      <div id="update-banner" class="seed-banner update-banner" hidden>
+        <p id="update-banner-text"></p>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-update-reload">Reload</button>
+      </div>
+    </div>
     <div id="seed-banner" class="seed-banner" hidden>
       <p>These are sample items. Clear them any time. Your library is saved only in this browser.</p>
       <button type="button" class="btn btn-ghost btn-sm" id="btn-clear-seed">Clear samples</button>
