@@ -1201,7 +1201,7 @@ label.check input[type="checkbox"]:focus-visible {
 }
 
 .confirm-option {
-  margin-top: var(--space-3);
+  margin-top: var(--space-4); /* 16px so it doesn't read as part of the Incoming block (Oholiab O3) */
   color: var(--text-muted);
 }
 
