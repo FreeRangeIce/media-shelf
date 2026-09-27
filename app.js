@@ -208,6 +208,14 @@
     refRawg: $("#ref-rawg"),
     refIgdb: $("#ref-igdb"),
     refLinksRow: $("#ref-links-row"),
+    componentsRow: $("#components-row"),
+    fieldOwnsGame: $("#field-owns-game"),
+    fieldOwnsCase: $("#field-owns-case"),
+    fieldOwnsManual: $("#field-owns-manual"),
+    labelOwnsGame: $("#label-owns-game"),
+    labelOwnsCase: $("#label-owns-case"),
+    labelOwnsManual: $("#label-owns-manual"),
+    btnCib: $("#btn-cib"),
   };
 
   function uid() {
@@ -293,6 +301,21 @@
     "ubisoft", "amazon", "itch", "humble", "rockstar", "other",
   ];
   const ACQUISITIONS = ["purchased", "pass", "shared", "gift", "bundled", "unknown"];
+  const COMPONENT_KEYS = ["ownsGame", "ownsCase", "ownsManual"];
+  /** "What’s on the shelf?" labels per type (handoff §3.4). Books have no trio in v1. */
+  const COMPONENT_LABELS = {
+    game: ["Game", "Case", "Manual"],
+    music: ["Media", "Case", "Insert"],
+    movie: ["Disc", "Case", "Insert"],
+  };
+
+  function hasComponents(item) {
+    return item.format === "physical" && Boolean(COMPONENT_LABELS[item.type]);
+  }
+
+  function isCib(item) {
+    return hasComponents(item) && COMPONENT_KEYS.every((k) => item[k] === true);
+  }
 
   /** true / false / null (unknown). Anything else is unknown, never a guess. */
   function triState(v) {
@@ -438,6 +461,7 @@
     const parts = [FORMAT_LABELS[item.format] || item.format];
     if (item.platform) parts.push(PLATFORM_LABELS[item.platform] || item.platform);
     if (item.format === "physical" && item.disc) parts.push(DISC_LABELS[item.disc] || item.disc);
+    if (isCib(item)) parts.push("CIB");
     return parts;
   }
 
@@ -539,6 +563,42 @@
       Boolean(DISC_OPTIONS[els.fieldType.value]) && els.fieldFormat.value === "physical";
     els.discRow.hidden = !show;
     els.fieldDisc.required = show && els.fieldType.value === "movie";
+    updateComponentsUi();
+  }
+
+  /* ---------- Physical components (handoff §3.4) ---------- */
+  /**
+   * Form state for the trio: true / false / null. null means "not touched" (unknown), so an
+   * unticked box saves as null until the user ticks and unticks it (then false).
+   */
+  let componentState = { ownsGame: null, ownsCase: null, ownsManual: null };
+
+  function componentInputs() {
+    return [els.fieldOwnsGame, els.fieldOwnsCase, els.fieldOwnsManual];
+  }
+
+  function setComponentState(state) {
+    componentState = {
+      ownsGame: triState(state.ownsGame),
+      ownsCase: triState(state.ownsCase),
+      ownsManual: triState(state.ownsManual),
+    };
+    componentInputs().forEach((el, i) => {
+      if (el) el.checked = componentState[COMPONENT_KEYS[i]] === true;
+    });
+  }
+
+  function updateComponentsUi() {
+    if (!els.componentsRow) return;
+    const type = els.fieldType.value;
+    const labels = COMPONENT_LABELS[type];
+    const show = Boolean(labels) && els.fieldFormat.value === "physical";
+    els.componentsRow.hidden = !show;
+    if (labels) {
+      [els.labelOwnsGame, els.labelOwnsCase, els.labelOwnsManual].forEach((el, i) => {
+        if (el) el.textContent = labels[i];
+      });
+    }
   }
 
   function openModal(item) {
@@ -559,6 +619,7 @@
     updateDiscVisibility();
     els.fieldDisc.value =
       item && item.disc ? item.disc : els.fieldType.value === "movie" ? "blu-ray" : "";
+    setComponentState(item || {});
     els.fieldRating.value =
       item && item.rating != null ? String(item.rating) : "";
     els.fieldProgress.value = item ? item.progress || "" : "";
@@ -683,6 +744,11 @@
       barcode: els.fieldBarcode.value.trim(),
       coverUrl: els.fieldCover.value.trim(),
       coverSource: els.fieldCoverSource.value.trim(),
+      // Kept even while the trio is hidden (digital / book), so switching format never
+      // silently clears what the user ticked.
+      ownsGame: componentState.ownsGame,
+      ownsCase: componentState.ownsCase,
+      ownsManual: componentState.ownsManual,
       seed: false,
     };
   }
@@ -2899,6 +2965,17 @@
       updateApiKeyHint();
     });
     els.fieldFormat.addEventListener("change", updateDiscVisibility);
+    componentInputs().forEach((el, i) => {
+      if (!el) return;
+      el.addEventListener("change", () => {
+        componentState[COMPONENT_KEYS[i]] = el.checked;
+      });
+    });
+    if (els.btnCib) {
+      els.btnCib.addEventListener("click", () => {
+        setComponentState({ ownsGame: true, ownsCase: true, ownsManual: true });
+      });
+    }
     els.fieldTitle.addEventListener("input", updateReferenceLinks);
     // A lookup error ("Enter a barcode/ISBN or a title…", "No match…") goes stale once the
     // user edits what would be looked up. Clear only the error; leave busy/ok states alone.
