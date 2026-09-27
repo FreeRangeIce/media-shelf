@@ -3505,7 +3505,7 @@
       ? "These look like different copies (another format, disc or platform), so adding a separate copy is suggested."
       : "Update the item you have with the new details, or add this as a separate copy.";
     const optionLabel = incomingWouldReplace(existing, incoming)
-      ? "Also replace notes, tags, rating and status"
+      ? "When updating, also replace notes, tags, rating and status." // PLACEHOLDER (Berean), Oholiab fix 7
       : "";
     const doUpdate = () => {
       const alsoReplace = Boolean(els.confirmOption && els.confirmOption.checked && optionLabel);
