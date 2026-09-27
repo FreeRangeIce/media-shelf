@@ -40,7 +40,7 @@ Optional API keys (OMDb, RAWG) live in **Settings → Improve Lookup**, a short 
 
 ### Books
 1. [Open Library](https://openlibrary.org) — ISBN and title search; covers via `covers.openlibrary.org`
-2. [Google Books](https://developers.google.com/books) — ISBN or `intitle` / `inauthor`; thumbnail/large (zoom upgraded when possible)
+2. [Google Books](https://developers.google.com/books) — ISBN or `intitle` / `inauthor`; the API’s own thumbnail link (only switched to https); results show the “powered by Google” mark and a “View on Google Books” link, per Google’s branding rules
 3. [Wikipedia REST summary](https://en.wikipedia.org/api/rest_v1/) — cover fallback when a title is available (disambiguation pages are skipped)
 
 **ISFDB** (Internet Speculative Fiction Database) is **reference-only**: the Add/Edit modal and cards link to  
@@ -89,4 +89,4 @@ Live at [freerangeice.github.io/media-shelf](https://freerangeice.github.io/medi
 
 ## Privacy
 
-No accounts, no cloud sync, no FreeRangeMedia server. Your library and optional OMDb/RAWG keys are saved in this browser’s `localStorage` (backups/exports contain your library only, never API keys). When you press Lookup (or after a scan), your browser sends the title or barcode (plus the author for books and the year for movies and games, when set) to Open Library, Google Books and Wikipedia, and — when configured — the title plus your key to OMDb / RAWG. Reference links open IMDb, ISFDB, RAWG, or IGDB in a new tab. Note: `localStorage` is per origin, and GitHub Pages project sites under one account share the origin `https://freerangeice.github.io`.
+No accounts, no cloud sync, no FreeRangeMedia server. Your library and optional OMDb/RAWG keys are saved in this browser’s `localStorage` (backups/exports contain your library only, never API keys). When you press Lookup (or after a scan), your browser sends the title or barcode (plus the author for books and the year for movies and games, when set) to Open Library, Google Books and Wikipedia, and — when configured — the title plus your key to OMDb / RAWG. Music Lookup sends the barcode, or the album title and artist, to MusicBrainz, and loads covers from the Cover Art Archive. Reference links open IMDb, ISFDB, RAWG, or IGDB in a new tab. Note: `localStorage` is per origin, and GitHub Pages project sites under one account share the origin `https://freerangeice.github.io`.
