@@ -282,9 +282,11 @@
   <!-- Confirm dialog -->
   <div id="confirm" class="modal" hidden aria-hidden="true">
     <div class="modal-backdrop" data-confirm-cancel="true"></div>
-    <div class="modal-panel modal-panel-sm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-desc">
+    <div class="modal-panel modal-panel-sm" id="confirm-panel" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-desc confirm-detail">
       <h2 id="confirm-title">Delete item?</h2>
       <p id="confirm-desc">This cannot be undone.</p>
+      <dl id="confirm-detail" class="confirm-detail" hidden></dl>
+      <label class="check confirm-option" id="confirm-option-row" hidden><input type="checkbox" id="confirm-option" /> <span id="confirm-option-label"></span></label>
       <div class="form-actions-right confirm-actions">
         <button type="button" class="btn btn-ghost" id="confirm-cancel">Cancel</button>
         <button type="button" class="btn btn-danger" id="confirm-ok">Delete</button>

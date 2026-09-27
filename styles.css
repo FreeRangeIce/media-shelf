@@ -912,7 +912,7 @@ body {
   gap: 0 var(--space-5);
 }
 
-.item-form label.check {
+label.check {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -923,7 +923,7 @@ body {
   cursor: pointer;
 }
 
-.item-form input[type="checkbox"] {
+label.check input[type="checkbox"] {
   appearance: auto;
   width: 18px;
   height: 18px;
@@ -1017,6 +1017,48 @@ body {
 
 #confirm {
   z-index: 110; /* above Settings when restoring from there */
+}
+
+/* Duplicate prompt (v1.2): same dialog, a little wider for the Existing / Incoming rows */
+#confirm-panel.is-wide {
+  max-width: 480px;
+}
+
+.confirm-detail {
+  margin: var(--space-3) 0 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  font-size: var(--fs-md);
+}
+
+.confirm-detail dt {
+  color: var(--text-muted);
+  font-weight: var(--fw-medium);
+}
+
+.confirm-detail dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dup-title {
+  display: block;
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+
+.dup-meta,
+.dup-parts {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.confirm-option {
+  margin-top: var(--space-3);
+  color: var(--text-muted);
 }
 
 #confirm-title {
@@ -1479,7 +1521,7 @@ body.modal-open {
   }
 
   /* v1.2 checkbox rows and the "Complete in box" text button: 44px targets on phones */
-  .item-form label.check,
+  label.check,
   .btn-text {
     min-height: var(--tap);
   }

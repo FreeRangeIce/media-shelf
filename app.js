@@ -122,6 +122,8 @@
   let editingId = null;
   /** Copy of the item as it was when the edit form opened (two-tab merge base). */
   let editingSnapshot = null;
+  /** Add form: the user already chose "Add as a separate copy" for this existing item. */
+  let dupAcceptedSeparateId = null;
   let lastFocus = null;
   let confirmCallback = null;
   let confirmAltCallback = null;
@@ -188,6 +190,11 @@
     importFile: $("#import-file"),
     confirmOk: $("#confirm-ok"),
     confirmAlt: $("#confirm-alt"),
+    confirmPanel: $("#confirm-panel"),
+    confirmDetail: $("#confirm-detail"),
+    confirmOptionRow: $("#confirm-option-row"),
+    confirmOption: $("#confirm-option"),
+    confirmOptionLabel: $("#confirm-option-label"),
     backupBanner: $("#backup-banner"),
     backupLast: $("#backup-last"),
     backupStatus: $("#backup-status"),
@@ -708,10 +715,20 @@
     }
   }
 
-  function openModal(item) {
-    lastFocus = document.activeElement;
+  /**
+   * @param {object|null} item  values to show (null = empty Add form)
+   * @param {object} [snapshot] merge base for the edit, if different from `item` (the
+   *   duplicate prompt opens the existing item pre-filled with incoming values)
+   */
+  function openModal(item, snapshot) {
+    if (els.modal.hidden) lastFocus = document.activeElement;
     editingId = item ? item.id : null;
-    editingSnapshot = item ? JSON.parse(JSON.stringify(item)) : null;
+    editingSnapshot = snapshot
+      ? JSON.parse(JSON.stringify(snapshot))
+      : item
+        ? JSON.parse(JSON.stringify(item))
+        : null;
+    dupAcceptedSeparateId = null;
     els.modalTitle.textContent = item ? "Edit item" : "Add item";
     els.btnDelete.hidden = !item;
     els.fieldId.value = item ? item.id : "";
@@ -768,14 +785,30 @@
    * @param {string} desc
    * @param {() => void} onOk
    * @param {string} [okLabel]
-   * @param {{ altLabel?: string, onAlt?: () => void, focusAlt?: boolean }} [opts]
-   *   Optional second action (e.g. Merge next to Replace).
+   * @param {{ altLabel?: string, onAlt?: () => void, focusAlt?: boolean,
+   *   okClass?: string, altClass?: string, wide?: boolean,
+   *   detailHtml?: string, optionLabel?: string }} [opts]
+   *   Optional second action (e.g. Merge next to Replace). v1.2 duplicate prompt adds
+   *   button styles, an Existing/Incoming detail block (pre-escaped HTML) and one option
+   *   checkbox; all reset on close so the delete / restore dialogs look as before.
    */
   function openConfirm(title, desc, onOk, okLabel, opts = {}) {
     confirmReturnFocus = document.activeElement;
     $("#confirm-title").textContent = title;
     $("#confirm-desc").textContent = desc;
     els.confirmOk.textContent = okLabel || "OK";
+    els.confirmOk.className = `btn ${opts.okClass || "btn-danger"}`;
+    els.confirmAlt.className = `btn ${opts.altClass || "btn-primary"}`;
+    if (els.confirmPanel) els.confirmPanel.classList.toggle("is-wide", Boolean(opts.wide));
+    if (els.confirmDetail) {
+      els.confirmDetail.innerHTML = opts.detailHtml || "";
+      els.confirmDetail.hidden = !opts.detailHtml;
+    }
+    if (els.confirmOptionRow) {
+      els.confirmOption.checked = false;
+      els.confirmOptionLabel.textContent = opts.optionLabel || "";
+      els.confirmOptionRow.hidden = !opts.optionLabel;
+    }
     confirmCallback = onOk;
     if (opts.altLabel && typeof opts.onAlt === "function") {
       els.confirmAlt.textContent = opts.altLabel;
@@ -797,6 +830,14 @@
     confirmCallback = null;
     confirmAltCallback = null;
     els.confirmAlt.hidden = true;
+    els.confirmOk.className = "btn btn-danger";
+    els.confirmAlt.className = "btn btn-primary";
+    if (els.confirmPanel) els.confirmPanel.classList.remove("is-wide");
+    if (els.confirmDetail) {
+      els.confirmDetail.hidden = true;
+      els.confirmDetail.innerHTML = "";
+    }
+    if (els.confirmOptionRow) els.confirmOptionRow.hidden = true;
     if (
       els.modal.hidden &&
       els.scanModal.hidden &&
@@ -877,6 +918,14 @@
       els.fieldDisc.focus();
       showToast("Choose a disc format");
       return;
+    }
+    if (!editingId) {
+      if (syncFromStorage()) render(); // a copy added in another tab counts too
+      const dup = findDuplicate(data, null);
+      if (dup && dup.item.id !== dupAcceptedSeparateId) {
+        openDuplicatePrompt(data, dup, "save");
+        return;
+      }
     }
     const ts = nowIso();
     if (editingId) {
@@ -1591,12 +1640,14 @@
           applyLookupFields(data, { overwrite: true });
           closeConfirm();
           setLookupStatus(okMsg || "Details updated.", kind);
+          checkDuplicateFromForm();
         },
         "Overwrite"
       );
       setLookupStatus("Found a match — empty fields filled. Confirm to overwrite the rest.", "ok");
     } else {
       setLookupStatus(okMsg || "Details filled.", kind);
+      checkDuplicateFromForm();
     }
   }
 
@@ -2924,6 +2975,9 @@
           closeScanModal(true);
           setLookupStatus("Barcode scanned. Looking up…", "ok");
           await runLookup();
+          // Lookup already checked if it filled the form; this covers a scan whose lookup
+          // found nothing (or music, which has no Lookup yet) but whose barcode is on file.
+          if (els.confirm.hidden) checkDuplicateFromForm();
         },
         () => {}
       );
@@ -3194,6 +3248,288 @@
         trapFocus(e, $(".modal-panel", els.modal));
       }
     });
+  }
+
+  /* ---------- Duplicate detection (handoff §4) ---------- */
+  const TITLE_STOPWORDS = new Set(["the", "goty", "definitive", "remastered"]);
+
+  /** lowercase, no trademark signs / accents / punctuation, no "the", goty, definitive, remastered. */
+  function normalizeTitle(t) {
+    const words = String(t || "")
+      .toLowerCase()
+      .replace(/[™®©℠]/g, "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
+    const out = [];
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      if (TITLE_STOPWORDS.has(w)) continue;
+      // "Definitive Edition", "GOTY Edition": drop the edition word with its qualifier.
+      if (w === "edition" && i > 0 && TITLE_STOPWORDS.has(words[i - 1]) && words[i - 1] !== "the") continue;
+      out.push(w);
+    }
+    return out.join(" ");
+  }
+
+  function editDistance(a, b, max) {
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i];
+      let rowMin = i;
+      for (let j = 1; j <= b.length; j++) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        rowMin = Math.min(rowMin, cur[j]);
+      }
+      if (rowMin > max) return max + 1;
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+
+  /** Near-identical titles only (typos, spacing). "Hades" vs "Hades II" is NOT fuzzy-equal. */
+  function fuzzyTitleEqual(a, b) {
+    if (!a || !b) return false;
+    if (a.replace(/\s/g, "") === b.replace(/\s/g, "")) return true;
+    const len = Math.min(a.length, b.length);
+    const max = len >= 12 ? 2 : len >= 6 ? 1 : 0;
+    return max > 0 && editDistance(a, b, max) <= max;
+  }
+
+  /**
+   * Match order (handoff §4.2): barcode + type; platform + externalId; type + title + year
+   * (year optional if only one candidate); fuzzy title + type. Every match only prompts.
+   * @returns {{ item: object, reason: string } | null}
+   */
+  function findDuplicate(candidate, excludeId) {
+    const pool = items.filter((i) => i.id !== excludeId);
+    // Several matches (e.g. a digital and a physical Hades II): point at the one that
+    // looks like the same copy, so Update is offered against the right row.
+    const newest = (list) => {
+      const same = list.filter((i) => !looksLikeDifferentCopy(i, candidate));
+      return (same.length ? same : list)
+        .slice()
+        .sort((a, b) => String(b.dateUpdated).localeCompare(String(a.dateUpdated)))[0];
+    };
+    const code = normalizeBarcode(candidate.barcode);
+    if (code) {
+      const hits = pool.filter((i) => i.type === candidate.type && normalizeBarcode(i.barcode) === code);
+      if (hits.length) return { item: newest(hits), reason: "barcode" };
+    }
+    if (candidate.platform && candidate.externalId) {
+      const hit = pool.find(
+        (i) => i.platform === candidate.platform && i.externalId && i.externalId === candidate.externalId
+      );
+      if (hit) return { item: hit, reason: "external" };
+    }
+    const title = normalizeTitle(candidate.title);
+    if (!title) return null;
+    const sameType = pool.filter((i) => i.type === candidate.type);
+    const exact = sameType.filter((i) => normalizeTitle(i.title) === title);
+    const year = candidate.year == null ? null : Number(candidate.year);
+    // Same title with a different year (e.g. a remake) is not a duplicate.
+    const compatible = exact.filter((i) => year == null || i.year == null || i.year === year);
+    if (compatible.length) {
+      const rank = (i) =>
+        (looksLikeDifferentCopy(i, candidate) ? 0 : 2) + (year != null && i.year === year ? 1 : 0);
+      const best = compatible
+        .slice()
+        .sort(
+          (x, y) => rank(y) - rank(x) || String(y.dateUpdated).localeCompare(String(x.dateUpdated))
+        )[0];
+      return { item: best, reason: "title" };
+    }
+    const fuzzy = sameType.filter(
+      (i) =>
+        normalizeTitle(i.title) !== title &&
+        fuzzyTitleEqual(normalizeTitle(i.title), title) &&
+        !(year != null && i.year != null && i.year !== year)
+    );
+    if (fuzzy.length) return { item: newest(fuzzy), reason: "fuzzy" };
+    return null;
+  }
+
+  /** Steam vs Switch, digital vs physical, CD vs vinyl: two rows is the right answer. */
+  function looksLikeDifferentCopy(existing, incoming) {
+    if (existing.platform && incoming.platform && existing.platform !== incoming.platform) return true;
+    if (existing.format !== incoming.format) return true;
+    if (existing.disc && incoming.disc && existing.disc !== incoming.disc) return true;
+    return false;
+  }
+
+  function dupSummaryHtml(it) {
+    const meta = [TYPE_LABELS[it.type] || it.type];
+    if (it.platform) meta.push(PLATFORM_LABELS[it.platform] || it.platform);
+    meta.push(FORMAT_LABELS[it.format] || it.format);
+    if (it.format === "physical" && it.disc) meta.push(DISC_LABELS[it.disc] || it.disc);
+    if (it.playtimeMinutes != null) meta.push(`${Math.round(it.playtimeMinutes / 60)}h`);
+    if (it.type === "book" && it.signed) meta.push("Signed");
+    let parts = "";
+    const labels = COMPONENT_LABELS[it.type];
+    if (it.format === "physical" && labels && COMPONENT_KEYS.some((k) => it[k] != null)) {
+      const mark = (v) => (v === true ? "✓" : v === false ? "✗" : "?");
+      const word = (v) => (v === true ? "yes" : v === false ? "no" : "unknown");
+      parts = `<span class="dup-parts">${labels
+        .map((l, i) => {
+          const v = it[COMPONENT_KEYS[i]];
+          return `<span aria-label="${escapeHtml(`${l}: ${word(v)}`)}">${escapeHtml(l)} ${mark(v)}</span>`;
+        })
+        .join("  ")}</span>`;
+    }
+    const year = it.year != null ? ` (${it.year})` : "";
+    return `<span class="dup-title">${escapeHtml(it.title)}${year}</span><span class="dup-meta">${escapeHtml(meta.join(" · "))}</span>${parts}`;
+  }
+
+  /**
+   * Update existing with incoming (handoff §4.3): fill empty fields; platform only if
+   * missing; same platform + externalId refreshes playtime / lastUsed; union sources;
+   * component flags: true fills null/false (the prompt shows them, and choosing Update is
+   * the confirm), false only fills null, never true → false. Notes, tags, rating, status
+   * are replaced only when `alsoReplace` is checked (empty ones are still filled).
+   */
+  function mergeIncomingIntoExisting(existing, incoming, alsoReplace) {
+    const out = { ...existing };
+    const empty = (v) => v == null || v === "" || (Array.isArray(v) && !v.length);
+    for (const k of ["creator", "year", "barcode", "progress", "externalId", "rawgId", "acquisition", "lastUsed"]) {
+      if (empty(out[k]) && !empty(incoming[k])) out[k] = incoming[k];
+    }
+    if (empty(out.coverUrl) && !empty(incoming.coverUrl)) {
+      out.coverUrl = incoming.coverUrl;
+      out.coverSource = incoming.coverSource || "";
+    }
+    if (out.format === incoming.format && empty(out.disc) && !empty(incoming.disc)) out.disc = incoming.disc;
+    if (empty(out.platform) && !empty(incoming.platform)) out.platform = incoming.platform;
+    if (out.platform && out.platform === incoming.platform && out.externalId && out.externalId === incoming.externalId) {
+      if (incoming.playtimeMinutes != null) out.playtimeMinutes = incoming.playtimeMinutes;
+      if (!empty(incoming.lastUsed)) out.lastUsed = incoming.lastUsed;
+    } else if (out.playtimeMinutes == null && incoming.playtimeMinutes != null) {
+      out.playtimeMinutes = incoming.playtimeMinutes;
+    }
+    out.sources = [...new Set([...(existing.sources || []), ...(incoming.sources || ["manual"])])];
+    for (const k of COMPONENT_KEYS) {
+      if (incoming[k] === true) out[k] = true;
+      else if (incoming[k] === false && out[k] == null) out[k] = false;
+    }
+    if (existing.type === "book") {
+      const inc = new Map((incoming.authors || []).map((a) => [a.name.toLowerCase(), a.signed]));
+      if (!(existing.authors || []).length && (incoming.authors || []).length) {
+        out.authors = incoming.authors.map((a) => ({ ...a }));
+      } else {
+        out.authors = (existing.authors || []).map((a) => ({
+          ...a,
+          signed: a.signed || inc.get(a.name.toLowerCase()) === true,
+        }));
+      }
+      if (!out.authors.length && incoming.signed) out.signed = true;
+    }
+    if (alsoReplace) {
+      if (!empty(incoming.notes)) out.notes = incoming.notes;
+      if (!empty(incoming.tags)) out.tags = incoming.tags.slice();
+      if (incoming.rating != null) out.rating = incoming.rating;
+      if (!empty(incoming.status)) out.status = incoming.status;
+    } else {
+      if (empty(out.notes) && !empty(incoming.notes)) out.notes = incoming.notes;
+      if (empty(out.tags) && !empty(incoming.tags)) out.tags = incoming.tags.slice();
+      if (out.rating == null && incoming.rating != null) out.rating = incoming.rating;
+    }
+    return out;
+  }
+
+  /** Would "also replace" change anything the user may care about? */
+  function incomingWouldReplace(existing, incoming) {
+    const differs = (a, b) => JSON.stringify(a) !== JSON.stringify(b);
+    return (
+      (incoming.notes && existing.notes && differs(incoming.notes, existing.notes)) ||
+      (incoming.tags && incoming.tags.length && existing.tags && existing.tags.length && differs(incoming.tags, existing.tags)) ||
+      (incoming.rating != null && existing.rating != null && incoming.rating !== existing.rating) ||
+      (incoming.status && incoming.status !== existing.status)
+    );
+  }
+
+  /**
+   * "This looks like an item you already have" (handoff §4.3). Same dialog as Delete:
+   * Update existing / Add as a separate copy / Cancel. The primary (focused) action is
+   * Update existing, unless the two look like different copies, then Add as a separate
+   * copy. Escape = Cancel.
+   * @param {"save"|"lookup"} context  save = Add form Save; lookup = after Lookup / Scan
+   */
+  function openDuplicatePrompt(incomingRaw, dup, context) {
+    const existing = dup.item;
+    const incoming = normalizeItem({ ...incomingRaw, id: incomingRaw.id || "incoming" });
+    const separateFirst = looksLikeDifferentCopy(existing, incoming);
+    const detailHtml =
+      `<dt>Existing</dt><dd>${dupSummaryHtml(existing)}</dd>` +
+      `<dt>Incoming</dt><dd>${dupSummaryHtml(incoming)}</dd>`;
+    // PLACEHOLDER copy (Berean): description, option label, toasts and status lines.
+    const desc = separateFirst
+      ? "These look like different copies (another format, disc or platform), so adding a separate copy is suggested."
+      : "Update the item you have with the new details, or add this as a separate copy.";
+    const optionLabel = incomingWouldReplace(existing, incoming)
+      ? "Also replace notes, tags, rating and status"
+      : "";
+    const doUpdate = () => {
+      const alsoReplace = Boolean(els.confirmOption && els.confirmOption.checked && optionLabel);
+      if (context === "save") {
+        const ts = nowIso();
+        commitItems((list) => {
+          const idx = list.findIndex((i) => i.id === existing.id);
+          const base = idx >= 0 ? list[idx] : existing;
+          const merged = normalizeItem({ ...mergeIncomingIntoExisting(base, incoming, alsoReplace), dateUpdated: ts, seed: false });
+          if (idx >= 0) list[idx] = merged;
+          else list.unshift(merged);
+        });
+        closeConfirm();
+        closeModal();
+        showToast("Updated your existing item");
+        render();
+        return;
+      }
+      // After Lookup / Scan: switch the form to the existing item with the incoming details
+      // filled in. Nothing is saved until the user presses Save.
+      const merged = normalizeItem(mergeIncomingIntoExisting(existing, incoming, alsoReplace));
+      closeConfirm();
+      openModal(merged, existing);
+      setLookupStatus("Now editing the item you already have. Check the details, then Save.", "ok");
+    };
+    const doSeparate = () => {
+      if (context === "save") {
+        const ts = nowIso();
+        commitItems((list) => {
+          list.unshift(normalizeItem({ ...incomingRaw, id: uid(), dateAdded: ts, dateUpdated: ts }));
+        });
+        closeConfirm();
+        closeModal();
+        showToast("Added as a separate copy");
+        render();
+        return;
+      }
+      dupAcceptedSeparateId = existing.id;
+      closeConfirm();
+      els.fieldTitle.focus();
+    };
+    openConfirm("This looks like an item you already have", desc, doUpdate, "Update existing", {
+      altLabel: "Add as a separate copy",
+      onAlt: doSeparate,
+      focusAlt: separateFirst,
+      okClass: separateFirst ? "btn-ghost" : "btn-primary",
+      altClass: separateFirst ? "btn-primary" : "btn-ghost",
+      wide: true,
+      detailHtml,
+      optionLabel,
+    });
+  }
+
+  /** Add form only: run the matcher on what Lookup / Scan put in the form. */
+  function checkDuplicateFromForm() {
+    if (editingId || els.modal.hidden || !els.confirm.hidden) return;
+    if (syncFromStorage()) render();
+    const data = collectForm();
+    if (!data.title && !data.barcode) return;
+    const dup = findDuplicate(data, null);
+    if (dup && dup.item.id !== dupAcceptedSeparateId) openDuplicatePrompt(data, dup, "lookup");
   }
 
   /**
