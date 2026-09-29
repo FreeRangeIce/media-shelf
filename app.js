@@ -828,6 +828,7 @@
    */
   function openModal(item, snapshot) {
     if (els.modal.hidden) lastFocus = document.activeElement;
+    dismissPlainToast();
     editingId = item ? item.id : null;
     editingSnapshot = snapshot
       ? JSON.parse(JSON.stringify(snapshot))
@@ -971,8 +972,9 @@
   }
 
   /** Toast; optional one action button (e.g. Undo) and a longer duration for it. */
-  /** Oholiab F1: a dialog opening clears a leftover plain toast (it sat on the dialog title
-   *  while a sheet is open). Toasts with an action (Undo) keep their own timer. */
+  /** Oholiab F1: a dialog or sheet opening (confirm, Add/Edit, Settings, Scan) clears a
+   *  leftover plain toast (it sat on the sheet title). Toasts with an action (Undo) keep
+   *  their own timer. */
   function dismissPlainToast() {
     if (els.toast.hidden || els.toast.querySelector(".toast-action")) return;
     clearTimeout(toastTimer);
@@ -1967,6 +1969,7 @@
 
   function openSettingsModal(focusProvider) {
     if (!els.settingsModal) return;
+    dismissPlainToast();
     els.fieldOmdbKey.value = getOmdbKey();
     els.fieldRawgKey.value = getRawgKey();
     setKeyVisibility("omdb", false);
@@ -3042,12 +3045,14 @@
               }),
           },
           {
+            /* v1.3 (Berean): Wikipedia fills the title and year only; its images are often
+               fair-use files, so book covers come only from Open Library and Google Books. */
             label: "Wikipedia",
             slug: "wikipedia",
             run: async (knownTitle) => {
               const t = title || knownTitle || "";
               if (!t) return null;
-              return fetchWikipedia({ title: t, kind: "book" });
+              return withoutCover(await fetchWikipedia({ title: t, kind: "book" }));
             },
           },
         ];
@@ -3228,6 +3233,7 @@
   }
 
   async function openScanModal() {
+    dismissPlainToast();
     els.scanStatus.textContent = "Starting camera…";
     els.scanModal.hidden = false;
     els.scanModal.setAttribute("aria-hidden", "false");

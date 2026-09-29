@@ -34,14 +34,14 @@ Details:
 
 ## Covers & Lookup (multi-source waterfall)
 
-**Lookup** tries sources in order and stops on the first strong match (prefer a cover; otherwise title + creator). The form stores `coverSource` (`openlibrary` | `googlebooks` | `wikipedia` | `omdb` | `rawg` | `musicbrainz` | `coverartarchive` | `manual`) and shows a status such as “Matched via Google Books”. A failing source is skipped so the next can run, and the status tells refusals/errors (HTTP 401/403/429/5xx, network or blocked) apart from a genuine “No match”. A rejected OMDb key is reported even when another source matches.
+**Lookup** tries sources in order and stops on the first strong match (prefer a cover; otherwise title + creator). The form stores `coverSource` (`openlibrary` | `googlebooks` | `omdb` | `rawg` | `musicbrainz` | `coverartarchive` | `manual`; books saved before v1.3 may also carry `wikipedia`) and shows a status such as “Matched via Google Books”. A failing source is skipped so the next can run, and the status tells refusals/errors (HTTP 401/403/429/5xx, network or blocked) apart from a genuine “No match”. A rejected OMDb key is reported even when another source matches.
 
 Optional API keys (OMDb, RAWG) live in **Settings → Improve Lookup**, a short wizard with signup links and Save / Clear / Test for each key. Keys are saved only in this browser’s `localStorage` (`media-shelf-omdb-key`, `media-shelf-rawg-key`), are never included in backups, and are sent directly from your browser to OMDb or RAWG when you use Lookup or Test (there is no FreeRangeMedia server). Book Lookup needs no keys; movie and game Lookup without keys is limited: Wikipedia can fill the title, year and director, but covers come only from OMDb (movies) and RAWG (games).
 
 ### Books
 1. [Open Library](https://openlibrary.org) — ISBN and title search; covers via `covers.openlibrary.org`
 2. [Google Books](https://developers.google.com/books) — ISBN or `intitle` / `inauthor`; the API’s own thumbnail link (only switched to https); results show the “powered by Google” mark and a “View on Google Books” link, per Google’s branding rules
-3. [Wikipedia REST summary](https://en.wikipedia.org/api/rest_v1/) — cover fallback when a title is available (disambiguation pages are skipped)
+3. [Wikipedia REST summary](https://en.wikipedia.org/api/rest_v1/) — title and year only when a title is available, no cover (disambiguation pages are skipped)
 
 **ISFDB** (Internet Speculative Fiction Database) is **reference-only**: the Add/Edit modal and cards link to  
 `https://www.isfdb.org/cgi-bin/se.cgi?arg={title}&type=Fiction+Titles`.  
@@ -76,7 +76,7 @@ Reference links (no keys): **RAWG** (`https://rawg.io/search?query=…`), **IGDB
 - Reference links: IMDb, ISFDB, RAWG, IGDB (by type)
 - Stats strip by type and status
 - Sample items on first load only (`media-shelf-seeded`); once cleared — or once every item is deleted — they don’t come back
-- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v15`)
+- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v16`)
 - Relative paths only — works from the GitHub Pages project path
 
 ## Add to Home Screen
