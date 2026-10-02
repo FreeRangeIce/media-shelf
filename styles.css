@@ -1123,6 +1123,7 @@ label.check input[type="checkbox"]:focus-visible {
   bottom: calc(-1 * var(--space-6));
   z-index: 1;
   margin-bottom: calc(-1 * var(--space-6));
+  padding-top: calc(var(--space-4) + var(--space-4));
   padding-bottom: var(--space-6);
   background: var(--bg-elevated);
 }
