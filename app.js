@@ -30,6 +30,7 @@
   const TYPE_LABELS = { book: "Book", game: "Game", movie: "Movie", music: "Music" };
   const STATUS_LABELS = {
     want: "Want",
+    owned: "Owned",
     in_progress: "In progress",
     done: "Done",
     dropped: "Dropped",
@@ -95,9 +96,10 @@
     book: ["book", "books"],
     game: ["game", "games"],
     movie: ["movie", "movies"],
-    music: ["album", "albums"], // PLACEHOLDER count noun for the stats strip (Berean)
+    music: ["Music", "Music"],
     item: ["item", "items"],
     want: ["want", "want"],
+    owned: ["owned", "owned"],
     in_progress: ["in progress", "in progress"],
     done: ["done", "done"],
     dropped: ["dropped", "dropped"],
@@ -120,6 +122,13 @@
   let searchQuery = "";
   let searchTimer = null;
   let editingId = null;
+  /** New item only: the user changed Status, so format/scan must not replace it. */
+  let statusTouched = false;
+  /** New item only: this add started from a barcode scan, so Status defaults to Owned. */
+  let scannedNewItem = false;
+  /** Cover picker sets. Index 0 is the lookup set; later sets are other editions. */
+  let coverChoiceSets = [];
+  let coverChoiceSetIndex = 0;
   /** Copy of the item as it was when the edit form opened (two-tab merge base). */
   let editingSnapshot = null;
   /** Add form: the user already chose "Add as a separate copy" for this existing item. */
@@ -180,6 +189,12 @@
     fieldNotes: $("#field-notes"),
     fieldCover: $("#field-cover"),
     fieldCoverSource: $("#field-cover-source"),
+    fieldCoverSourceId: $("#field-cover-source-id"),
+    fieldCoverPlatform: $("#field-cover-platform"),
+    coverChoices: $("#cover-choices"),
+    btnWrongCover: $("#btn-wrong-cover"),
+    cameraHint: $("#camera-hint"),
+    scanCameraHint: $("#scan-camera-hint"),
     coverPreview: $("#cover-preview"),
     coverPreviewPlaceholder: $("#cover-preview-placeholder"),
     lookupStatus: $("#lookup-status"),
@@ -322,8 +337,36 @@
     "ubisoft", "amazon", "itch", "humble", "rockstar", "other",
   ];
   /**
-   * Platform is free text (Micah, step 7 option A) with these suggestions in a datalist.
-   * Typing one in any case stores this spelling, so "steam" and "Steam" match.
+   * Add/Edit platform control: a select, not free-text chips. Labels are stored as shown.
+   * A saved string that isn't in this list is kept as an extra option (never blanked).
+   * PLATFORM_SUGGESTIONS stays for the game-import datalist only.
+   */
+  const PLATFORM_CHOICES = [
+    "Steam", "PSN", "Xbox", "Xbox 360", "Xbox One", "Series X|S", "Switch",
+    "PS1", "PS2", "PS3", "PS4", "PS5", "GameCube", "Wii", "Wii U", "PC", "Other",
+  ];
+  /** RAWG platform ids. Steam is a store; PSN is the PlayStation parent. Unknown labels are unfiltered. */
+  const RAWG_PLATFORM_IDS = {
+    "Xbox": 80,
+    "Xbox 360": 14,
+    "Xbox One": 1,
+    "Series X|S": 186,
+    "Switch": 7,
+    "PS1": 27,
+    "PS2": 15,
+    "PS3": 16,
+    "PS4": 18,
+    "PS5": 187,
+    "GameCube": 105,
+    "Wii": 11,
+    "Wii U": 10,
+    "PC": 4,
+  };
+  const RAWG_STORE_IDS = { Steam: 1 };
+  const RAWG_PARENT_IDS = { PSN: 2 };
+  /**
+   * Platform suggestions for the game-import datalist (unchanged). The Add/Edit field is
+   * PLATFORM_CHOICES. Typing one in any case stores this spelling, so "steam" and "Steam" match.
    */
   const PLATFORM_SUGGESTIONS = [
     "Steam", "GOG", "Epic", "itch.io", "Xbox", "Xbox Series X|S", "PlayStation", "PlayStation 5",
@@ -449,7 +492,7 @@
       title: String(raw.title || "Untitled").trim() || "Untitled",
       creator: String(raw.creator || "").trim(),
       year: Number.isFinite(year) ? year : null,
-      status: ["want", "in_progress", "done", "dropped"].includes(raw.status)
+      status: ["want", "owned", "in_progress", "done", "dropped"].includes(raw.status)
         ? raw.status
         : "want",
       rating: Number.isFinite(rating) ? rating : null,
@@ -466,6 +509,8 @@
       barcode: String(raw.barcode || "").trim(),
       coverUrl: String(raw.coverUrl || "").trim(),
       coverSource: coverSource || "",
+      coverSourceId: String(raw.coverSourceId ?? "").trim(),
+      coverPlatform: String(raw.coverPlatform ?? "").trim(),
       dateAdded: raw.dateAdded || nowIso(),
       dateUpdated: raw.dateUpdated || raw.dateAdded || nowIso(),
       seed: Boolean(raw.seed),
@@ -644,8 +689,55 @@
     els.fieldFormat.value = allowed.includes(current) ? current : allowed[0];
     els.labelCreator.textContent = CREATOR_HINTS[type] || "Creator";
     els.fieldCreator.placeholder = CREATOR_PLACEHOLDERS[type] || "";
+    updateProgressPlaceholder();
     updateDiscOptions();
     updateDiscVisibility();
+  }
+
+  const PROGRESS_PLACEHOLDERS = {
+    book: "page 120",
+    game: "hour 8",
+    movie: "ep 3 or 1:20",
+    music: "track 4",
+  };
+
+  function updateProgressPlaceholder() {
+    if (!els.fieldProgress) return;
+    els.fieldProgress.placeholder = PROGRESS_PLACEHOLDERS[els.fieldType.value] || "";
+  }
+
+  /** Rebuild the platform select, keeping a free-text stored value as an extra option. */
+  function syncPlatformSelect(value) {
+    if (!els.fieldPlatform) return;
+    const current = value != null ? String(value) : els.fieldPlatform.value;
+    const known = new Set(PLATFORM_CHOICES);
+    const extra = current && !known.has(current) ? current : "";
+    const opts = ['<option value=""></option>'].concat(
+      PLATFORM_CHOICES.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
+    );
+    if (extra) opts.push(`<option value="${escapeHtml(extra)}">${escapeHtml(extra)}</option>`);
+    els.fieldPlatform.innerHTML = opts.join("");
+    els.fieldPlatform.value = current && (known.has(current) || current === extra) ? current : "";
+  }
+
+  /**
+   * New items only. A scan or a physical format defaults to Owned; a wishlist / digital
+   * (or audiobook) save with no scan defaults to Want. Never touches an edit.
+   */
+  function applyNewStatusDefault() {
+    if (editingId || statusTouched) return;
+    const physical = els.fieldFormat.value === "physical";
+    els.fieldStatus.value = scannedNewItem || physical ? "owned" : "want";
+  }
+
+  const SECURE_CAMERA_HINT = "Allow camera when Safari asks.";
+  const LAN_CAMERA_HINT =
+    "On plain HTTP, such as a LAN address, the browser blocks the camera. Type the barcode instead.";
+
+  function updateCameraHints() {
+    const text = window.isSecureContext ? SECURE_CAMERA_HINT : LAN_CAMERA_HINT;
+    if (els.cameraHint) els.cameraHint.textContent = text;
+    if (els.scanCameraHint) els.scanCameraHint.textContent = text;
   }
 
   /**
@@ -830,6 +922,9 @@
     if (els.modal.hidden) lastFocus = document.activeElement;
     dismissPlainToast();
     editingId = item ? item.id : null;
+    statusTouched = false;
+    scannedNewItem = false;
+    clearCoverChoices();
     editingSnapshot = snapshot
       ? JSON.parse(JSON.stringify(snapshot))
       : item
@@ -853,10 +948,11 @@
     els.fieldStatus.value = item ? item.status : "want";
     els.fieldFormat.value = item ? item.format : els.fieldFormat.value;
     updateDiscVisibility();
+    if (!item) applyNewStatusDefault();
     els.fieldDisc.value =
       item && item.disc ? item.disc : els.fieldType.value === "movie" ? "blu-ray" : "";
     setComponentState(item || {});
-    els.fieldPlatform.value = item ? item.platform || "" : "";
+    syncPlatformSelect(item ? item.platform || "" : "");
     els.fieldRating.value =
       item && item.rating != null ? String(item.rating) : "";
     els.fieldProgress.value = item ? item.progress || "" : "";
@@ -864,6 +960,8 @@
     els.fieldNotes.value = item ? item.notes || "" : "";
     els.fieldCover.value = item ? item.coverUrl || "" : "";
     els.fieldCoverSource.value = item ? item.coverSource || "" : "";
+    if (els.fieldCoverSourceId) els.fieldCoverSourceId.value = item ? item.coverSourceId || "" : "";
+    if (els.fieldCoverPlatform) els.fieldCoverPlatform.value = item ? item.coverPlatform || "" : "";
     els.fieldGbUrl.value = item ? item.googleBooksUrl || "" : "";
     lookupYearLoose = false;
     setLookupStatus("");
@@ -1040,6 +1138,8 @@
       barcode: els.fieldBarcode.value.trim(),
       coverUrl: els.fieldCover.value.trim(),
       coverSource: els.fieldCoverSource.value.trim(),
+      coverSourceId: els.fieldCoverSourceId ? els.fieldCoverSourceId.value.trim() : "",
+      coverPlatform: els.fieldCoverPlatform ? els.fieldCoverPlatform.value.trim() : "",
       googleBooksUrl: type === "book" ? safeGoogleBooksUrl(els.fieldGbUrl.value) : "",
       platform: type === "game" ? normalizePlatform(els.fieldPlatform.value) : "",
       // Kept even while the trio is hidden (digital / book), so switching format never
@@ -1052,9 +1152,17 @@
     };
   }
 
+  function collectFormWithCoverIds() {
+    const data = collectForm();
+    if (data.type === "game" && data.coverSource === "rawg" && data.coverSourceId) {
+      data.rawgId = data.coverSourceId;
+    }
+    return data;
+  }
+
   function saveItem(e) {
     e.preventDefault();
-    const data = collectForm();
+    const data = collectFormWithCoverIds();
     if (!data.title) {
       els.fieldTitle.focus();
       showToast("Title is required");
@@ -1206,7 +1314,7 @@
 
   function renderStats() {
     const byType = { book: 0, game: 0, movie: 0, music: 0 };
-    const byStatus = { want: 0, in_progress: 0, done: 0, dropped: 0 };
+    const byStatus = { want: 0, owned: 0, in_progress: 0, done: 0, dropped: 0 };
     for (const i of items) {
       byType[i.type] = (byType[i.type] || 0) + 1;
       byStatus[i.status] = (byStatus[i.status] || 0) + 1;
@@ -1219,6 +1327,7 @@
       pill("movie", byType.movie, "movie"),
       pill("music", byType.music, "music"),
       pill("", byStatus.want, "want"),
+      pill("", byStatus.owned, "owned"),
       pill("", byStatus.in_progress, "in_progress"),
       pill("", byStatus.done, "done"),
     ].join("");
@@ -1281,7 +1390,7 @@
           ? `<p class="item-notes">${escapeHtml(item.notes)}</p>`
           : "";
         const cardRefs = [];
-        if (item.type === "movie" || item.type === "game") {
+        if (item.type === "movie") {
           const imdb = buildImdbUrl(item.title, item.year);
           if (imdb) {
             cardRefs.push(
@@ -1401,7 +1510,7 @@
     const type = els.fieldType.value;
     const title = els.fieldTitle.value.trim();
     const year = els.fieldYear.value.trim();
-    const imdb = type === "movie" || type === "game" ? buildImdbUrl(title, year) : "";
+    const imdb = type === "movie" ? buildImdbUrl(title, year) : "";
     const isfdb = type === "book" ? buildIsfdbUrl(title) : "";
     const rawg = type === "game" ? buildRawgSearchUrl(title) : "";
     const igdb = type === "game" ? buildIgdbUrl(title) : "";
@@ -1761,6 +1870,8 @@
       if (!els.fieldCover.value.trim() || overwrite) {
         els.fieldCover.value = data.coverUrl;
         els.fieldCoverSource.value = data.coverSource || "";
+        if (els.fieldCoverSourceId) els.fieldCoverSourceId.value = data.coverSourceId || "";
+        if (els.fieldCoverPlatform) els.fieldCoverPlatform.value = data.coverPlatform || "";
         updateCoverPreview();
       }
     }
@@ -1798,14 +1909,29 @@
   }
 
   function commitLookup(data, okMsg, kind = "ok") {
-    const applyEmpty = () => applyLookupFields(data, { overwrite: false });
+    let payload = data || {};
+    if (payload.coverNeedsPick && !els.fieldCover.value.trim()) {
+      payload = { ...payload, coverUrl: "", coverSource: "" };
+    } else if (payload.coverNeedsPick && els.fieldCover.value.trim() && payload.suggestedCover) {
+      const pick = (payload.covers || []).find((c) => c.url === payload.suggestedCover) || {};
+      payload = {
+        ...payload,
+        coverUrl: payload.suggestedCover,
+        coverSource: payload.coverSource || "rawg",
+        coverSourceId: payload.coverSourceId || pick.sourceId || "",
+        coverPlatform: payload.coverPlatform || pick.platform || "",
+      };
+    }
+    const applyEmpty = () => applyLookupFields(payload, { overwrite: false });
     applyEmpty();
-    if (wouldOverwrite(data)) {
+    showCoverChoices(payload.covers, payload.altCovers);
+    if (wouldOverwrite(payload)) {
       openConfirm(
         "Overwrite filled fields?",
         "Lookup found details that differ from what’s already in the form. Overwrite title, creator, year, and cover?",
         () => {
-          applyLookupFields(data, { overwrite: true });
+          applyLookupFields(payload, { overwrite: true });
+          showCoverChoices(payload.covers, payload.altCovers);
           closeConfirm();
           setLookupStatus(okMsg || "Details updated.", kind);
           checkDuplicateFromForm();
@@ -2268,27 +2394,55 @@
     };
   }
 
-  async function fetchRawg(title) {
+  async function fetchRawg(title, platformLabel) {
     const key = getRawgKey();
     if (!key) return null;
     const t = String(title || "").trim();
     if (!t) return null;
+    const platformSet = Boolean(String(platformLabel || "").trim());
+    const platId = RAWG_PLATFORM_IDS[platformLabel] || 0;
+    const storeId = RAWG_STORE_IDS[platformLabel] || 0;
+    const parentId = RAWG_PARENT_IDS[platformLabel] || 0;
     try {
       const params = new URLSearchParams({
         key,
         search: t,
-        page_size: "5",
+        page_size: "8",
       });
-      const res = await lookupFetch(`https://api.rawg.io/api/games?${params.toString()}`);
+      if (platId) params.set("platforms", String(platId));
+      else if (parentId) params.set("parent_platforms", String(parentId));
+      if (storeId) params.set("stores", String(storeId));
+      let res = await lookupFetch(`https://api.rawg.io/api/games?${params.toString()}`);
       if (!res.ok) throw new Error("network");
-      const data = await res.json();
-      const results = Array.isArray(data.results) ? data.results : [];
+      let data = await res.json();
+      let results = Array.isArray(data.results) ? data.results : [];
+      // A platform filter that misses shouldn't be replaced by an unfiltered first image.
+      // A second search only fills the picker; coverUrl stays empty while a platform is set.
+      let filtered = true;
+      if (!results.length && (platId || parentId || storeId)) {
+        filtered = false;
+        const again = new URLSearchParams({ key, search: t, page_size: "8" });
+        res = await lookupFetch(`https://api.rawg.io/api/games?${again.toString()}`);
+        if (!res.ok) throw new Error("network");
+        data = await res.json();
+        results = Array.isArray(data.results) ? data.results : [];
+      }
       if (!results.length) return null;
 
       const tLower = t.toLowerCase();
-      let best = results[0];
+      const matchesPlatform = (g) => {
+        if (!platId) return true;
+        const list = Array.isArray(g.platforms) ? g.platforms : [];
+        if (!list.length) return filtered;
+        return list.some((row) => {
+          const id = row && row.platform ? row.platform.id : row && row.id;
+          return Number(id) === platId;
+        });
+      };
+      let best = null;
       let bestScore = -1;
       for (const g of results) {
+        if (platformSet && platId && !matchesPlatform(g)) continue;
         const name = String(g.name || "").toLowerCase();
         let score = 0;
         if (name === tLower) score += 100;
@@ -2303,24 +2457,22 @@
           best = g;
         }
       }
+      if (!best) best = results[0];
 
-      let coverUrl = best.background_image || "";
       let creator = "";
       let year = null;
       if (best.released) {
         const m = String(best.released).match(/^(18|19|20)\d{2}/);
         if (m) year = Number(m[0]);
       }
-
-      /* Detail fetch for better image / developers when slug/id present */
-      if (best.id && (!coverUrl || !creator)) {
+      let screenshots = [];
+      if (best.id) {
         try {
           const dr = await fetch(
             `https://api.rawg.io/api/games/${best.id}?key=${encodeURIComponent(key)}`
           );
           if (dr.ok) {
             const detail = await dr.json();
-            if (detail.background_image) coverUrl = detail.background_image;
             if (Array.isArray(detail.developers) && detail.developers.length) {
               creator = detail.developers
                 .slice(0, 3)
@@ -2338,18 +2490,56 @@
               const m = String(detail.released).match(/^(18|19|20)\d{2}/);
               if (m) year = Number(m[0]);
             }
+            screenshots = Array.isArray(detail.short_screenshots) ? detail.short_screenshots : [];
+            if (!best.background_image && detail.background_image) best = { ...best, background_image: detail.background_image };
           }
         } catch {
           /* keep search-level data */
         }
       }
 
+      const seen = new Set();
+      const primary = [];
+      const alts = [];
+      const push = (bucket, url, id) => {
+        const u = String(url || "").replace(/^http:\/\//i, "https://").trim();
+        if (!u || seen.has(u) || bucket.length >= 5) return;
+        seen.add(u);
+        bucket.push({
+          url: u,
+          sourceId: id ? String(id) : "",
+          platform: platformSet ? String(platformLabel) : "",
+          source: "rawg",
+        });
+      };
+      // Platform set: do not treat the unfiltered first hit as the cover.
+      const bestOk = !platformSet || !platId || matchesPlatform(best) || filtered;
+      if (bestOk) push(primary, best.background_image, best.id);
+      for (const shot of screenshots) {
+        if (bestOk) push(primary, shot && (shot.image || shot.url), best.id);
+      }
+      for (const g of results) {
+        if (g === best || (best && g.id === best.id)) continue;
+        if (platformSet && platId && !matchesPlatform(g)) continue;
+        push(alts, g.background_image, g.id);
+      }
+      while (primary.length < 2 && alts.length) primary.push(alts.shift());
+
+      const suggested = platformSet && filtered && primary[0] ? primary[0] : null;
+      // Never put the first RAWG image on the item when a platform is set.
+      const coverUrl = platformSet ? "" : (best.background_image || "");
       return {
         title: best.name || t,
         creator,
         year,
         coverUrl,
-        coverSource: "rawg",
+        coverSource: coverUrl ? "rawg" : "",
+        coverSourceId: !platformSet && best.id ? String(best.id) : "",
+        coverPlatform: platformSet ? String(platformLabel) : "",
+        coverNeedsPick: platformSet,
+        suggestedCover: suggested ? suggested.url : "",
+        covers: primary.slice(0, 5),
+        altCovers: alts.slice(0, 5),
       };
     } catch {
       return null;
@@ -2928,6 +3118,12 @@
         : extra.coverUrl
           ? extra.coverSource
           : base.coverSource || extra.coverSource || "",
+      coverSourceId: base.coverSourceId || extra.coverSourceId || "",
+      coverPlatform: base.coverPlatform || extra.coverPlatform || "",
+      covers: (base.covers && base.covers.length) ? base.covers : extra.covers || [],
+      altCovers: (base.altCovers && base.altCovers.length) ? base.altCovers : extra.altCovers || [],
+      coverNeedsPick: Boolean(base.coverNeedsPick || extra.coverNeedsPick),
+      suggestedCover: base.suggestedCover || extra.suggestedCover || "",
       barcode: base.barcode || extra.barcode,
       googleBooksUrl: base.googleBooksUrl || extra.googleBooksUrl || "",
       _score: Math.max(base._score || 0, extra._score || 0),
@@ -2961,7 +3157,7 @@
         slug: data.coverSource || step.slug,
       };
 
-      if (data.coverUrl) {
+      if (data.coverUrl || (Array.isArray(data.covers) && data.covers.length)) {
         /* Prefer filling empty metadata from earlier partials onto the cover hit */
         if (partial && partial.data) {
           wrapped.data = mergeLookupPreferEmpty(data, partial.data);
@@ -2993,6 +3189,161 @@
     return partial;
   }
 
+  const BARCODE_MISS =
+    "No match for this barcode. The code stays in the form. A title is optional if you want to search again.";
+
+  function mapExternalPlatform(name) {
+    const n = String(name || "").toLowerCase().replace(/\s+/g, " ").trim();
+    if (!n) return "";
+    const table = [
+      ["xbox series", "Series X|S"],
+      ["series x", "Series X|S"],
+      ["xbox 360", "Xbox 360"],
+      ["xbox one", "Xbox One"],
+      ["nintendo switch", "Switch"],
+      ["gamecube", "GameCube"],
+      ["game cube", "GameCube"],
+      ["playstation 5", "PS5"],
+      ["playstation 4", "PS4"],
+      ["playstation 3", "PS3"],
+      ["playstation 2", "PS2"],
+      ["playstation network", "PSN"],
+      ["playstation", "PS1"],
+      ["wii u", "Wii U"],
+      ["xbox", "Xbox"],
+      ["switch", "Switch"],
+      ["ps5", "PS5"],
+      ["ps4", "PS4"],
+      ["ps3", "PS3"],
+      ["ps2", "PS2"],
+      ["ps1", "PS1"],
+      ["wii", "Wii"],
+      ["steam", "Steam"],
+      ["windows", "PC"],
+      ["pc", "PC"],
+    ];
+    for (const [k, v] of table) if (n.includes(k)) return v;
+    return "";
+  }
+
+  function titleFromBarcodeProduct(title) {
+    let t = String(title || "").replace(/\s+/g, " ").trim();
+    if (!t) return "";
+    t = t.replace(
+      /\b(?:for\s+)?(?:xbox\s*series(?:\s*x(?:\|s|\/s)?)?|xbox\s*360|xbox\s*one|xbox|nintendo\s*switch|switch|playstation\s*[1-5]|ps[1-5]|playstation(?:\s*network)?|psn|wii\s*u|wii|gamecube|game\s*cube|steam|dvd|blu-ray|ntsc|pal)\b/ig,
+      " "
+    );
+    t = t.replace(/[\(\[\{].*$/, " ");
+    t = t.replace(/\s+/g, " ").replace(/^[\s\-–|:]+|[\s\-–|:]+$/g, "").trim();
+    return t;
+  }
+
+  async function fetchJsonQuiet(url, ms) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms || 8000);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function resolveGameBarcode(raw) {
+    const digits = String(raw || "").replace(/\D/g, "");
+    if (digits.length < 8 || digits.length > 14) return null;
+    const variants = new Set(barcodeVariants(digits));
+    if (digits.length < 14) variants.add(digits.padStart(14, "0"));
+    if (digits.length < 13) variants.add(digits.padStart(13, "0"));
+    const values = [...variants].map((v) => `"${v}"`).join(" ");
+    if (values) {
+      const query =
+        "SELECT ?itemLabel ?platLabel WHERE { VALUES ?gtin { " + values +
+        " } ?item wdt:P3962 ?gtin. OPTIONAL { ?item wdt:P400 ?plat. } " +
+        "SERVICE wikibase:label { bd:serviceParam wikibase:language \"en\". } } LIMIT 8";
+      const data = await fetchJsonQuiet(
+        "https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(query)
+      );
+      const rows = data && data.results && data.results.bindings;
+      if (Array.isArray(rows) && rows.length) {
+        const title = titleFromBarcodeProduct(rows[0].itemLabel && rows[0].itemLabel.value);
+        let platform = "";
+        for (const row of rows) {
+          platform = mapExternalPlatform(row.platLabel && row.platLabel.value);
+          if (platform) break;
+        }
+        if (title) return { title, platform };
+      }
+    }
+    const upc = await fetchJsonQuiet(
+      "https://api.upcitemdb.com/prod/trial/lookup?upc=" + encodeURIComponent(digits)
+    );
+    const item = upc && Array.isArray(upc.items) ? upc.items[0] : null;
+    if (item && item.title) {
+      const blob = `${item.title} ${item.description || ""} ${item.brand || ""}`;
+      const title = titleFromBarcodeProduct(item.title);
+      if (title) return { title, platform: mapExternalPlatform(blob) };
+    }
+    return null;
+  }
+
+  function clearCoverChoices() {
+    coverChoiceSets = [];
+    coverChoiceSetIndex = 0;
+    if (els.coverChoices) {
+      els.coverChoices.hidden = true;
+      els.coverChoices.innerHTML = "";
+    }
+    if (els.btnWrongCover) els.btnWrongCover.hidden = true;
+  }
+
+  function renderCoverChoices() {
+    if (!els.coverChoices) return;
+    const list = coverChoiceSets[coverChoiceSetIndex] || [];
+    if (!list.length) {
+      clearCoverChoices();
+      return;
+    }
+    const current = els.fieldCover.value.trim();
+    els.coverChoices.hidden = false;
+    els.coverChoices.innerHTML = list
+      .map((c, i) => {
+        const on = c.url === current ? " is-selected" : "";
+        return `<button type="button" class="cover-choice${on}" data-cover-index="${i}"><img src="${escapeHtml(c.url)}" alt="" /></button>`;
+      })
+      .join("");
+    if (els.btnWrongCover) els.btnWrongCover.hidden = coverChoiceSets.length < 2;
+  }
+
+  function showCoverChoices(primary, alts) {
+    const a = Array.isArray(primary) ? primary.filter((c) => c && c.url) : [];
+    const b = Array.isArray(alts) ? alts.filter((c) => c && c.url) : [];
+    coverChoiceSets = [];
+    if (a.length) coverChoiceSets.push(a.slice(0, 5));
+    if (b.length) coverChoiceSets.push(b.slice(0, 5));
+    coverChoiceSetIndex = 0;
+    if (!coverChoiceSets.length) {
+      clearCoverChoices();
+      return;
+    }
+    renderCoverChoices();
+  }
+
+  function applyPickedCover(choice) {
+    if (!choice || !choice.url) return;
+    els.fieldCover.value = choice.url;
+    els.fieldCoverSource.value = choice.source || "rawg";
+    if (els.fieldCoverSourceId) els.fieldCoverSourceId.value = choice.sourceId || "";
+    if (els.fieldCoverPlatform) {
+      els.fieldCoverPlatform.value = choice.platform || (els.fieldType.value === "game" ? els.fieldPlatform.value : "");
+    }
+    updateCoverPreview();
+    renderCoverChoices();
+  }
+
   async function runLookup() {
     if (lookupBusy) return;
     const type = els.fieldType.value;
@@ -3009,6 +3360,7 @@
     lookupBusy = true;
     els.btnLookup.disabled = true;
     lookupIssues = new Map();
+    clearCoverChoices();
     setLookupStatus("Looking up…");
 
     try {
@@ -3018,7 +3370,7 @@
       if (type === "book") {
         if (!isbnShaped && !title) {
           setLookupStatus(
-            "Enter an ISBN or a title to look up a book.",
+            barcode.trim() ? BARCODE_MISS : "Enter an ISBN or a title to look up a book.",
             "error"
           );
           return;
@@ -3061,7 +3413,9 @@
         const term = title || "";
         if (!term) {
           setLookupStatus(
-            "Movie barcodes usually aren’t in free catalogs. Enter a title, then Lookup — or paste a cover URL.",
+            barcode.trim()
+              ? BARCODE_MISS
+              : "Movie barcodes usually aren’t in free catalogs. Enter a title, then Lookup — or paste a cover URL.",
             "error"
           );
           return;
@@ -3085,13 +3439,29 @@
         });
         result = await runLookupWaterfall(steps, tried);
       } else if (type === "game") {
-        const term = title || "";
+        let term = title || "";
+        let platform = els.fieldPlatform.value;
+        const digits = barcode.replace(/\D/g, "");
+        const upcLike = digits.length >= 8 && digits.length <= 14;
+        let barcodeHit = null;
+        if (upcLike && !looksLikeIsbn(barcode)) {
+          barcodeHit = await resolveGameBarcode(barcode);
+          if (barcodeHit) {
+            if (!term && barcodeHit.title) term = barcodeHit.title;
+            if (barcodeHit.platform && !platform) {
+              syncPlatformSelect(barcodeHit.platform);
+              platform = els.fieldPlatform.value;
+            }
+          }
+        }
         const steps = [];
         if (term && getRawgKey()) {
+          const rawgTerm = term;
+          const rawgPlatform = platform;
           steps.push({
             label: "RAWG",
             slug: "rawg",
-            run: () => fetchRawg(term),
+            run: () => fetchRawg(rawgTerm, rawgPlatform),
           });
         }
         if (term) {
@@ -3116,15 +3486,28 @@
           });
         }
         if (!steps.length) {
-          setLookupStatus("Enter a game title to search, or paste a cover URL.", "error");
+          // A code is already in the form: never ask for a title.
+          setLookupStatus(
+            barcode.trim()
+              ? BARCODE_MISS
+              : "Enter a game title to search, or paste a cover URL.",
+            "error"
+          );
           return;
         }
         result = await runLookupWaterfall(steps, tried);
+        if (!(result && lookupHasUsefulFields(result.data)) && barcodeHit && barcodeHit.title && !title) {
+          commitLookup({ title: barcodeHit.title }, "Details filled.", "ok");
+          return;
+        }
       } else if (type === "music") {
         // Music: MusicBrainz for details, Cover Art Archive for the front cover (step 7c).
         if (!barcodeVariants(barcode).length && !title) {
-          // PLACEHOLDER copy (Berean)
-          setLookupStatus("Enter a barcode or an album title to look up music.", "error");
+          // A non-empty code that isn't a barcode still must not demand a title.
+          setLookupStatus(
+            barcode.trim() ? BARCODE_MISS : "Enter a barcode or an album title to look up music.",
+            "error"
+          );
           return;
         }
         const steps = [
@@ -3160,11 +3543,19 @@
       }
 
       if (!issues.length) {
+        if (barcode.trim() && !title) {
+          setLookupStatus(BARCODE_MISS, "error");
+          return;
+        }
         const list =
           tried.length > 0
             ? tried.join(", ")
             : "available sources";
         setLookupStatus(`No match across ${list}`, "error");
+        return;
+      }
+      if (barcode.trim() && !title) {
+        setLookupStatus(BARCODE_MISS, "error");
         return;
       }
       /* B10: say which sources refused/errored instead of calling it a "no match". */
@@ -3251,6 +3642,10 @@
           const code = String(decoded || "").trim();
           if (!code) return;
           els.fieldBarcode.value = code;
+          if (!editingId) {
+            scannedNewItem = true;
+            applyNewStatusDefault();
+          }
           els.scanStatus.textContent = "Scanned — looking up…";
           await stopScanner();
           closeScanModal(true);
@@ -3420,7 +3815,13 @@
       updateReferenceLinks();
       updateApiKeyHint();
     });
-    els.fieldFormat.addEventListener("change", updateDiscVisibility);
+    els.fieldFormat.addEventListener("change", () => {
+      updateDiscVisibility();
+      applyNewStatusDefault();
+    });
+    els.fieldStatus.addEventListener("change", () => {
+      statusTouched = true;
+    });
     componentInputs().forEach((el, i) => {
       if (!el) return;
       el.addEventListener("change", () => {
@@ -3467,8 +3868,26 @@
     });
     els.fieldCover.addEventListener("input", () => {
       els.fieldCoverSource.value = els.fieldCover.value.trim() ? "manual" : "";
+      if (els.fieldCoverSourceId) els.fieldCoverSourceId.value = "";
+      if (els.fieldCoverPlatform) els.fieldCoverPlatform.value = "";
       updateCoverPreview();
+      renderCoverChoices();
     });
+    if (els.coverChoices) {
+      els.coverChoices.addEventListener("click", (e) => {
+        const btn = e.target.closest(".cover-choice");
+        if (!btn) return;
+        const list = coverChoiceSets[coverChoiceSetIndex] || [];
+        applyPickedCover(list[Number(btn.dataset.coverIndex)]);
+      });
+    }
+    if (els.btnWrongCover) {
+      els.btnWrongCover.addEventListener("click", () => {
+        if (coverChoiceSets.length < 2) return;
+        coverChoiceSetIndex = (coverChoiceSetIndex + 1) % coverChoiceSets.length;
+        renderCoverChoices();
+      });
+    }
     els.coverPreview.addEventListener("error", () => {
       if (!els.fieldCover.value.trim()) return;
       els.coverPreview.hidden = true;
@@ -3705,6 +4124,8 @@
     if (empty(out.coverUrl) && !empty(incoming.coverUrl)) {
       out.coverUrl = incoming.coverUrl;
       out.coverSource = incoming.coverSource || "";
+      if (!empty(incoming.coverSourceId)) out.coverSourceId = incoming.coverSourceId;
+      if (!empty(incoming.coverPlatform)) out.coverPlatform = incoming.coverPlatform;
     }
     if (out.format === incoming.format && empty(out.disc) && !empty(incoming.disc)) out.disc = incoming.disc;
     if (empty(out.platform) && !empty(incoming.platform)) out.platform = incoming.platform;
@@ -4489,6 +4910,9 @@
 
   async function init() {
     fillPlatformOptions();
+    syncPlatformSelect("");
+    updateCameraHints();
+    updateProgressPlaceholder();
     bind();
     bindImport();
     window.addEventListener("storage", onStorageEvent);

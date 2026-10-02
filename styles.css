@@ -673,6 +673,7 @@ body {
 .badge-type.music { background: var(--music-dim); color: var(--music); }
 
 .badge-status.want { background: rgba(148, 184, 216, 0.15); color: var(--want); }
+.badge-status.owned { background: rgba(212, 180, 138, 0.15); color: #d4b48a; }
 .badge-status.in_progress { background: rgba(232, 197, 71, 0.15); color: var(--progress); }
 .badge-status.done { background: var(--done-dim); color: var(--done); }
 .badge-status.dropped { background: rgba(154, 163, 181, 0.15); color: var(--dropped); }
@@ -886,7 +887,7 @@ body {
 .modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: var(--bg);
 }
 
 .modal-panel {
@@ -936,13 +937,13 @@ body {
 }
 
 @keyframes slide-up {
-  from { transform: translateY(24px); opacity: 0.6; }
-  to { transform: translateY(0); opacity: 1; }
+  from { transform: translateY(24px); }
+  to { transform: translateY(0); }
 }
 
 @keyframes fade-scale {
-  from { transform: scale(0.96); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+  from { transform: scale(0.96); }
+  to { transform: scale(1); }
 }
 
 .modal-header {
@@ -2051,4 +2052,71 @@ body.modal-open {
    nothing in the app or in html5-qrcode shows an element while it carries `hidden`. */
 [hidden] {
   display: none !important;
+}
+
+/* Cover choices after Lookup. Wrap rather than overflow; each choice is a 44px tap. */
+.cover-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.cover-choice {
+  flex: 0 0 auto;
+  width: 72px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.cover-choice img {
+  display: block;
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+.cover-choice.is-selected {
+  outline: 2px solid var(--border-strong);
+  outline-offset: 2px;
+}
+.btn-wrong-cover {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.btn-wrong-cover:hover {
+  color: var(--text);
+}
+.btn-wrong-cover:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+#field-platform {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+@media (max-width: 320px) {
+  .cover-choices {
+    flex-wrap: wrap;
+  }
+  .cover-choice {
+    width: calc(50% - var(--space-2));
+    min-width: 44px;
+  }
+  #field-platform {
+    font-size: var(--fs-md);
+  }
 }

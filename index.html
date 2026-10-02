@@ -57,6 +57,7 @@
       <select id="status-filter" class="select">
         <option value="all">All statuses</option>
         <option value="want">Want</option>
+        <option value="owned">Owned</option>
         <option value="in_progress">In progress</option>
         <option value="done">Done</option>
         <option value="dropped">Dropped</option>
@@ -136,7 +137,7 @@
             <button type="button" class="btn btn-ghost" id="btn-scan" title="Scan with camera">Scan</button>
             <button type="button" class="btn btn-ghost" id="btn-lookup" title="Look up cover and details">Lookup</button>
           </div>
-          <p class="field-hint">Camera scan needs a secure page (HTTPS or localhost) and camera permission. On plain HTTP, such as a LAN address, the browser blocks the camera.</p>
+          <p class="field-hint" id="camera-hint">Allow camera when Safari asks.</p>
           <p id="lookup-status" class="lookup-status" role="status" aria-live="polite" hidden></p>
           <!-- Google Books attribution (developers.google.com/books/branding): the unmodified
                "powered by Google" mark beside Google Books results, plus a link to the book's
@@ -192,6 +193,7 @@
             <label for="field-status">Status <span class="req">*</span></label>
             <select id="field-status" required>
               <option value="want">Want</option>
+              <option value="owned">Owned</option>
               <option value="in_progress">In progress</option>
               <option value="done">Done</option>
               <option value="dropped">Dropped</option>
@@ -220,7 +222,26 @@
 
         <div class="form-row" id="platform-row" hidden>
           <label for="field-platform">Platform</label>
-          <input type="text" id="field-platform" list="platform-options" maxlength="40" autocomplete="off" placeholder="e.g. Steam or Switch" />
+          <select id="field-platform">
+            <option value=""></option>
+            <option value="Steam">Steam</option>
+            <option value="PSN">PSN</option>
+            <option value="Xbox">Xbox</option>
+            <option value="Xbox 360">Xbox 360</option>
+            <option value="Xbox One">Xbox One</option>
+            <option value="Series X|S">Series X|S</option>
+            <option value="Switch">Switch</option>
+            <option value="PS1">PS1</option>
+            <option value="PS2">PS2</option>
+            <option value="PS3">PS3</option>
+            <option value="PS4">PS4</option>
+            <option value="PS5">PS5</option>
+            <option value="GameCube">GameCube</option>
+            <option value="Wii">Wii</option>
+            <option value="Wii U">Wii U</option>
+            <option value="PC">PC</option>
+            <option value="Other">Other</option>
+          </select>
         </div>
         <datalist id="platform-options"></datalist>
 
@@ -248,7 +269,7 @@
           </div>
           <div class="form-row">
             <label for="field-progress">Progress</label>
-            <input type="text" id="field-progress" maxlength="80" placeholder="page 120 / hour 8 / ep 3" />
+            <input type="text" id="field-progress" maxlength="80" placeholder="page 120" />
           </div>
         </div>
 
@@ -266,6 +287,10 @@
           <label for="field-cover">Cover URL</label>
           <input type="url" id="field-cover" maxlength="500" placeholder="https://…" />
           <input type="hidden" id="field-cover-source" />
+          <input type="hidden" id="field-cover-source-id" />
+          <input type="hidden" id="field-cover-platform" />
+          <div id="cover-choices" class="cover-choices" hidden></div>
+          <button type="button" id="btn-wrong-cover" class="btn-wrong-cover" hidden>Wrong cover</button>
           <div class="cover-preview-wrap">
             <img id="cover-preview" class="cover-preview" alt="" hidden />
             <div id="cover-preview-placeholder" class="cover-preview-placeholder" aria-hidden="true">No cover</div>
@@ -292,7 +317,7 @@
         <h2 id="scan-title">Scan barcode</h2>
         <button type="button" class="btn-icon" id="scan-close" aria-label="Close scan">&times;</button>
       </div>
-      <p class="field-hint">Point your camera at an ISBN or barcode. Camera scan needs a secure page (HTTPS or localhost) and camera permission. On plain HTTP, such as a LAN address, the browser blocks the camera.</p>
+      <p class="field-hint" id="scan-camera-hint">Allow camera when Safari asks.</p>
       <div id="qr-reader" class="qr-reader"></div>
       <p id="scan-status" class="lookup-status" role="status" aria-live="polite"></p>
       <div class="form-actions-right confirm-actions">
