@@ -1,10 +1,10 @@
-/* FreeRangeMedia (formerly Media Shelf) — warm paper shelf, mobile-first */
+/* FreeRangeMedia (formerly Media Shelf) — oak ground, paper cards, mobile-first */
 
 :root {
   color-scheme: light; /* native controls, placeholders, spinners and popups follow the light shelf */
 
-  /* Surfaces */
-  --bg: #f4efe6;
+  /* Surfaces. Page ground is oak. Cards and form controls stay paper. */
+  --bg: #3e2c1e;
   --bg-elevated: #fffdf8;
   --bg-card: #fffdf8;
   --bg-card-hover: #f6f1e8;
@@ -16,8 +16,8 @@
 
   /* Text */
   --text: #2c241c;
-  --text-muted: #5c5348; /* readable on #fffdf8 and #f4efe6 */
-  --text-dim: #5c5348; /* same floor as muted; old light-on-dark greys fail on paper */
+  --text-muted: #5c5348; /* readable on paper #fffdf8; not used on the oak */
+  --text-dim: #5c5348; /* same floor as muted; oak areas use cream, not this */
   --text-on-accent: #1a120c;
 
   /* Accent — primary button fill. Text on that fill is --text-on-accent. */
@@ -148,7 +148,8 @@ body {
   position: sticky;
   top: 0;
   z-index: 40;
-  background: rgba(244, 239, 230, 0.94);
+  background: var(--bg); /* oak #3e2c1e; cream header text sits on this, not on paper */
+  color: #f3ead7;
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
@@ -195,7 +196,7 @@ body {
 .tagline {
   margin: 0;
   font-size: var(--fs-sm);
-  color: var(--text-muted);
+  color: #f3ead7; /* on the oak, with the header */
 }
 
 .header-actions {
@@ -208,7 +209,7 @@ body {
 /* Secondary header actions stay quiet so "+ Add" is the one object in the header */
 .header-actions .btn-ghost {
   border-color: transparent;
-  color: var(--text-muted);
+  color: #f3ead7; /* Settings and Back up sit on the oak, not accent brown */
 }
 
 .header-actions .btn-ghost:hover {
@@ -252,7 +253,8 @@ body {
     right: 0;
     z-index: 40;
     height: calc(var(--pin-h) + env(safe-area-inset-top, 0px));
-    background: rgba(244, 239, 230, 0.94);
+    background: var(--bg); /* oak, same as the header */
+    color: #f3ead7;
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
@@ -391,11 +393,11 @@ body {
   gap: var(--space-1);
   padding: 0;
   font-size: var(--fs-sm);
-  color: var(--text-muted);
+  color: #f3ead7; /* counts sit on the oak */
 }
 
 .stat-pill strong {
-  color: var(--text);
+  color: #f3ead7;
   font-variant-numeric: tabular-nums;
 }
 
@@ -410,16 +412,33 @@ body {
 }
 
 .type-tabs {
+  position: relative;
+  isolation: isolate; /* keeps the one spotlight above the oak and behind the chips */
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
 
+/* One soft light behind the category row only. Fades out inside this row so it
+   does not reach the cards. No image, no second gradient. */
+.type-tabs::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 0;
+  top: 50%;
+  width: 34rem;
+  height: 4.5rem;
+  transform: translateY(-50%);
+  background: radial-gradient(ellipse at 12rem 50%, #e8c99a 0%, transparent 70%);
+  pointer-events: none;
+}
+
 .chip {
   appearance: none;
   border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  color: var(--text-muted);
+  background: #fffdf8; /* opaque paper; the spotlight must not show through the label */
+  color: #2c241c;
   font: inherit;
   font-size: var(--fs-md);
   font-weight: var(--fw-medium);
@@ -435,7 +454,7 @@ body {
 }
 
 .chip.active {
-  background: var(--accent-dim);
+  background: #fffdf8; /* solid, not an accent tint */
   border-color: var(--accent-border);
   color: var(--accent-text);
 }
@@ -465,7 +484,7 @@ body {
     padding: 0 var(--space-2);
     border: 0;
     border-radius: 0;
-    background: transparent;
+    background: #fffdf8; /* opaque even in the segmented row */
     white-space: nowrap;
     text-align: center;
   }
@@ -484,7 +503,7 @@ body {
   }
 
   .type-tabs .chip.active {
-    background: var(--accent-dim);
+    background: #fffdf8;
     color: var(--accent-text);
     box-shadow: inset 0 0 0 1px var(--accent-border);
   }
@@ -514,7 +533,7 @@ body {
   font: inherit;
   font-size: var(--fs-md);
   color: var(--text);
-  background-color: var(--bg-elevated);
+  background-color: #fffdf8; /* solid paper; labels stay #2c241c, never on the oak */
   border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
@@ -845,7 +864,7 @@ body {
   padding: 0 var(--space-5) var(--space-8);
   text-align: center;
   font-size: var(--fs-xs);
-  color: var(--text-dim);
+  color: #f3ead7; /* footer text sits on the oak */
 }
 
 .site-footer code {
@@ -853,8 +872,8 @@ body {
   font-size: var(--fs-xs);
 }
 
-/* Data credits (RAWG requires an active link). Same size and muted colour as the footer
-   text; only the links are accent + underlined. Inline padding widens the tap area
+/* Data credits (RAWG requires an active link). Same size and cream as the footer
+   text; the links stay underlined. Inline padding widens the tap area
    (~8px above and below, ~33px total; deliberately not 44) without making the line
    taller, and the negative inline margin cancels the horizontal padding so the text
    doesn't move. Desktop: one line with a visible "·". Phones: see below. */
@@ -863,7 +882,7 @@ body {
 }
 
 .footer-credits a {
-  color: var(--accent-text);
+  color: #f3ead7; /* on the oak, not accent brown; underline stays */
   text-decoration: underline;
   text-underline-offset: 2px;
   padding: var(--space-2) var(--space-1);
@@ -871,7 +890,7 @@ body {
 }
 
 .footer-credits a:hover {
-  color: var(--accent-text);
+  color: #f3ead7;
 }
 
 /* Phones: the two credits stack as centred blocks and the decorative "·" (aria-hidden)
@@ -1566,7 +1585,7 @@ body.modal-open {
 .api-key-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg);
+  background: #f4efe6; /* recessed paper inside the sheet; the page oak must not enter here */
   padding: var(--space-4);
   outline: none;
 }
