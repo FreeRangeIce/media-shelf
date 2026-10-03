@@ -430,9 +430,9 @@ body {
   position: absolute;
   z-index: -1;
   left: 0;
-  top: 0;
+  top: -2rem;
   width: 24.5rem;
-  height: 100%;
+  height: calc(100% + 2rem);
   background: radial-gradient(ellipse 50% 100% at center center, #e8c99a 0%, transparent 70%);
   background-position: center center;
   pointer-events: none;
