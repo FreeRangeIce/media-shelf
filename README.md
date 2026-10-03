@@ -76,7 +76,7 @@ Reference links (no keys): **RAWG** (`https://rawg.io/search?query=…`), **IGDB
 - Reference links: IMDb, ISFDB, RAWG, IGDB (by type)
 - Stats strip by type and status
 - Sample items on first load only (`media-shelf-seeded`); once cleared — or once every item is deleted — they don’t come back
-- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v20`)
+- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v21`)
 - Relative paths only — works from the GitHub Pages project path
 
 ## Add to Home Screen

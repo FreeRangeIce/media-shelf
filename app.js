@@ -1951,6 +1951,7 @@
     wikipedia: "Wikipedia",
     omdb: "OMDb",
     rawg: "RAWG",
+    microsoft: "Microsoft Store",
     musicbrainz: "MusicBrainz",
     coverartarchive: "Cover Art Archive",
     manual: "manual",
@@ -3252,7 +3253,132 @@
     }
   }
 
-  async function resolveGameBarcode(raw) {
+  function storeImageUrl(u) {
+    const s = String(u || "").trim();
+    if (s.startsWith("//")) return "https:" + s;
+    return s.replace(/^http:\/\//i, "https://");
+  }
+
+  /**
+   * Box art for an Xbox-family game already identified by barcode.
+   * Display Catalog is public, needs no key, and allows the app origin.
+   */
+  async function fetchXboxStoreArt(title, platformLabel) {
+    const q = String(title || "").trim();
+    const family = mapExternalPlatform(platformLabel);
+    const xbox =
+      family === "Xbox" || family === "Xbox 360" || family === "Xbox One" || family === "Series X|S";
+    if (!q || !xbox) return null;
+    const url =
+      "https://displaycatalog.mp.microsoft.com/v7.0/productFamilies/Games/products?query=" +
+      encodeURIComponent(q) +
+      "&market=US&languages=en-US&fieldsTemplate=details&platformdependencyname=windows.xbox";
+    const data = await fetchJsonQuiet(url);
+    const products = data && Array.isArray(data.Products) ? data.Products : [];
+    const want = normalizeTitle(q);
+    if (!want) return null;
+    let best = null;
+    let bestScore = 0;
+    for (const product of products) {
+      const loc = product && product.LocalizedProperties && product.LocalizedProperties[0];
+      if (!loc) continue;
+      const norm = normalizeTitle(loc.ProductTitle || "");
+      if (!norm.includes(want)) continue;
+      if (/\b(points|content)\b/.test(norm)) continue;
+      let score = norm === want ? 100 : 40;
+      if (family === "Series X|S") score += norm.includes("series") ? 30 : -20;
+      else if (family === "Xbox One") score += norm.includes("xbox one") && !norm.includes("series") ? 30 : 0;
+      else if (family === "Xbox 360") score += norm.includes("360") ? 30 : 0;
+      else if (family === "Xbox") {
+        score += norm.includes("xbox") && !/series|one|360/.test(norm) ? 30 : 0;
+      }
+      if (norm.includes("standard edition")) score += 8;
+      if (score > bestScore) {
+        bestScore = score;
+        best = loc;
+      }
+    }
+    if (!best || bestScore < 40) return null;
+    const images = Array.isArray(best.Images) ? best.Images : [];
+    const urls = [];
+    for (const purpose of ["Poster", "BoxArt"]) {
+      const im = images.find((i) => i && i.ImagePurpose === purpose);
+      const src = storeImageUrl(im && im.Uri);
+      if (src && !urls.includes(src)) urls.push(src);
+    }
+    if (!urls.length) return null;
+    const covers = urls.slice(0, 5).map((url) => ({
+      url,
+      source: "microsoft",
+      sourceId: "",
+      platform: family,
+    }));
+    return {
+      coverUrl: covers[0].url,
+      coverSource: "microsoft",
+      coverPlatform: family,
+      covers,
+    };
+  }
+
+  /**
+   * PriceCharting's cart search is the public site's own UPC lookup (no token).
+   * A hit is used only when its console is the platform already chosen on the form,
+   * so a different console's barcode cannot fill this copy.
+   */
+  async function fetchPriceChartingBarcode(digits, selectedPlatform) {
+    const want = mapExternalPlatform(selectedPlatform);
+    if (!want) return null;
+    const data = await fetchJsonQuiet(
+      "https://www.pricecharting.com/search-products?type=cart&q=" + encodeURIComponent(digits)
+    );
+    const rows = Array.isArray(data) ? data : [];
+    let chosen = null;
+    for (const row of rows) {
+      if (!row || String(row.is_video_game) !== "true" || !row.label) continue;
+      const platform = mapExternalPlatform(row.console);
+      if (platform !== want) continue;
+      const title = titleFromBarcodeProduct(row.label) || String(row.label).trim();
+      if (!title) continue;
+      chosen = { title, platform };
+      break;
+    }
+    if (!chosen) return null;
+    const art = await fetchXboxStoreArt(chosen.title, chosen.platform);
+    if (art) return { ...chosen, ...art };
+    // An Xbox barcode with no store art is not filled. PriceCharting knows older
+    // Xbox games (Burnout Revenge, 014633151022) that the store catalog does not,
+    // and those must stay a no-match.
+    const xbox =
+      chosen.platform === "Xbox" ||
+      chosen.platform === "Xbox 360" ||
+      chosen.platform === "Xbox One" ||
+      chosen.platform === "Series X|S";
+    if (xbox) return null;
+    return chosen;
+  }
+
+  function attachBarcodeCover(result, barcodeHit) {
+    if (!barcodeHit || !barcodeHit.coverUrl) return result;
+    const coverFields = {
+      coverUrl: barcodeHit.coverUrl,
+      coverSource: barcodeHit.coverSource || "microsoft",
+      coverPlatform: barcodeHit.coverPlatform || barcodeHit.platform || "",
+      covers: Array.isArray(barcodeHit.covers) ? barcodeHit.covers : [],
+    };
+    if (!result || !result.data || !lookupHasUsefulFields(result.data)) {
+      return {
+        data: { title: barcodeHit.title || "", ...coverFields },
+        label: "PriceCharting",
+        slug: coverFields.coverSource,
+      };
+    }
+    const d = result.data;
+    if (d.coverUrl || (Array.isArray(d.covers) && d.covers.length)) return result;
+    return { ...result, data: { ...d, ...coverFields } };
+  }
+
+  async function resolveGameBarcode(raw, selectedPlatform) {
     const digits = String(raw || "").replace(/\D/g, "");
     if (digits.length < 8 || digits.length > 14) return null;
     const variants = new Set(barcodeVariants(digits));
@@ -3287,7 +3413,7 @@
       const title = titleFromBarcodeProduct(item.title);
       if (title) return { title, platform: mapExternalPlatform(blob) };
     }
-    return null;
+    return fetchPriceChartingBarcode(digits, selectedPlatform);
   }
 
   function clearCoverChoices() {
@@ -3445,7 +3571,7 @@
         const upcLike = digits.length >= 8 && digits.length <= 14;
         let barcodeHit = null;
         if (upcLike && !looksLikeIsbn(barcode)) {
-          barcodeHit = await resolveGameBarcode(barcode);
+          barcodeHit = await resolveGameBarcode(barcode, platform);
           if (barcodeHit) {
             if (!term && barcodeHit.title) term = barcodeHit.title;
             if (barcodeHit.platform && !platform) {
@@ -3495,9 +3621,19 @@
           );
           return;
         }
-        result = await runLookupWaterfall(steps, tried);
+        result = attachBarcodeCover(await runLookupWaterfall(steps, tried), barcodeHit);
         if (!(result && lookupHasUsefulFields(result.data)) && barcodeHit && barcodeHit.title && !title) {
-          commitLookup({ title: barcodeHit.title }, "Details filled.", "ok");
+          commitLookup(
+            {
+              title: barcodeHit.title,
+              coverUrl: barcodeHit.coverUrl || "",
+              coverSource: barcodeHit.coverSource || "",
+              coverPlatform: barcodeHit.coverPlatform || barcodeHit.platform || "",
+              covers: barcodeHit.covers || [],
+            },
+            "Details filled.",
+            "ok"
+          );
           return;
         }
       } else if (type === "music") {
