@@ -421,10 +421,16 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+  /* Reserve the warm pool above the chips inside this block so the light cannot
+     cover the stats, header, or notices. Margin (not padding) so the phone
+     segmented paper chrome still wraps only the chips. */
+  margin-top: 2rem;
 }
 
 /* One soft light behind the category row only. Fades out inside this row so it
-   does not reach the cards. No image, no second gradient. */
+   does not reach the cards. The 2rem above the chips fills the reserved margin,
+   still #e8c99a, still centered on the category row, gone before the search field.
+   No image, no second gradient. */
 .type-tabs::before {
   content: "";
   position: absolute;
@@ -609,11 +615,17 @@ body {
   border: 1px solid var(--accent-border);
   border-radius: var(--radius);
   font-size: var(--fs-md);
-  color: var(--text-muted);
+  color: #f3ead7; /* cream on the oak panel; muted brown is paper-only */
 }
 
 .seed-banner p {
   margin: 0;
+}
+
+/* Clear samples / Reload / Not now: cream label and border on the oak panel */
+.seed-banner .btn-ghost {
+  color: #f3ead7;
+  border-color: #f3ead7;
 }
 
 /* "A new version is ready." — the sample-notice look, one line plus Reload */
