@@ -1,57 +1,58 @@
-/* FreeRangeMedia (formerly Media Shelf) — warm dark theme, mobile-first */
+/* FreeRangeMedia (formerly Media Shelf) — warm paper shelf, mobile-first */
 
 :root {
-  color-scheme: dark; /* native controls, placeholders, spinners and popups follow the dark theme */
+  color-scheme: light; /* native controls, placeholders, spinners and popups follow the light shelf */
 
   /* Surfaces */
-  --bg: #14110e;
-  --bg-elevated: #1c1814;
-  --bg-card: #24201b;
-  --bg-card-hover: #2c2721;
+  --bg: #f4efe6;
+  --bg-elevated: #fffdf8;
+  --bg-card: #fffdf8;
+  --bg-card-hover: #f6f1e8;
 
   /* Lines */
-  --border: #3a342c;
-  --border-strong: #52493e;
-  --border-control: #766c5f; /* form-control boundary: 3.15:1 on card, 3.43:1 on modal (WCAG 1.4.11) */
+  --border: #e6dccb;
+  --border-strong: #d2c4ae;
+  --border-control: #7d6e5e; /* form-control boundary on the light card and sheet */
 
   /* Text */
-  --text: #f2ebe3;
-  --text-muted: #a89f93;
-  --text-dim: #968c7f; /* tertiary + placeholders: 4.90:1 on card, 5.34:1 on modal, 5.69:1 on page */
+  --text: #2c241c;
+  --text-muted: #5c5348; /* readable on #fffdf8 and #f4efe6 */
+  --text-dim: #5c5348; /* same floor as muted; old light-on-dark greys fail on paper */
   --text-on-accent: #1a120c;
 
-  /* Accent */
-  --accent: #e8a87c;
-  --accent-hover: #f0b890;
-  --accent-dim: rgba(232, 168, 124, 0.15);
-  --accent-border: rgba(232, 168, 124, 0.45);
+  /* Accent — primary button fill. Text on that fill is --text-on-accent. */
+  --accent: #c46a3a;
+  --accent-hover: #d4835a;
+  --accent-dim: rgba(196, 106, 58, 0.15);
+  --accent-border: rgba(196, 106, 58, 0.45);
 
-  /* Type identity */
-  --book: #e8a87c;
-  --book-dim: rgba(232, 168, 124, 0.14);
-  --game: #85cfc0;
-  --game-dim: rgba(133, 207, 192, 0.14);
-  --movie: #c38d9e;
-  --movie-dim: rgba(195, 141, 158, 0.14);
-  --music: #a8a0d8;
-  --music-dim: rgba(168, 160, 216, 0.14);
+  /* Type identity: chip text + 4px card stripe only */
+  --book: #9a3b3b;
+  --book-dim: rgba(154, 59, 59, 0.15);
+  --game: #146354;
+  --game-dim: rgba(20, 99, 84, 0.15);
+  --movie: #8f4e12;
+  --movie-dim: rgba(143, 78, 18, 0.15);
+  --music: #4c468f;
+  --music-dim: rgba(76, 70, 143, 0.15);
 
-  /* Status + feedback */
-  --want: #94b8d8;
-  --progress: #e8c547;
-  --done: #4ade80;
-  --done-dim: rgba(74, 222, 128, 0.12);
-  --done-border: rgba(74, 222, 128, 0.45);
-  --dropped: #9aa3b5;
-  --danger: #f87171;
-  --danger-bg: rgba(248, 113, 113, 0.12);
-  --danger-border: rgba(248, 113, 113, 0.35);
+  /* Status + feedback (text darkened for the light card) */
+  --want: #3d6f99;
+  --progress: #7a5c0c;
+  --done: #176b32;
+  --done-dim: rgba(23, 107, 50, 0.15);
+  --done-border: rgba(23, 107, 50, 0.45);
+  --dropped: #5c6570;
+  --owned: #6e2f55;
+  --danger: #b42318;
+  --danger-bg: rgba(180, 35, 24, 0.12);
+  --danger-border: rgba(180, 35, 24, 0.35);
 
   /* Shape + elevation */
   --radius: 12px;
   --radius-sm: 8px;
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-  --focus: 0 0 0 3px rgba(232, 168, 124, 0.7); /* 4.61:1 vs card */
+  --shadow: 0 12px 40px rgba(44, 36, 28, 0.16);
+  --focus: 0 0 0 3px #c46a3a; /* 3.78:1 vs the light card */
 
   /* Type */
   --font: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif;
@@ -85,7 +86,7 @@
   --tap: 44px;       /* mobile minimum tap target */
   --tap-sm: 40px;    /* small banner / Settings buttons on mobile */
   --pin-h: 56px;     /* pinned brand + "+ Add" row on phones */
-  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23a89f93' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%232c241c' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
 }
 
 *,
@@ -105,9 +106,6 @@ body {
   background: var(--bg);
   color: var(--text);
   line-height: var(--lh-base);
-  background-image:
-    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(232, 168, 124, 0.08), transparent),
-    radial-gradient(ellipse 60% 40% at 90% 0%, rgba(133, 207, 192, 0.06), transparent);
 }
 
 ::placeholder {
@@ -149,7 +147,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 40;
-  background: rgba(20, 17, 14, 0.92);
+  background: rgba(244, 239, 230, 0.94);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
@@ -253,7 +251,7 @@ body {
     right: 0;
     z-index: 40;
     height: calc(var(--pin-h) + env(safe-area-inset-top, 0px));
-    background: rgba(20, 17, 14, 0.92);
+    background: rgba(244, 239, 230, 0.94);
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
@@ -346,7 +344,7 @@ body {
 }
 
 .btn-danger:hover {
-  background: rgba(248, 113, 113, 0.22);
+  background: rgba(180, 35, 24, 0.18);
 }
 
 .btn-sm {
@@ -491,7 +489,7 @@ body {
   }
 
   .type-tabs .chip:focus-visible {
-    box-shadow: inset 0 0 0 3px rgba(232, 168, 124, 0.7);
+    box-shadow: inset 0 0 0 3px #c46a3a;
   }
 }
 
@@ -561,7 +559,7 @@ body {
 /* Focused invalid field keeps a distinct, stronger ring (re-review fix 10 polish).
    0.7 alpha like --focus: 3.74:1 vs the modal (0.45 would be only 2.27:1). */
 .item-form input:user-invalid:focus-visible {
-  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.7);
+  box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.55);
 }
 
 /* Main */
@@ -627,6 +625,28 @@ body {
   box-shadow: var(--focus);
 }
 
+/* Type stripe: 4px on the left edge only. The cover column already carries data-type. */
+.item-card:has(.item-cover-col[data-type="book"]) {
+  border-left-width: 4px;
+  border-left-color: var(--book);
+}
+
+.item-card:has(.item-cover-col[data-type="game"]) {
+  border-left-width: 4px;
+  border-left-color: var(--game);
+}
+
+.item-card:has(.item-cover-col[data-type="movie"]) {
+  border-left-width: 4px;
+  border-left-color: var(--movie);
+}
+
+.item-card:has(.item-cover-col[data-type="music"]) {
+  border-left-width: 4px;
+  border-left-color: var(--music);
+}
+
+
 .item-top {
   display: flex;
   flex-wrap: wrap;
@@ -672,11 +692,11 @@ body {
 .badge-type.movie { background: var(--movie-dim); color: var(--movie); }
 .badge-type.music { background: var(--music-dim); color: var(--music); }
 
-.badge-status.want { background: rgba(148, 184, 216, 0.15); color: var(--want); }
-.badge-status.owned { background: rgba(212, 180, 138, 0.15); color: #d4b48a; }
-.badge-status.in_progress { background: rgba(232, 197, 71, 0.15); color: var(--progress); }
+.badge-status.want { background: rgba(61, 111, 153, 0.15); color: var(--want); }
+.badge-status.owned { background: rgba(110, 47, 85, 0.15); color: var(--owned); }
+.badge-status.in_progress { background: rgba(122, 92, 12, 0.15); color: var(--progress); }
 .badge-status.done { background: var(--done-dim); color: var(--done); }
-.badge-status.dropped { background: rgba(154, 163, 181, 0.15); color: var(--dropped); }
+.badge-status.dropped { background: rgba(92, 101, 112, 0.15); color: var(--dropped); }
 
 .badge-format {
   white-space: normal; /* long "Signed: …" names wrap inside the pill instead of overflowing */
@@ -887,7 +907,7 @@ body {
 .modal-backdrop {
   position: absolute;
   inset: 0;
-  background: var(--bg);
+  background: #e7dcc8; /* solid paper dim; library cards do not show through */
 }
 
 .modal-panel {
@@ -1328,8 +1348,8 @@ body.modal-open {
 }
 
 /* Google Books attribution (plain text, --text-muted, no new colour). The official mark is
-   grey + Google colours on transparent, made for light pages; it sits on a --text plate so it
-   stays "full and clearly visible" on the dark theme, unaltered. */
+   grey + Google colours on transparent, made for light pages, so the plate stays paper
+   (#fffdf8) rather than the dark body-text colour. */
 .gb-attr {
   display: flex;
   flex-wrap: wrap;
@@ -1349,7 +1369,7 @@ body.modal-open {
   display: inline-flex;
   padding: 2px 4px;
   border-radius: 4px;
-  background: var(--text);
+  background: #fffdf8;
 }
 
 .gb-mark {

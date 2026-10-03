@@ -1,5 +1,5 @@
-/* FreeRangeMedia service worker — cache version v18 */
-const CACHE = "media-shelf-v18";
+/* FreeRangeMedia service worker — cache version v19 */
+const CACHE = "media-shelf-v19";
 const ASSETS = [
   "./",
   "./index.html",
