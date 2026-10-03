@@ -622,10 +622,12 @@ body {
   margin: 0;
 }
 
-/* Clear samples / Reload / Not now: cream label and border on the oak panel */
+/* Clear samples / Reload / Not now: cream label and border on the oak panel.
+   No fill — leave the oak panel showing through (Back up now stays primary orange). */
 .seed-banner .btn-ghost {
   color: #f3ead7;
   border-color: #f3ead7;
+  background: transparent;
 }
 
 /* "A new version is ready." — the sample-notice look, one line plus Reload */
