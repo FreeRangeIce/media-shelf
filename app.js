@@ -3622,6 +3622,11 @@
           return;
         }
         result = attachBarcodeCover(await runLookupWaterfall(steps, tried), barcodeHit);
+        // The barcode match is PriceCharting. A later title search must not
+        // take the status line (Wikipedia never saw the barcode).
+        if (barcodeHit && barcodeHit.title && !title && result) {
+          result = { ...result, label: "PriceCharting" };
+        }
         if (!(result && lookupHasUsefulFields(result.data)) && barcodeHit && barcodeHit.title && !title) {
           commitLookup(
             {
@@ -3631,7 +3636,7 @@
               coverPlatform: barcodeHit.coverPlatform || barcodeHit.platform || "",
               covers: barcodeHit.covers || [],
             },
-            "Details filled.",
+            "Matched via PriceCharting",
             "ok"
           );
           return;
