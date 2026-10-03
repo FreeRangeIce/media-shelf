@@ -27,15 +27,19 @@
   --accent-dim: rgba(196, 106, 58, 0.15);
   --accent-border: rgba(196, 106, 58, 0.45);
 
-  /* Type identity: chip text + 4px card stripe only */
+  /* Type identity: darker chip text, bright 4px card stripe + 28% chip tint */
   --book: #9a3b3b;
-  --book-dim: rgba(154, 59, 59, 0.15);
+  --book-stripe: #d64545;
+  --book-dim: rgba(214, 69, 69, 0.28);
   --game: #146354;
-  --game-dim: rgba(20, 99, 84, 0.15);
+  --game-stripe: #1aaa78;
+  --game-dim: rgba(26, 170, 120, 0.28);
   --movie: #8f4e12;
-  --movie-dim: rgba(143, 78, 18, 0.15);
+  --movie-stripe: #f08a1e;
+  --movie-dim: rgba(240, 138, 30, 0.28);
   --music: #4c468f;
-  --music-dim: rgba(76, 70, 143, 0.15);
+  --music-stripe: #7a72e0;
+  --music-dim: rgba(122, 114, 224, 0.28);
 
   /* Status + feedback (text darkened for the light card) */
   --want: #345f86;
@@ -426,11 +430,11 @@ body {
   position: absolute;
   z-index: -1;
   left: 0;
-  top: 50%;
-  width: 34rem;
-  height: 4.5rem;
-  transform: translateY(-50%);
-  background: radial-gradient(ellipse at 12rem 50%, #e8c99a 0%, transparent 70%);
+  top: 0;
+  width: 24.5rem;
+  height: 100%;
+  background: radial-gradient(ellipse 50% 100% at center center, #e8c99a 0%, transparent 70%);
+  background-position: center center;
   pointer-events: none;
 }
 
@@ -476,6 +480,10 @@ body {
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--bg-elevated);
+  }
+
+  .type-tabs::before {
+    width: 100%;
   }
 
   .type-tabs .chip {
@@ -648,22 +656,22 @@ body {
 /* Type stripe: 4px on the left edge only. The cover column already carries data-type. */
 .item-card:has(.item-cover-col[data-type="book"]) {
   border-left-width: 4px;
-  border-left-color: var(--book);
+  border-left-color: var(--book-stripe);
 }
 
 .item-card:has(.item-cover-col[data-type="game"]) {
   border-left-width: 4px;
-  border-left-color: var(--game);
+  border-left-color: var(--game-stripe);
 }
 
 .item-card:has(.item-cover-col[data-type="movie"]) {
   border-left-width: 4px;
-  border-left-color: var(--movie);
+  border-left-color: var(--movie-stripe);
 }
 
 .item-card:has(.item-cover-col[data-type="music"]) {
   border-left-width: 4px;
-  border-left-color: var(--music);
+  border-left-color: var(--music-stripe);
 }
 
 
