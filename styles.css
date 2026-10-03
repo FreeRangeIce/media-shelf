@@ -22,6 +22,7 @@
 
   /* Accent — primary button fill. Text on that fill is --text-on-accent. */
   --accent: #c46a3a;
+  --accent-text: #9a4e24;
   --accent-hover: #d4835a;
   --accent-dim: rgba(196, 106, 58, 0.15);
   --accent-border: rgba(196, 106, 58, 0.45);
@@ -37,7 +38,7 @@
   --music-dim: rgba(76, 70, 143, 0.15);
 
   /* Status + feedback (text darkened for the light card) */
-  --want: #3d6f99;
+  --want: #345f86;
   --progress: #7a5c0c;
   --done: #176b32;
   --done-dim: rgba(23, 107, 50, 0.15);
@@ -436,7 +437,7 @@ body {
 .chip.active {
   background: var(--accent-dim);
   border-color: var(--accent-border);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .chip:focus-visible {
@@ -484,7 +485,7 @@ body {
 
   .type-tabs .chip.active {
     background: var(--accent-dim);
-    color: var(--accent);
+    color: var(--accent-text);
     box-shadow: inset 0 0 0 1px var(--accent-border);
   }
 
@@ -692,7 +693,7 @@ body {
 .badge-type.movie { background: var(--movie-dim); color: var(--movie); }
 .badge-type.music { background: var(--music-dim); color: var(--music); }
 
-.badge-status.want { background: rgba(61, 111, 153, 0.15); color: var(--want); }
+.badge-status.want { background: rgba(52, 95, 134, 0.15); color: var(--want); }
 .badge-status.owned { background: rgba(110, 47, 85, 0.15); color: var(--owned); }
 .badge-status.in_progress { background: rgba(122, 92, 12, 0.15); color: var(--progress); }
 .badge-status.done { background: var(--done-dim); color: var(--done); }
@@ -718,7 +719,7 @@ body {
 }
 
 .stars {
-  color: var(--accent);
+  color: var(--accent-text);
   letter-spacing: 0.05em;
 }
 
@@ -862,7 +863,7 @@ body {
 }
 
 .footer-credits a {
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: underline;
   text-underline-offset: 2px;
   padding: var(--space-2) var(--space-1);
@@ -870,7 +871,7 @@ body {
 }
 
 .footer-credits a:hover {
-  color: var(--accent-hover);
+  color: var(--accent-text);
 }
 
 /* Phones: the two credits stack as centred blocks and the decorative "·" (aria-hidden)
@@ -992,7 +993,7 @@ body {
 }
 
 .req {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* Checkbox groups (v1.2: "What’s on the shelf?", signed copy) */
@@ -1456,7 +1457,7 @@ body.modal-open {
   border-radius: 999px;
   border: 1px solid var(--border-strong);
   background: var(--bg-elevated);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
   text-decoration: none;
@@ -1476,7 +1477,7 @@ body.modal-open {
 }
 
 .card-ref:hover {
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: var(--accent-border);
 }
 
@@ -1547,13 +1548,13 @@ body.modal-open {
 }
 
 .settings-credit a {
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .settings-credit a:hover {
-  color: var(--accent-hover);
+  color: var(--accent-text);
 }
 
 .api-key-cards {
@@ -1654,13 +1655,13 @@ body.modal-open {
 /* One filled primary per area: key-card Save becomes an outlined accent button */
 .api-key-cards .api-key-actions .btn-primary {
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: var(--accent-border);
 }
 
 .api-key-cards .api-key-actions .btn-primary:hover {
   background: var(--accent-dim);
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: var(--accent);
 }
 
@@ -1962,7 +1963,7 @@ body.modal-open {
 
 .backup-help summary {
   cursor: pointer;
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: var(--fw-medium);
   padding: var(--space-1) 0;
 }
