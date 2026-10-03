@@ -3340,7 +3340,7 @@
       if (platform !== want) continue;
       const title = titleFromBarcodeProduct(row.label) || String(row.label).trim();
       if (!title) continue;
-      chosen = { title, platform };
+      chosen = { title, platform, barcodeSource: "PriceCharting" };
       break;
     }
     if (!chosen) return null;
@@ -3369,7 +3369,7 @@
     if (!result || !result.data || !lookupHasUsefulFields(result.data)) {
       return {
         data: { title: barcodeHit.title || "", ...coverFields },
-        label: "PriceCharting",
+        label: barcodeHit.barcodeSource || "",
         slug: coverFields.coverSource,
       };
     }
@@ -3401,7 +3401,7 @@
           platform = mapExternalPlatform(row.platLabel && row.platLabel.value);
           if (platform) break;
         }
-        if (title) return { title, platform };
+        if (title) return { title, platform, barcodeSource: "Wikidata" };
       }
     }
     const upc = await fetchJsonQuiet(
@@ -3411,7 +3411,7 @@
     if (item && item.title) {
       const blob = `${item.title} ${item.description || ""} ${item.brand || ""}`;
       const title = titleFromBarcodeProduct(item.title);
-      if (title) return { title, platform: mapExternalPlatform(blob) };
+      if (title) return { title, platform: mapExternalPlatform(blob), barcodeSource: "UPCitemdb" };
     }
     return fetchPriceChartingBarcode(digits, selectedPlatform);
   }
@@ -3622,12 +3622,13 @@
           return;
         }
         result = attachBarcodeCover(await runLookupWaterfall(steps, tried), barcodeHit);
-        // The barcode match is PriceCharting. A later title search must not
-        // take the status line (Wikipedia never saw the barcode).
-        if (barcodeHit && barcodeHit.title && !title && result) {
-          result = { ...result, label: "PriceCharting" };
+        // Name the source that matched the barcode. A later title search
+        // (Wikipedia) must not take the line, and PriceCharting must not
+        // be named for a Wikidata or UPCitemdb hit.
+        if (barcodeHit && barcodeHit.barcodeSource && barcodeHit.title && !title && result) {
+          result = { ...result, label: barcodeHit.barcodeSource };
         }
-        if (!(result && lookupHasUsefulFields(result.data)) && barcodeHit && barcodeHit.title && !title) {
+        if (!(result && lookupHasUsefulFields(result.data)) && barcodeHit && barcodeHit.barcodeSource && barcodeHit.title && !title) {
           commitLookup(
             {
               title: barcodeHit.title,
@@ -3636,7 +3637,7 @@
               coverPlatform: barcodeHit.coverPlatform || barcodeHit.platform || "",
               covers: barcodeHit.covers || [],
             },
-            "Matched via PriceCharting",
+            "Matched via " + barcodeHit.barcodeSource,
             "ok"
           );
           return;
