@@ -1334,6 +1334,18 @@ label.check input[type="checkbox"]:focus-visible {
   font-size: var(--fs-sm);
 }
 
+/* Blank Incoming / Existing tile says so (Oholiab), centred in the 48px tile. */
+.dup-thumb.is-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  text-align: center;
+  font-size: var(--fs-xs);
+  line-height: 1.2;
+  color: var(--text-muted);
+}
+
 .confirm-option {
   color: var(--text-muted);
 }

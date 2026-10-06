@@ -5708,8 +5708,8 @@
     if (it.format === "physical" && it.disc) meta.push(DISC_LABELS[it.disc] || it.disc);
     if (it.playtimeMinutes != null) meta.push(`${Math.round(it.playtimeMinutes / 60)}h`);
     if (it.type === "comic" && it.condition) meta.push(CONDITION_LABELS[it.condition]);
-    // Names-only mode shows the cover name in the thumbnail's place, so "Variant" alone here.
-    if (comic && it.coverVariant) meta.push(it.coverLabel && images ? `Variant: ${it.coverLabel}` : "Variant");
+    // The cover / variant name has its own line under the title (Oholiab), so "Variant" alone here.
+    if (comic && it.coverVariant) meta.push("Variant");
     if (SIGNED_TYPES.has(it.type) && it.signed) meta.push("Signed");
     let parts = "";
     const labels = COMPONENT_LABELS[it.type];
@@ -5730,7 +5730,9 @@
         .join(" ")}</span>`;
     }
     const year = it.year != null ? ` (${it.year})` : "";
-    const text = `<span class="dup-title">${escapeHtml(displayTitle(it))}${year}</span><span class="dup-meta">${escapeHtml(meta.join(" · "))}</span>${parts}`;
+    // Comics: the cover / variant name as a second line under the title, like the shelf cards (Oholiab).
+    const coverName = comic && it.coverLabel ? `<span class="dup-cover-name">${escapeHtml(it.coverLabel)}</span>` : "";
+    const text = `<span class="dup-title">${escapeHtml(displayTitle(it))}${year}</span>${coverName}<span class="dup-meta">${escapeHtml(meta.join(" · "))}</span>${parts}`;
     if (!comic) return text;
     // Comics: the stored cover URL as-is in an <img> (bytes are never fetched or copied);
     // names-only mode shows the cover / variant name instead of an image.
@@ -5738,10 +5740,9 @@
     const thumb = images
       ? url
         ? `<img class="dup-thumb" src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`
-        : `<span class="dup-thumb" aria-hidden="true"></span>`
+        : `<span class="dup-thumb is-empty" aria-hidden="true">No cover</span>`
       : "";
-    const name = !images && it.coverLabel ? `<span class="dup-cover-name">${escapeHtml(it.coverLabel)}</span>` : "";
-    return `<span class="dup-with-thumb">${thumb}<span class="dup-text">${text}${name}</span></span>`;
+    return `<span class="dup-with-thumb">${thumb}<span class="dup-text">${text}</span></span>`;
   }
 
   /**
