@@ -1,6 +1,6 @@
 # FreeRangeMedia
 
-FreeRangeMedia (formerly Media Shelf) is a personal tracker for **books**, **video games**, **movies**, and **music** — statuses, ratings, notes, tags, format (physical / digital / audiobook; Blu-ray / DVD / VHS for physical movies, cart / disc / code for physical games, CD / vinyl / cassette for physical music), plus optional **ISBN/barcode** and **cover images**.
+FreeRangeMedia (formerly Media Shelf) is a personal tracker for **books**, **comics**, **video games**, **movies**, and **music** — statuses, ratings, notes, tags, format (physical / digital / audiobook; Blu-ray / DVD / VHS for physical movies, cart / disc / code for physical games, CD / vinyl / cassette for physical music), plus optional **ISBN/barcode** and **cover images**.
 
 Your library is saved in this browser (`localStorage` key `media-tracker-v1`). Use **Back up** (saves a backup file — on iPhone through the share sheet, e.g. Save to Files → iCloud Drive) or **Settings → Export / Import** (JSON) to keep a copy or move devices (includes barcode + cover fields). See [Backup & restore](#backup--restore).
 
@@ -27,7 +27,9 @@ A web app can’t write to iCloud Drive directly, so FreeRangeMedia hands a back
 - **Replace** — overwrites the library with the backup.
 
 Details:
-- Backup format: `{ "app": "freerangemedia", "version": 2, "exportedAt": "<ISO>", "items": [...] }` with every item field (format, disc, barcode, coverUrl, coverSource, dates, …). **API keys are never included.** Back up and Export always write this object form. Restore also accepts Media Shelf backups (`"app": "media-shelf"`, version 1), older Export files and plain item arrays. The older Media Shelf app refuses version 2 files instead of silently dropping new fields.
+- Backup format: `{ "app": "freerangemedia", "version": 3, "exportedAt": "<ISO>", "items": [...] }` with every item field (format, disc, barcode, coverUrl, coverSource, dates, comic fields, …). **API keys are never included.** Back up and Export always write this object form. Restore also accepts version 2 backups, Media Shelf backups (`"app": "media-shelf"`, version 1), older Export files and plain item arrays. Version 3 exists because of comics: apps that only know version 2 refuse a version 3 file instead of silently turning comics into books; the older Media Shelf app likewise refuses anything above version 1.
+- If a save doesn't fit in this browser's storage, nothing changes: the library on screen goes back to what is saved and a message says so.
+- Comics also keep a small shadow copy (`localStorage` key `media-tracker-v1:comics`). If an older version of the app saves the library and drops or changes comics, this version puts them back on the next load (comics you deleted here stay deleted).
 - Uses `navigator.share({ files })` when `navigator.canShare({ files })` allows it (iOS/iPadOS Safari and Home Screen app, Chrome on Android; some desktop browsers such as Safari on Mac may also show a share menu). Otherwise the file downloads instead; move it somewhere safe yourself.
 - **Settings** shows “Last backup file created: …” (`localStorage` key `media-shelf-last-backup`). It’s set when the share sheet reports success, when the file downloads, or on Export — it records that a file was created, not that it was saved to iCloud.
 - A small reminder banner appears when you have your own (non-sample) items and either your last backup file is more than 14 days old, or you’ve never backed up and your first own item was added more than 14 days ago. No reminder on day one. **Not now** snoozes it for 7 days (`media-shelf-backup-reminder-dismissed`).
@@ -62,6 +64,18 @@ Movie covers come only from OMDb and game covers only from RAWG. Without a key t
 
 Reference links (no keys): **RAWG** (`https://rawg.io/search?query=…`), **IGDB** (`https://www.igdb.com/search?type=games&q=…`, search UI only — IGDB’s API needs Twitch OAuth and is not used), and **IMDb** when useful.
 
+### Comics
+- **Lookup** goes only to our comic relay (a Cloudflare Worker, not deployed yet): `GET …/comic?series=&issue=[&publisher=]` and `GET …/comic-barcode?upc=`. The browser never calls the comic database itself. Until `COMIC_RELAY_URL` in `app.js` is set, comic Lookup is inert and always says “No match” (everything typed is kept).
+- Barcode first, then series + issue. A barcode that doesn't match is kept on the comic, and series + issue still match.
+- **Cover picker:** one barcode is shared by every variant cover, so after a match you pick the cover of your copy (variants are marked), paste a photo URL, or choose No cover. Save stays off, with the reason shown, until you do. A single cover is preselected but still shown; several are never picked for you.
+- If the relay is busy (503 or any other error) the status says “Lookup busy, try later.” and nothing in the form changes.
+- Credits: the relay answer's `sourceId` prefix picks the credit link (`gcd-` → Grand Comics Database, `cv-` → Comic Vine), shown in the picker, on the comic's card and form, and in the footer. Credit texts are placeholders: “PLACEHOLDER: Grand Comics Database credit” (https://www.comics.org) and “PLACEHOLDER: Comic Vine credit” (https://comicvine.gamespot.com). Sources are named only in `COMIC_SOURCES` in `app.js`.
+- Prices are never requested, stored or shown.
+- Duplicates: comics match on series + issue + cover, never on title or barcode.
+
+### Import from CLZ
+**Settings → Import CLZ** reads a CSV exported from CLZ (Books, Comics, Games, Movies or Music). Pick the type and the file, and FreeRangeMedia shows a preview: how many items will be added, the first 5 rows, rows skipped and why, and possible duplicates (update the one you have or add a separate copy, all at once or per row). If the columns aren't recognised, a mapping screen asks which column is which; the mapping is remembered (`freerangemedia-clz-mapping`). Price, value, cost and paid columns are always ignored. After importing there's Undo, and **Remove last import** stays available in Settings. The CLZ column names in `CLZ_HEADER_ALIASES` (`app.js`) are unconfirmed until checked against a real CLZ export.
+
 ### Scan & manual covers
 - **Scan:** `html5-qrcode` from jsDelivr + device camera. The camera needs a secure page (**HTTPS** or **localhost**) and camera permission; on plain HTTP (e.g. a LAN address) the browser blocks it.
 - Cover URL can always be set manually (`coverSource: manual`); cards show a neutral placeholder when missing.
@@ -69,14 +83,16 @@ Reference links (no keys): **RAWG** (`https://rawg.io/search?query=…`), **IGDB
 ## Features
 
 - Library with type, creator, year, status, rating, progress, notes, tags, barcode, cover
-- Format / edition: books (physical · digital · audiobook), games (physical · digital), movies (physical · digital + disc when physical)
-- Filters: All / Books / Games / Movies + status; search (debounced); sort by updated, title, rating
+- Format / edition: books (physical · digital · audiobook), comics (physical · digital; Comic / Bag-board / Case for physical), games (physical · digital), movies (physical · digital + disc when physical)
+- Comics: series, issue, publisher, writer, artist, condition, signed names, cover variant
+- Import from CLZ (CSV) for every type
+- Filters: All / Books / Comics / Games / Movies / Music + status; search (debounced); sort by updated, title, rating
 - Back up a file (iPhone share sheet → Save to Files; download elsewhere) and Restore from file with Merge / Replace; “last backup file created” indicator and 14-day reminder (14-day grace after your first item if you’ve never backed up)
 - Add / edit / delete (confirm) via modal; Settings wizard for optional OMDb + RAWG keys (status, Show/Hide, Get free key, Test)
 - Reference links: IMDb, ISFDB, RAWG, IGDB (by type)
 - Stats strip by type and status
 - Sample items on first load only (`media-shelf-seeded`); once cleared — or once every item is deleted — they don’t come back
-- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v23`)
+- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v24`)
 - Relative paths only — works from the GitHub Pages project path
 
 ## Add to Home Screen
@@ -89,4 +105,4 @@ Live at [freerangeice.github.io/media-shelf](https://freerangeice.github.io/medi
 
 ## Privacy
 
-No accounts, no cloud sync, no FreeRangeMedia server. Your library and optional OMDb/RAWG keys are saved in this browser’s `localStorage` (backups/exports contain your library only, never API keys). When you press Lookup (or after a scan), your browser sends the title or barcode (plus the author for books and the year for movies and games, when set) to Open Library, Google Books and Wikipedia, and — when configured — the title plus your key to OMDb / RAWG. Music Lookup sends the barcode, or the album title and artist, to MusicBrainz, and loads covers from the Cover Art Archive. Reference links open IMDb, ISFDB, RAWG, or IGDB in a new tab. Note: `localStorage` is per origin, and GitHub Pages project sites under one account share the origin `https://freerangeice.github.io`.
+No accounts, no cloud sync, no FreeRangeMedia server (apart from the comic Lookup relay, which only passes lookups through). Your library and optional OMDb/RAWG keys are saved in this browser’s `localStorage` (backups/exports contain your library only, never API keys). When you press Lookup (or after a scan), your browser sends the title or barcode (plus the author for books and the year for movies and games, when set) to Open Library, Google Books and Wikipedia, and — when configured — the title plus your key to OMDb / RAWG. Music Lookup sends the barcode, or the album title and artist, to MusicBrainz, and loads covers from the Cover Art Archive. Comic Lookup (once the relay is set up) sends the series, issue number, publisher if filled, or the barcode to the FreeRangeMedia comic relay, which asks the comic database. Reference links open IMDb, ISFDB, RAWG, or IGDB in a new tab. Note: `localStorage` is per origin, and GitHub Pages project sites under one account share the origin `https://freerangeice.github.io`.
