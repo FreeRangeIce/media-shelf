@@ -2003,6 +2003,74 @@ body.modal-open {
   }
 }
 
+/* CLZ import card: same parts as the games import card */
+.clz-controls {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 280px;
+  margin-bottom: var(--space-3);
+}
+
+.clz-subhead {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-muted);
+}
+
+.clz-dup-default {
+  max-width: 280px;
+  margin-bottom: var(--space-2);
+}
+
+.clz-dup-default .select,
+.clz-mapping-fields .select {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.clz-mapping-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+@media (max-width: 379px) {
+  .clz-mapping-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.clz-map-row.is-missing label {
+  color: var(--danger);
+}
+
+/* "Update existing" / "Add as separate copy" need more room than Skip / Add / Update */
+.clz-choice {
+  flex: 0 1 190px;
+  width: 190px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.clz-actions {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+@media (max-width: 559px) {
+  .clz-mapping-fields .select,
+  .clz-dup-default .select {
+    min-height: var(--tap);
+  }
+
+  .clz-choice {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+}
+
 /* Remove last import: 16px under Preview, muted line, Delete-style button */
 .import-last {
   margin-top: var(--space-4);

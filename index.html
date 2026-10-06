@@ -107,7 +107,7 @@
 
   <footer class="site-footer">
     <p>Your library is saved in this browser (<code>localStorage</code>). Back up, or Export in Settings, to keep a copy. Hosted on GitHub Pages.</p>
-    <p class="footer-credits"><span class="footer-credit">Game data from <a href="https://rawg.io" target="_blank" rel="noopener noreferrer">RAWG</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Movie data from <a href="https://www.omdbapi.com" target="_blank" rel="noopener noreferrer">OMDb</a> (<a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>)</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Music data from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Covers from the <a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer">Cover Art Archive</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit" id="footer-comic-credit">Comic data: PLACEHOLDER: Metron credit</span></p>
+    <p class="footer-credits"><span class="footer-credit">Game data from <a href="https://rawg.io" target="_blank" rel="noopener noreferrer">RAWG</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Movie data from <a href="https://www.omdbapi.com" target="_blank" rel="noopener noreferrer">OMDb</a> (<a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>)</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Music data from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Covers from the <a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer">Cover Art Archive</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit" id="footer-comic-credit"></span></p>
   </footer>
 
   <!-- Modal -->
@@ -149,6 +149,7 @@
             <p class="comic-picker-title" id="comic-picker-title">Choose the cover</p>
             <p class="comic-picker-hint" id="comic-picker-hint"></p>
             <div id="comic-cover-list" class="comic-cover-list"></div>
+            <div id="comic-picker-credit" class="comic-credit" hidden></div>
             <div class="comic-picker-url">
               <label for="field-comic-cover-url">Or paste a photo URL</label>
               <input type="url" id="field-comic-cover-url" maxlength="500" placeholder="https://…" autocomplete="off" />
@@ -506,6 +507,75 @@
         <div id="import-last" class="import-last" hidden>
           <p id="import-last-line" class="import-last-line"></p>
           <button type="button" class="btn btn-danger" id="btn-import-remove-last">Remove last import</button>
+        </div>
+      </section>
+
+      <!-- CLZ import (CSV). NEW COPY (fact check), listed in frm-comics-strings.md. -->
+      <section class="api-key-card backup-card import-card clz-card" id="clz-card" aria-labelledby="clz-heading" tabindex="-1">
+        <div class="api-key-card-head">
+          <h3 id="clz-heading">Import CLZ</h3>
+        </div>
+        <p class="api-key-blurb">
+          Add items from a CSV file exported from a CLZ app. Pick what the file holds, then choose the file.
+          Nothing is added until you check the preview and confirm. Price and value columns are never imported.
+        </p>
+        <div class="import-defaults clz-controls">
+          <div class="import-default">
+            <label for="clz-type">File type</label>
+            <select id="clz-type" class="select">
+              <option value="games">Games</option>
+              <option value="movies">Movies</option>
+              <option value="books">Books</option>
+              <option value="comics">Comics</option>
+              <option value="music">Music</option>
+            </select>
+          </div>
+        </div>
+        <div class="api-key-actions backup-actions import-file-actions">
+          <div class="backup-action-group">
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-clz-file">Choose CSV file</button>
+          </div>
+          <input type="file" id="clz-file" accept=".csv,text/csv,text/plain" hidden />
+        </div>
+        <p id="clz-message" class="import-message" role="status" aria-live="polite" hidden></p>
+        <div id="clz-mapping" class="clz-mapping" hidden>
+          <p class="import-summary">Match the columns</p>
+          <p class="import-defaults-hint" id="clz-mapping-hint"></p>
+          <p class="import-defaults-hint" id="clz-unmatched"></p>
+          <div id="clz-mapping-fields" class="clz-mapping-fields"></div>
+          <div class="import-actions">
+            <button type="button" class="btn btn-primary" id="btn-clz-mapping-apply">Use these columns</button>
+          </div>
+        </div>
+        <div id="clz-preview" class="import-preview" hidden>
+          <p id="clz-summary" class="import-summary" aria-live="polite"></p>
+          <p id="clz-ignored" class="import-defaults-hint" hidden></p>
+          <p class="clz-subhead" id="clz-first-title">First 5 rows</p>
+          <ul id="clz-rows" class="import-rows"></ul>
+          <div id="clz-dups" hidden>
+            <p class="clz-subhead">Duplicates</p>
+            <div class="import-default clz-dup-default">
+              <label for="clz-dup-mode">For items you already have</label>
+              <select id="clz-dup-mode" class="select">
+                <option value="update">Update existing</option>
+                <option value="add">Add as separate copy</option>
+                <option value="skip">Skip</option>
+              </select>
+            </div>
+            <ul id="clz-dup-rows" class="import-rows"></ul>
+          </div>
+          <div id="clz-skipped" hidden>
+            <p class="clz-subhead">Skipped</p>
+            <ul id="clz-skipped-rows" class="import-rows"></ul>
+          </div>
+          <div class="import-actions clz-actions">
+            <button type="button" class="btn btn-ghost" id="btn-clz-remap">Change columns</button>
+            <button type="button" class="btn btn-primary" id="btn-clz-commit">Import</button>
+          </div>
+        </div>
+        <div id="clz-last" class="import-last" hidden>
+          <p id="clz-last-line" class="import-last-line"></p>
+          <button type="button" class="btn btn-danger" id="btn-clz-remove-last">Remove last import</button>
         </div>
       </section>
 

@@ -701,18 +701,51 @@
   }
 
   /**
-   * Credit for comic details and covers. PLACEHOLDER until the source (likely Metron via a
-   * relay) and its attribution terms are confirmed — fact check before release.
+   * Comic data sources: the ONLY place a source is named. A stored comic's sourceId prefix
+   * ("gcd-issue-123", "cv-issue-456") picks its credit, so comics keep the right credit if
+   * the relay switches source. Credit texts are PLACEHOLDER until each source's attribution
+   * terms are confirmed — fact check before release.
    */
-  const COMIC_CREDIT_TEXT = "PLACEHOLDER: Metron credit";
+  const COMIC_SOURCES = [
+    {
+      key: "gcd",
+      prefix: "gcd-",
+      name: "Grand Comics Database",
+      creditText: "PLACEHOLDER: Grand Comics Database credit",
+      creditUrl: "https://www.comics.org",
+      issueUrl: (id) => `https://www.comics.org/issue/${encodeURIComponent(id)}/`,
+    },
+    {
+      key: "cv", // kept in case the relay switches back
+      prefix: "cv-",
+      name: "Comic Vine",
+      creditText: "PLACEHOLDER: Comic Vine credit",
+      creditUrl: "https://comicvine.gamespot.com",
+      issueUrl: (id) => `https://comicvine.gamespot.com/issue/4000-${encodeURIComponent(id)}/`,
+    },
+  ];
+  /** The source the relay currently serves (footer credit, dev fixture). */
+  const COMIC_ACTIVE_SOURCE = COMIC_SOURCES[0];
 
-  /** Card / form credit line; a link only when the source gave an https page. */
-  function comicCreditHtml(url) {
-    const safe = safeHttpsUrl(url);
-    const text = escapeHtml(COMIC_CREDIT_TEXT);
-    return safe
-      ? `<p class="card-credit"><a class="card-credit-link" href="${escapeHtml(safe)}" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">${text}</span></a></p>`
-      : `<p class="card-credit"><span class="card-credit-plain">${text}</span></p>`;
+  /** The source a sourceId came from, or null (typed by hand, CLZ import, unknown). */
+  function comicSourceFor(sourceId) {
+    const id = String(sourceId || "").trim().toLowerCase();
+    return (id && COMIC_SOURCES.find((s) => id.startsWith(s.prefix))) || null;
+  }
+
+  /** Footer: "Comic data: <credit link>" for the source the relay serves now. */
+  function renderComicFooterCredit() {
+    const el = document.getElementById("footer-comic-credit");
+    if (!el) return;
+    const s = COMIC_ACTIVE_SOURCE;
+    // NEW COPY (fact check): footer prefix.
+    el.innerHTML = `Comic data: <a href="${escapeHtml(s.creditUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.creditText)}</a>`;
+  }
+
+  /** Credit line: a plain link to the source's site (card, form and cover picker). */
+  function comicCreditHtml(source) {
+    if (!source) return "";
+    return `<p class="card-credit"><a class="card-credit-link" href="${escapeHtml(source.creditUrl)}" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">${escapeHtml(source.creditText)}</span></a></p>`;
   }
 
   /** What a card, list or prompt calls the item. Comics: "Saga #1: Chapter One". */
@@ -1844,7 +1877,7 @@
         let creditHtml = gbUrl
           ? `<p class="card-credit"><a class="card-credit-link" href="${escapeHtml(gbUrl)}" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">Cover from Google Books</span></a></p>`
           : "";
-        if (item.type === "comic" && item.sourceName) creditHtml = comicCreditHtml(item.sourceUrl, "card");
+        if (item.type === "comic" && comicSourceFor(item.sourceId)) creditHtml = comicCreditHtml(comicSourceFor(item.sourceId));
         return `
 <li>
   <article class="item-card" tabindex="0" data-id="${escapeHtml(item.id)}" role="button" aria-label="Edit ${escapeHtml(name)}">
@@ -3891,101 +3924,94 @@
   }
 
 
-  /* ---------- Comic Lookup adapter (source pending) ----------
-   * The whole comic UI talks only to comicLookup(), so a real source drops in here later.
-   *   comicLookup({ series, issue, barcode }) -> Promise<{
-   *     match: { series, issue, title, publisher, year, writer: [], artist: [],
-   *              sourceId, sourceName, sourceUrl } | null,
-   *     covers: [{ url, label, variant: boolean }] }>
-   * Planned source: Metron (metron.cloud) through a Cloudflare Worker relay that doesn't
-   * exist yet. The browser must never call metron.cloud directly; only the relay.
-   * Query order (Metron filters): upc; then upc_starts_with = first 12 digits (some
-   * scanners drop the 5-digit add-on); then series_name + number. Each Metron variant
-   * (name, upc, image) becomes a cover with variant: true. Metron variants and issues carry
-   * a price: it is never read, stored or shown — the mapper builds new objects from the
-   * allowed keys only.
+  /* ---------- Comic Lookup adapter (relay contract final; relay not deployed yet) ----------
+   * The whole comic UI talks only to comicLookup(). Data comes through our Cloudflare Worker
+   * relay; the browser never calls the data source itself. Which source the relay uses is
+   * the relay's business: the app reads sourceId/sourceName/sourceUrl from the answer and
+   * picks the credit with comicSourceFor() (see COMIC_SOURCES).
+   * Relay contract:
+   *   GET {COMIC_RELAY_URL}/comic?series=&issue=[&publisher=]
+   *     -> { match: { series, issue, title, publisher, year, writer: [], artist: [],
+   *                   sourceId: "<prefix>issue-<id>", sourceName, sourceUrl } | null,
+   *          candidates: [{ series, year, publisher, sourceId: "<prefix>…-<id>" }],
+   *          covers: [{ url, label, variant }] }   (≤ 5 covers, base cover first; labels
+   *                                                  may be long variant names)
+   *   GET {COMIC_RELAY_URL}/comic-barcode?upc=
+   *     -> same shape (base + variants as covers), or { match: null, reason } on a miss
+   *        such as "barcode-unsupported".
+   *   503 { error: "busy" } + Retry-After, and any other 4xx/5xx -> "busy".
+   * Order: barcode first (if any), then series + issue (if both). A barcode miss keeps the
+   * code and series + issue still match and open the picker.
+   * comicLookup() resolves to { match, covers, candidates, barcodeOnly, busy, reason,
+   * matchedBy: "barcode" | "series" | "" } and never throws for HTTP errors (a network
+   * failure still rejects). sanitizeComicLookup() rebuilds every answer from the allowed
+   * keys only, so a price or any other extra field never reaches the form or storage.
    */
   // TODO: source pending — the relay's https base URL. Empty = Lookup is inert (no match).
   const COMIC_RELAY_URL = "";
-  /** DEV ONLY: set this localStorage key to get fixture results (see devComicFixtureIssue). */
+  /** DEV ONLY: set this localStorage key to get fixture results (see devComicFixture). */
   const COMIC_DEV_FIXTURE_STORAGE = "frm:devComicFixture";
-  /** The picker shows 2–5 covers for one issue (spec); extra variants are left out. */
+  /** The relay sends at most 5 covers; the picker never shows more. */
   const COMIC_COVER_MAX = 5;
+  /** After a busy answer, Lookup waits out Retry-After (capped) before asking the relay again. */
+  let comicBusyUntil = 0;
 
-  async function comicLookup({ series, issue, barcode } = {}) {
+  async function comicLookup({ series, issue, barcode, publisher } = {}) {
     const q = {
       series: cleanText(series),
       issue: cleanIssue(issue),
+      publisher: cleanText(publisher),
       barcode: String(barcode || "").replace(/\D/g, ""),
     };
-    const fixture = devComicFixtureIssue(q);
-    if (fixture !== undefined) return sanitizeComicLookup(fixture ? mapMetronIssue(fixture) : null, { allowData: true });
-    // TODO: source pending. Stub: no source yet, so never a match (the form keeps what was typed).
-    if (!COMIC_RELAY_URL) return { match: null, covers: [] };
-    return sanitizeComicLookup(await fetchComicViaRelay(q));
+    const barcodeOnly = !(q.series && q.issue);
+    const empty = { match: null, covers: [], candidates: [], barcodeOnly, busy: false, reason: "", matchedBy: "" };
+    const routes = [];
+    if (q.barcode) routes.push({ by: "barcode", path: "/comic-barcode", query: { upc: q.barcode } });
+    if (!barcodeOnly) {
+      const query = { series: q.series, issue: q.issue };
+      if (q.publisher) query.publisher = q.publisher;
+      routes.push({ by: "series", path: "/comic", query });
+    }
+    if (!routes.length) return empty;
+    const useFixture = devComicFixtureMode() !== null;
+    // TODO: source pending. Stub: no relay yet, so never a match (the form keeps what was typed).
+    if (!useFixture && !COMIC_RELAY_URL) return empty;
+    let last = null;
+    for (const route of routes) {
+      let got;
+      if (useFixture) got = devComicFixture(q, route.by);
+      else {
+        if (Date.now() < comicBusyUntil) return { ...empty, busy: true };
+        got = await comicRelayGet(route.path, route.query);
+      }
+      if (got.busy) return { ...empty, busy: true };
+      const res = sanitizeComicLookup(got.body, { allowData: useFixture });
+      if (res.match) return { ...empty, ...res, matchedBy: route.by };
+      last = res;
+    }
+    return { ...empty, ...(last || {}), matchedBy: "" };
   }
 
-  /** Metron-shaped queries through the relay (not live until COMIC_RELAY_URL is set). */
-  async function fetchComicViaRelay(q) {
+  /** One relay GET. 4xx/5xx -> { busy: true } (Retry-After honoured); network errors throw. */
+  async function comicRelayGet(path, query) {
     const base = COMIC_RELAY_URL.replace(/\/+$/, "");
-    if (!/^https:\/\//i.test(base)) return null;
-    const tries = [];
-    if (q.barcode) {
-      tries.push({ upc: q.barcode });
-      if (q.barcode.length >= 12) tries.push({ upc_starts_with: q.barcode.slice(0, 12) });
+    if (!/^https:\/\//i.test(base)) return { busy: false, body: null };
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    try {
+      const res = await fetch(`${base}${path}?${new URLSearchParams(query)}`, { signal: ctrl.signal });
+      if (!res.ok) {
+        const secs = Number(res.headers.get("Retry-After"));
+        comicBusyUntil = Date.now() + (Number.isFinite(secs) && secs > 0 ? Math.min(secs, 300) : 10) * 1000;
+        return { busy: true, body: null };
+      }
+      return { busy: false, body: await res.json().catch(() => null) };
+    } finally {
+      clearTimeout(timer);
     }
-    if (q.series && q.issue) tries.push({ series_name: q.series, number: q.issue });
-    for (const params of tries) {
-      const list = await fetchJsonQuiet(`${base}/issue/?${new URLSearchParams(params)}`, 8000);
-      const first = list && Array.isArray(list.results) ? list.results[0] : null;
-      if (!first || first.id == null) continue;
-      const detail = await fetchJsonQuiet(`${base}/issue/${encodeURIComponent(first.id)}/`, 8000);
-      const mapped = mapMetronIssue(detail || first);
-      if (mapped) return mapped;
-    }
-    return null;
   }
 
-  /**
-   * One Metron issue (detail shape) -> { match, covers }. Reads only the fields listed
-   * here; `price` (issue or variant) is never touched.
-   */
-  function mapMetronIssue(issue) {
-    if (!issue || typeof issue !== "object") return null;
-    const credits = Array.isArray(issue.credits) ? issue.credits : [];
-    const byRole = (re) =>
-      credits
-        .filter((c) => c && Array.isArray(c.role) && c.role.some((r) => re.test(String((r && r.name) || ""))))
-        .map((c) => String(c.creator || "").trim())
-        .filter(Boolean);
-    const series = issue.series && typeof issue.series === "object" ? issue.series.name : issue.series;
-    const publisher = issue.publisher && typeof issue.publisher === "object" ? issue.publisher.name : issue.publisher;
-    const story = Array.isArray(issue.name) ? issue.name.find(Boolean) : "";
-    const yearMatch = String(issue.cover_date || issue.store_date || "").match(/^(\d{4})/);
-    const covers = [];
-    // NEW COPY (fact check): label of the issue's own cover in the picker.
-    if (issue.image) covers.push({ url: issue.image, label: "Main cover", variant: false });
-    (Array.isArray(issue.variants) ? issue.variants : []).forEach((v) => {
-      if (v && v.image) covers.push({ url: v.image, label: String(v.name || ""), variant: true });
-    });
-    return {
-      match: {
-        series: series || "",
-        issue: issue.number != null ? String(issue.number) : "",
-        title: issue.title || story || "",
-        publisher: publisher || "",
-        year: yearMatch ? Number(yearMatch[1]) : null,
-        writer: byRole(/^(writer|script|plot|story)/i),
-        artist: byRole(/^(artist|penciller|pencils|illustrator)/i),
-        sourceId: issue.id != null ? String(issue.id) : "",
-        sourceName: issue.__sourceName || "Metron",
-        sourceUrl: issue.resource_url || "",
-      },
-      covers,
-    };
-  }
-
-  /** Whatever a source returns, the UI only ever sees this shape (and no price). */
+  /** Whatever the relay (or fixture) returns, the UI only ever sees this shape (no price). */
   function sanitizeComicLookup(res, { allowData = false } = {}) {
     const okUrl = (u) => {
       const s = String(u || "").trim();
@@ -3996,6 +4022,7 @@
       (Array.isArray(v) ? v : String(v || "").split(","))
         .map((n) => cleanText(n, 120))
         .filter(Boolean);
+    const year = (y) => (/^\d{4}$/.test(String(y)) ? Number(y) : null);
     const m = res && res.match;
     const match =
       m && typeof m === "object" && (cleanText(m.series) || cleanText(m.title))
@@ -4004,7 +4031,7 @@
             issue: cleanIssue(m.issue),
             title: cleanText(m.title),
             publisher: cleanText(m.publisher),
-            year: /^\d{4}$/.test(String(m.year)) ? Number(m.year) : null,
+            year: year(m.year),
             writer: names(m.writer),
             artist: names(m.artist),
             sourceId: cleanText(m.sourceId, 80),
@@ -4020,49 +4047,72 @@
       seen.add(url);
       covers.push({ url, label: cleanText(c.label, 120), variant: c.variant === true });
     });
-    return { match, covers: covers.slice(0, COMIC_COVER_MAX) };
+    // Candidates (other volumes with that name) are kept for a future "which series?" step;
+    // nothing shows them yet.
+    const candidates = (res && Array.isArray(res.candidates) ? res.candidates : [])
+      .filter((c) => c && typeof c === "object" && cleanText(c.series))
+      .slice(0, 10)
+      .map((c) => ({ series: cleanText(c.series), year: year(c.year), publisher: cleanText(c.publisher), sourceId: cleanText(c.sourceId, 80) }));
+    const reason = res && typeof res.reason === "string" ? cleanText(res.reason, 40) : "";
+    return { match, covers: covers.slice(0, COMIC_COVER_MAX), candidates, reason };
+  }
+
+  /** DEV ONLY: the fixture mode from localStorage, or null when it isn't set. */
+  function devComicFixtureMode() {
+    try {
+      return localStorage.getItem(COMIC_DEV_FIXTURE_STORAGE) || null;
+    } catch {
+      return null;
+    }
   }
 
   /**
    * DEV ONLY fixture, inert unless localStorage["frm:devComicFixture"] is set (tests set it
-   * by hand; nothing in the app does). Returns a Metron-shaped issue (with a price that the
-   * mapper must drop), null for a miss, or undefined when the key isn't set.
-   * Values: "5" five covers (main + 4 variants) · "2" · "1" · "0" match without covers ·
-   * "miss" no match.
+   * by hand; nothing in the app does). Answers one relay route ("barcode" | "series") in
+   * the relay's shape, as { busy, body }, labelled as COMIC_ACTIVE_SOURCE. The body carries
+   * a stray price that must be dropped.
+   * Modes: "5" five covers · "2" · "1" · "0" match without covers · "miss" no match (with a
+   * candidate) · "busy" a 503 · "upc" the barcode route matches too (base + 4 variants).
+   * Except in "upc" mode the barcode route answers reason "barcode-unsupported".
    */
-  function devComicFixtureIssue(q) {
-    let mode = null;
-    try {
-      mode = localStorage.getItem(COMIC_DEV_FIXTURE_STORAGE);
-    } catch {
-      return undefined;
+  function devComicFixture(q, by) {
+    const mode = devComicFixtureMode();
+    const src = COMIC_ACTIVE_SOURCE;
+    if (mode === "busy") return { busy: true, body: null };
+    if (by === "barcode" && mode !== "upc") return { busy: false, body: { match: null, reason: "barcode-unsupported" } };
+    if (mode === "miss") {
+      return {
+        busy: false,
+        body: { match: null, candidates: [{ series: q.series, year: 2001, publisher: "Fixture Press", sourceId: `${src.prefix}series-4050002` }], covers: [] },
+      };
     }
-    if (!mode) return undefined;
-    if (mode === "miss") return null;
-    const n = Math.max(0, Math.min(5, Number(mode) || 5));
+    const n = /^[0-5]$/.test(mode) ? Number(mode) : 5;
     const svg = (i, label) =>
       "data:image/svg+xml," +
       encodeURIComponent(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="${["#1d5486", "#9a3b3b", "#146354", "#8f4e12", "#4c468f"][i % 5]}"/><text x="16" y="270" fill="#fff" font-family="sans-serif" font-size="22">${label}</text></svg>`
+        `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="${["#1d5486", "#9a3b3b", "#146354", "#8f4e12", "#4c468f"][i % 5]}"/><text x="16" y="270" fill="#fff" font-family="sans-serif" font-size="22">${String.fromCharCode(65 + i)}</text></svg>`
       );
-    const labels = ["Cover A", "Cover B", "1:25 Variant", "Blank Sketch", "Foil"];
+    // Variant names as a source like GCD gives them: some are long and must wrap.
+    const labels = ["Cover A", "Cover B Jim Lee", "Cover C 1:25 Incentive Fiona Staples Virgin Variant", "Cover D Blank Sketch", "Cover E Foil"];
     return {
-      id: 900001,
-      __sourceName: "Dev fixture",
-      series: { name: q.series || "Fixture Comics" },
-      publisher: { name: "Fixture Press" },
-      number: q.issue || "1",
-      name: ["Dev fixture story"],
-      cover_date: "2020-01-01",
-      price: "3.99", // must never reach the app
-      upc: q.barcode || "",
-      credits: [
-        { creator: "Dev Writer", role: [{ name: "Writer" }] },
-        { creator: "Dev Artist", role: [{ name: "Artist" }] },
-      ],
-      image: n >= 1 ? svg(0, labels[0]) : "",
-      variants: labels.slice(1, n).map((name, i) => ({ name, upc: "", price: "9.99", image: svg(i + 1, name) })),
-      resource_url: "",
+      busy: false,
+      body: {
+        match: {
+          series: q.series || "Fixture Comics",
+          issue: q.issue || "1",
+          title: "Dev fixture story",
+          publisher: "Fixture Press",
+          year: 2020,
+          writer: ["Dev Writer"],
+          artist: ["Dev Artist"],
+          sourceId: `${src.prefix}issue-900001`,
+          sourceName: src.name,
+          sourceUrl: src.issueUrl("900001"),
+          price: "3.99", // not in the contract; must never reach the app
+        },
+        candidates: [],
+        covers: labels.slice(0, n).map((label, i) => ({ url: svg(i, label), label, variant: i > 0, price: "9.99" })),
+      },
     };
   }
 
@@ -4072,7 +4122,8 @@
    * disabled, with the reason shown, until a cover is picked, a photo URL is pasted or
    * "No cover" is chosen. A single cover is preselected but still shown.
    */
-  let comicPicker = { open: false, required: false, covers: [], choice: "" }; // choice: "" | "cover" | "url" | "none"
+  // choice: "" | "cover" | "url" | "none"; credit: the source to credit (COMIC_SOURCES entry) or null.
+  let comicPicker = { open: false, required: false, covers: [], choice: "", credit: null };
 
   function comicSaveBlocked() {
     return (
@@ -4095,7 +4146,7 @@
   }
 
   function resetComicPicker() {
-    comicPicker = { open: false, required: false, covers: [], choice: "" };
+    comicPicker = { open: false, required: false, covers: [], choice: "", credit: null };
     const box = $("#comic-picker");
     if (box) box.hidden = true;
     const list = $("#comic-cover-list");
@@ -4103,14 +4154,14 @@
     updateSaveGate();
   }
 
-  function openComicPicker(covers, { required = true, hint = "" } = {}) {
+  function openComicPicker(covers, { required = true, hint = "", credit = null } = {}) {
     const cur = els.fieldCover.value.trim();
     // A cover from an earlier pick is cleared so this lookup needs its own choice; a URL
     // the user pasted stays and counts as the choice.
     let choice = "";
     if (cur && els.fieldCoverSource.value === "manual") choice = "url";
     else if (cur) setComicCover("", "", { label: "", variant: false });
-    comicPicker = { open: true, required, covers: covers.slice(0, COMIC_COVER_MAX), choice };
+    comicPicker = { open: true, required, covers: covers.slice(0, COMIC_COVER_MAX), choice, credit };
     if (!choice && comicPicker.covers.length === 1) {
       pickComicCover(0, { render: false }); // exactly one: preselected, still shown
     }
@@ -4162,6 +4213,12 @@
     if (urlInput && document.activeElement !== urlInput) {
       urlInput.value = comicPicker.choice === "url" ? cur : "";
     }
+    const credit = $("#comic-picker-credit");
+    if (credit) {
+      credit.hidden = !comicPicker.credit;
+      credit.innerHTML = comicCreditHtml(comicPicker.credit);
+    }
+    updateComicCredit();
     const none = $("#btn-comic-no-cover");
     if (none) {
       none.setAttribute("aria-pressed", String(comicPicker.choice === "none"));
@@ -4182,9 +4239,12 @@
   function updateComicCredit() {
     const box = $("#comic-credit");
     if (!box) return;
-    const show = els.fieldType.value === "comic" && Boolean(els.fieldSourceName.value.trim());
+    // Shown on the comic form (add and edit) whenever its data came from a known source;
+    // while the cover picker shows its own credit line, it isn't shown twice.
+    const source = els.fieldType.value === "comic" ? comicSourceFor(els.fieldSourceId.value) : null;
+    const show = Boolean(source) && !(comicPicker.open && comicPicker.credit);
     box.hidden = !show;
-    box.innerHTML = show ? comicCreditHtml(els.fieldSourceUrl.value) : "";
+    box.innerHTML = show ? comicCreditHtml(source) : "";
   }
 
   /** Fill empty fields from a match; ask before overwriting different filled ones. */
@@ -4231,17 +4291,23 @@
     const series = els.fieldSeries.value.trim();
     const issue = els.fieldIssue.value.trim();
     const barcode = els.fieldBarcode.value.trim();
-    if (!barcode && !series) {
+    if (!barcode && !(series && issue)) {
       // NEW COPY (fact check)
-      setLookupStatus("Enter a barcode, or a series and issue number, to look up a comic.", "error");
+      setLookupStatus("Enter the series and issue number to look up a comic.", "error");
       return;
     }
     lookupBusy = true;
     els.btnLookup.disabled = true;
     setLookupStatus("Looking up…");
     try {
-      const res = await comicLookup({ series, issue, barcode });
+      const res = await comicLookup({ series, issue, barcode, publisher: els.fieldPublisher.value.trim() });
       const code = normalizeBarcode(barcode);
+      if (res.busy) {
+        // PLACEHOLDER copy: relay busy (503 / Retry-After) or any other 4xx/5xx. Nothing in
+        // the form changes.
+        setLookupStatus("Lookup busy, try later. Everything you entered is kept.", "error");
+        return;
+      }
       // A barcode you already have never offers Update: one UPC is shared by variants, so
       // the picker opens and the cover tells the copies apart (Nathan risk 3).
       const sameUpc =
@@ -4249,25 +4315,50 @@
       // NEW COPY (fact check): picker hints and status lines.
       const SAME_UPC_HINT = "You already have a comic with this barcode. Variant covers share one barcode, so pick the cover of this copy.";
       if (res.match) {
-        setLookupStatus(`Matched via ${res.match.sourceName || "Lookup"}`, "ok");
+        // NEW COPY (fact check): say what matched; a barcode that didn't match is kept.
+        const via = res.match.sourceName || "Lookup";
+        setLookupStatus(
+          res.matchedBy === "barcode"
+            ? `Matched via ${via} by barcode.`
+            : code
+              ? `Matched via ${via} by series and issue. Your barcode is kept.`
+              : `Matched via ${via}`,
+          "ok"
+        );
+        // Covers: one is preselected but still shown; none = paste a URL or No cover; several
+        // are never auto-picked.
         openComicPicker(res.covers, {
           required: true,
+          credit: comicSourceFor(res.match.sourceId),
           hint: sameUpc
             ? SAME_UPC_HINT
             : res.covers.length > 1
               ? "Pick the cover that matches your copy, paste a photo URL, or choose No cover."
-              : "Check the cover, paste a photo URL, or choose No cover.",
+              : res.covers.length === 1
+                ? "Check the cover, paste a photo URL, or choose No cover."
+                : "No cover came with this match. Paste a photo URL, or choose No cover.",
         });
         applyComicMatch(res.match);
+        updateComicCredit();
       } else {
         els.fieldSourceId.value = "";
         els.fieldSourceName.value = "";
         els.fieldSourceUrl.value = "";
         updateComicCredit();
-        setLookupStatus("No match. Everything you entered is kept.", "error");
+        // A barcode can't be looked up yet (relay: reason "barcode-unsupported"): keep the
+        // code and point at series + issue.
+        const barcodeMiss = res.barcodeOnly && code;
+        setLookupStatus(
+          barcodeMiss
+            ? "No match for the barcode alone. Your barcode is kept. Add the series and issue number, then look up again."
+            : "No match. Everything you entered is kept.",
+          "error"
+        );
+        if (barcodeMiss) (els.fieldSeries.value.trim() ? els.fieldIssue : els.fieldSeries).focus();
         if (res.covers.length || sameUpc) {
           openComicPicker(res.covers, {
             required: true,
+            credit: null, // no match, so no sourceId to credit
             hint: sameUpc ? SAME_UPC_HINT : "Pick the cover that matches your copy, paste a photo URL, or choose No cover.",
           });
         } else {
@@ -5479,6 +5570,7 @@
       }
     }
     endRecord();
+    out.unterminated = inQuotes; // a quote never closed: callers that care (CLZ) refuse the file
     return out;
   }
 
@@ -5845,15 +5937,28 @@
     return `on ${d.toLocaleDateString([], opts)} at ${time}`;
   }
 
+  /** Games import records say "game(s)"; CLZ import records (kind "clz") say "item(s)". */
+  function importNouns(rec) {
+    return rec && rec.kind === "clz" ? ["item", "items"] : ["game", "games"];
+  }
+
   function updateLastImportUi() {
-    const box = $("#import-last");
-    if (!box) return;
     const rec = readLastImport();
-    box.hidden = !rec;
-    if (!rec) return;
-    const n = rec.added.length + rec.updated.length;
-    $("#import-last-line").textContent = `Last import: ${plural(n, "game", "games")}, ${relativeDayTime(rec.at)}.`;
-    $("#btn-import-remove-last").textContent = `Remove last import (${plural(n, "game", "games")})`;
+    const isClz = Boolean(rec && rec.kind === "clz");
+    // The record shows in the card that made it: Import games, or Import CLZ.
+    [
+      ["#import-last", "#import-last-line", "#btn-import-remove-last", rec && !isClz],
+      ["#clz-last", "#clz-last-line", "#btn-clz-remove-last", isClz],
+    ].forEach(([boxSel, lineSel, btnSel, show]) => {
+      const box = $(boxSel);
+      if (!box) return;
+      box.hidden = !show;
+      if (!show) return;
+      const [one, many] = importNouns(rec);
+      const n = rec.added.length + rec.updated.length;
+      $(lineSel).textContent = `Last import: ${plural(n, one, many)}, ${relativeDayTime(rec.at)}.`;
+      $(btnSel).textContent = `Remove last import (${plural(n, one, many)})`;
+    });
   }
 
   /** What removing the last import would do right now, against fresh storage. */
@@ -5885,16 +5990,18 @@
     const plan = planRemoveLastImport(rec);
     const n = plan.remove.length;
     const m = plan.revert.length;
+    // CLZ records say "item(s)" where the games import says "game(s)" (same sentences).
+    const [one, many] = importNouns(rec);
     // PLACEHOLDER copy (Berean)
     if (!n && !m) {
       writeLastImport(null);
-      showToast("Nothing to remove. Every game from your last import was changed or deleted since.");
+      showToast(`Nothing to remove. Every ${one} from your last import was changed or deleted since.`);
       return;
     }
-    const title = n ? `Remove ${plural(n, "game", "games")} from your last import?` : "Undo the updates from your last import?";
+    const title = n ? `Remove ${plural(n, one, many)} from your last import?` : "Undo the updates from your last import?";
     const parts = [];
-    if (m) parts.push(`${plural(m, "game", "games")} it updated ${m === 1 ? "goes" : "go"} back to how ${m === 1 ? "it was" : "they were"}.`);
-    if (plan.kept) parts.push(`${plural(plan.kept, "game", "games")} you’ve changed since will be kept.`);
+    if (m) parts.push(`${plural(m, one, many)} it updated ${m === 1 ? "goes" : "go"} back to how ${m === 1 ? "it was" : "they were"}.`);
+    if (plan.kept) parts.push(`${plural(plan.kept, one, many)} you’ve changed since will be kept.`);
     if (!parts.length) parts.push("This can’t be undone.");
     openConfirm(title, parts.join(" "), () => {
       closeConfirm();
@@ -5915,10 +6022,10 @@
       writeLastImport(null);
       render();
       const msg = [];
-      if (done.removed) msg.push(`Removed ${plural(done.removed, "game", "games")}`);
-      if (done.reverted) msg.push(`${done.removed ? "restored" : "Restored"} ${plural(done.reverted, "updated game", "updated games")}`);
+      if (done.removed) msg.push(`Removed ${plural(done.removed, one, many)}`);
+      if (done.reverted) msg.push(`${done.removed ? "restored" : "Restored"} ${plural(done.reverted, `updated ${one}`, `updated ${many}`)}`);
       let text = msg.length ? `${msg.join(" and ")} from your last import.` : "Nothing was removed.";
-      if (done.kept) text += ` Kept ${plural(done.kept, "game", "games")} you changed since.`;
+      if (done.kept) text += ` Kept ${plural(done.kept, one, many)} you changed since.`;
       showToast(text);
     }, n ? "Remove" : "Undo updates");
   }
@@ -5978,6 +6085,612 @@
     });
   }
 
+  /* ---------- CLZ import (Settings → Import CLZ) ----------
+   * A CSV exported from a CLZ app (Games, Movies, Books, Comics, Music). Nothing is saved
+   * until the preview is confirmed; then one commitItems (rolled back if storage is full),
+   * the same Undo toast and the same "Remove last import" record as the games import
+   * (LAST_IMPORT_STORAGE, kind "clz"). Price / value / cost / paid columns are never
+   * mapped to anything. All copy here is NEW COPY (fact check), listed in
+   * frm-comics-strings.md.
+   */
+  const CLZ_MAPPING_STORAGE = "freerangemedia-clz-mapping"; // { [typeKey]: { [field]: normalized header } }
+  const CLZ_MAX_ROWS = 10000;
+  const CLZ_MAX_BYTES = 10 * 1024 * 1024;
+  const CLZ_PREVIEW_ROWS = 5;
+  const CLZ_LIST_MAX = 50; // duplicate / skipped rows listed one by one, the rest counted
+  /**
+   * Status column: "want" stays Want, blank or "owned" is Owned. Any other value skips the
+   * row (listed in the preview) until the owner confirms what CLZ's values mean.
+   * Flip to false to import every other status as Owned instead.
+   */
+  const CLZ_SKIP_OTHER_STATUS = true;
+  /** unconfirmed until Micah's sample CSV: CLZ may say "In Collection", "Wish List", "For Sale", "Sold", "On Order". */
+  const CLZ_STATUS_MAP = { "": "owned", owned: "owned", want: "want" };
+  /** Never mapped, never offered in a dropdown. */
+  const CLZ_EXCLUDED_HEADER_RE = /price|value|cost|paid/i;
+
+  const CLZ_TYPES = {
+    games: { type: "game", label: "Games", required: ["title"], distinct: ["platform", "completeness", "loose", "manual"] },
+    movies: { type: "movie", label: "Movies", required: ["title"], distinct: ["director"] },
+    books: { type: "book", label: "Books", required: ["title"], distinct: ["author", "isbn"] },
+    comics: { type: "comic", label: "Comics", required: ["series"], distinct: ["series", "issue", "writer"] },
+    music: { type: "music", label: "Music", required: ["title"], distinct: ["artist"] },
+  };
+
+  /**
+   * Header aliases per type and field, compared case- and space-insensitively (letters,
+   * digits and # only). Fields are listed in mapping order. Extra columns are ignored.
+   */
+  // unconfirmed until Micah's sample CSV — every alias below is a guess at CLZ's export headers.
+  const CLZ_HEADER_ALIASES = {
+    games: {
+      title: ["title", "game title", "name"],
+      platform: ["platform", "system"],
+      year: ["release year", "year", "release date"],
+      barcode: ["barcode", "upc", "ean"],
+      completeness: ["completeness", "complete"],
+      loose: ["loose", "has loose"],
+      box: ["box", "has box"],
+      manual: ["manual", "has manual"],
+      status: ["collection status", "status"],
+    },
+    movies: {
+      title: ["title", "movie title"],
+      year: ["release year", "year", "movie release year", "release date"],
+      director: ["director", "directors"],
+      barcode: ["barcode", "upc", "ean"],
+      format: ["format", "media type", "disc format"],
+      status: ["collection status", "status"],
+    },
+    books: {
+      title: ["title", "book title"],
+      author: ["author", "authors"],
+      year: ["publication year", "year", "publication date", "release date"],
+      isbn: ["isbn", "isbn 13", "isbn13", "isbn 10", "isbn10", "barcode"],
+      signed: ["signed", "autographed"],
+      status: ["collection status", "status"],
+    },
+    comics: {
+      series: ["series", "series title"],
+      issue: ["issue", "issue nr", "issue no", "issue number", "number", "#"],
+      title: ["title", "issue title", "story title"],
+      publisher: ["publisher"],
+      year: ["release year", "cover year", "year", "cover date", "release date", "publication date"],
+      writer: ["writer", "writers", "script"],
+      artist: ["artist", "artists", "penciller", "penciler", "pencils"],
+      barcode: ["barcode", "upc"],
+      cover: ["cover url", "cover image", "cover image url", "front cover", "image url", "cover"],
+      condition: ["condition"],
+      status: ["collection status", "status"],
+    },
+    music: {
+      title: ["title", "album", "album title"],
+      artist: ["artist", "artists", "band"],
+      year: ["release year", "year", "release date"],
+      barcode: ["barcode", "upc", "ean"],
+      format: ["format", "media", "media type"],
+      status: ["collection status", "status"],
+    },
+  };
+
+  const CLZ_FIELD_LABELS = {
+    title: "Title", platform: "Platform", year: "Year", barcode: "Barcode",
+    completeness: "Completeness", loose: "Loose", box: "Box", manual: "Manual",
+    status: "Status", director: "Director", format: "Format", author: "Author",
+    isbn: "ISBN", signed: "Signed", series: "Series", issue: "Issue", publisher: "Publisher",
+    writer: "Writer", artist: "Artist", cover: "Cover URL", condition: "Condition",
+  };
+
+  let clz = null; // { typeKey, headers, rows, parsed, mapping, evals, choices }
+
+  function clzNorm(h) {
+    return String(h || "").toLowerCase().replace(/[^a-z0-9#]+/g, "");
+  }
+
+  function clzExcluded(h) {
+    return CLZ_EXCLUDED_HEADER_RE.test(String(h || ""));
+  }
+
+  /** @returns {{ headers: string[], rows: string[][] } | { error: string }} */
+  function parseClzCsv(raw) {
+    const text = String(raw || "").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+    if (!text.trim()) return { error: "norows" };
+    if (/\u0000/.test(text)) return { error: "unparseable" };
+    // Delimiter: whichever of , ; tab appears most in the header line (outside quotes).
+    const nl = text.indexOf("\n");
+    const head = (nl < 0 ? text : text.slice(0, nl)).replace(/"[^"]*"/g, "");
+    const count = (ch) => head.split(ch).length - 1;
+    const delim = [",", ";", "\t"].reduce((best, ch) => (count(ch) > count(best) ? ch : best), ",");
+    const records = parseDelimited(text, delim);
+    if (records.unterminated) return { error: "unparseable" };
+    if (records.length < 2) return { error: "norows" };
+    const headers = records[0].cells.map((c) => String(c).replace(/\s+/g, " ").trim());
+    if (!headers.some(Boolean)) return { error: "unparseable" };
+    const rows = records.slice(1).map((r) => r.cells);
+    if (rows.length > CLZ_MAX_ROWS) return { error: "toomany", count: rows.length };
+    return { headers, rows };
+  }
+
+  function readClzSavedMappings() {
+    try {
+      const m = JSON.parse(localStorage.getItem(CLZ_MAPPING_STORAGE) || "{}");
+      return m && typeof m === "object" && !Array.isArray(m) ? m : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /** field -> header index, from the remembered mapping first, then the alias table. */
+  function clzAutoMapping(typeKey, headers) {
+    const aliases = CLZ_HEADER_ALIASES[typeKey];
+    const saved = readClzSavedMappings()[typeKey] || {};
+    const normHeaders = headers.map(clzNorm);
+    const used = new Set();
+    const mapping = {};
+    const usable = (i) => i >= 0 && !used.has(i) && !clzExcluded(headers[i]);
+    for (const field of Object.keys(aliases)) {
+      let idx = saved[field] ? normHeaders.indexOf(saved[field]) : -1;
+      if (!usable(idx)) idx = -1;
+      if (idx < 0) {
+        for (const a of aliases[field]) {
+          const j = normHeaders.findIndex((h, k) => h === clzNorm(a) && usable(k));
+          if (j >= 0) {
+            idx = j;
+            break;
+          }
+        }
+      }
+      if (idx >= 0) {
+        mapping[field] = idx;
+        used.add(idx);
+      }
+    }
+    return mapping;
+  }
+
+  function clzScore(typeKey, headers) {
+    const m = clzAutoMapping(typeKey, headers);
+    return CLZ_TYPES[typeKey].distinct.filter((f) => m[f] != null).length;
+  }
+
+  function clzYes(v) {
+    return /^(yes|y|true|1|x|✓|✔|checked|signed)$/i.test(String(v || "").trim());
+  }
+
+  function clzYear(v) {
+    const m = String(v || "").match(/\b(1[89]\d\d|20\d\d|2100)\b/);
+    return m ? Number(m[1]) : null;
+  }
+
+  function clzStatus(v) {
+    const raw = String(v || "").replace(/\s+/g, " ").trim();
+    const key = raw.toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(CLZ_STATUS_MAP, key)) return { status: CLZ_STATUS_MAP[key] };
+    if (!CLZ_SKIP_OTHER_STATUS) return { status: "owned" };
+    return { skip: `Status “${raw}” isn’t imported yet` };
+  }
+
+  /** One CSV row -> { cand } (an item to normalize) or { skip: reason }. */
+  function clzCandidate(typeKey, cells, mapping) {
+    const get = (f) => (mapping[f] != null ? String(cells[mapping[f]] ?? "").replace(/\s+/g, " ").trim() : "");
+    const st = clzStatus(get("status"));
+    const base = { status: st.status, sources: ["clz"], format: "physical", year: clzYear(get("year")), barcode: normalizeBarcode(get("barcode")) };
+    const type = CLZ_TYPES[typeKey].type;
+    let cand;
+    if (typeKey === "games") {
+      cand = { ...base, type, title: get("title"), platform: canonicalPlatform(get("platform")) };
+      const comp = get("completeness").toLowerCase();
+      if (comp === "cib" || /\bcib\b|complete in box/.test(comp) || comp === "complete") {
+        Object.assign(cand, { ownsGame: true, ownsCase: true, ownsManual: true });
+      } else if (/\b(new|sealed)\b/.test(comp)) {
+        Object.assign(cand, { ownsGame: true, ownsCase: true });
+      } else if (/\bloose\b/.test(comp)) {
+        cand.ownsGame = true;
+      }
+      if (clzYes(get("loose"))) cand.ownsGame = true;
+      if (clzYes(get("box"))) cand.ownsCase = true;
+      if (clzYes(get("manual"))) cand.ownsManual = true;
+    } else if (typeKey === "movies") {
+      const f = get("format").toLowerCase();
+      cand = { ...base, type, title: get("title"), creator: get("director") };
+      if (/digital/.test(f)) cand.format = "digital";
+      else if (/blu|\b4k\b|uhd/.test(f)) cand.disc = "blu-ray";
+      else if (/dvd/.test(f)) cand.disc = "dvd";
+      else if (/vhs/.test(f)) cand.disc = "vhs";
+    } else if (typeKey === "books") {
+      const creator = get("author");
+      const signed = clzYes(get("signed"));
+      const names = parseCreatorNames(creator);
+      // CLZ has one Signed flag per book, so every listed author is marked signed.
+      cand = { ...base, type, title: get("title"), creator, barcode: normalizeBarcode(get("isbn")), authors: names.map((name) => ({ name, signed })), signed };
+    } else if (typeKey === "comics") {
+      const cover = safeHttpsUrl(get("cover").replace(/^http:\/\//i, "https://"));
+      const cond = get("condition").toLowerCase();
+      cand = {
+        ...base,
+        type,
+        series: get("series"),
+        issue: get("issue"),
+        title: get("title"),
+        publisher: get("publisher"),
+        writer: get("writer"),
+        artist: get("artist"),
+        coverUrl: cover,
+        coverSource: cover ? "clz" : "",
+        condition: Object.prototype.hasOwnProperty.call(CONDITION_LABELS, cond) ? cond : "",
+      };
+    } else {
+      const f = get("format").toLowerCase();
+      cand = { ...base, type, title: get("title"), creator: get("artist") };
+      if (/digital|mp3|flac/.test(f)) cand.format = "digital";
+      else if (/\bcd\b|compact disc/.test(f)) cand.disc = "cd";
+      else if (/vinyl|\blp\b|\d+"|\d+ ?inch/.test(f)) cand.disc = "vinyl";
+      else if (/cassette|tape/.test(f)) cand.disc = "cassette";
+    }
+    const need = CLZ_TYPES[typeKey].required[0];
+    if (!cand[need]) return { skip: need === "series" ? "No series" : "No title", cand };
+    if (st.skip) return { skip: st.skip, cand };
+    return { cand };
+  }
+
+  function clzRepeatKey(it) {
+    if (it.type === "comic") return `comic|${comicDupKey(it)}`;
+    return [it.type, normalizeTitle(it.title), it.year ?? "", canonicalPlatform(it.platform).toLowerCase(), it.format, it.disc || ""].join("|");
+  }
+
+  function evaluateClz() {
+    const seen = new Map(); // repeat key -> row number of the first new row
+    clz.evals = clz.rows.map((cells, i) => {
+      const res = clzCandidate(clz.typeKey, cells, clz.mapping);
+      const rowNo = i + 2; // the header is row 1
+      if (res.skip) {
+        return { kind: "skip", reason: res.skip, item: res.cand ? normalizeItem({ ...res.cand, id: "incoming" }) : null, rowNo };
+      }
+      const item = normalizeItem({ ...res.cand, id: "incoming" });
+      const dup = findDuplicate(item, null);
+      if (dup) return { kind: "dup", dup: dup.item, item, rowNo };
+      const key = clzRepeatKey(item);
+      if (seen.has(key)) return { kind: "dup", repeatOf: seen.get(key), item, rowNo };
+      seen.set(key, rowNo);
+      return { kind: "new", item, rowNo };
+    });
+  }
+
+  function clzChoice(i) {
+    const ev = clz.evals[i];
+    if (ev.kind === "new") return "add";
+    if (ev.kind !== "dup") return "skip";
+    const c = clz.choices.get(i) || $("#clz-dup-mode").value || "update";
+    // A repeat inside the file has nothing on the shelf to update: it's another copy.
+    return c === "update" && !ev.dup ? "add" : c;
+  }
+
+  function clzCounts() {
+    const c = { total: clz.rows.length, fresh: 0, dup: 0, skip: 0, add: 0, update: 0 };
+    clz.evals.forEach((ev, i) => {
+      if (ev.kind === "new") c.fresh++;
+      else if (ev.kind === "dup") c.dup++;
+      else c.skip++;
+      const ch = clzChoice(i);
+      if (ch === "add") c.add++;
+      else if (ch === "update") c.update++;
+    });
+    return c;
+  }
+
+  function setClzMessage(msg, kind = "error") {
+    const el = $("#clz-message");
+    el.textContent = msg || "";
+    el.dataset.kind = kind;
+    el.hidden = !msg;
+  }
+
+  function clzRowText(ev) {
+    const it = ev.item;
+    if (!it) return { name: "(no title)", meta: "" };
+    const meta = [];
+    if (it.type === "game" && it.platform) meta.push(it.platform);
+    if (it.type === "comic" && it.publisher) meta.push(it.publisher);
+    if ((it.type === "movie" || it.type === "music") && it.format === "physical" && it.disc) meta.push(DISC_LABELS[it.disc] || it.disc);
+    if (it.year != null) meta.push(it.year);
+    if (isCib(it)) meta.push("CIB");
+    if (SIGNED_TYPES.has(it.type) && it.signed) meta.push("Signed");
+    meta.push(STATUS_LABELS[it.status] || it.status);
+    const name = it.type === "comic" && !it.series ? "(no series)" : displayTitle(it);
+    return { name, meta: meta.join(" · ") };
+  }
+
+  function clzRowHtml(ev, i, withChoice) {
+    const { name, meta } = clzRowText(ev);
+    let note = "";
+    let side = "";
+    if (ev.kind === "new") note = `<p class="import-dup">New</p>`;
+    else if (ev.kind === "skip") note = `<p class="import-reason">Skipped · ${escapeHtml(ev.reason)}</p>`;
+    else {
+      const what = ev.repeatOf ? `Also on row ${ev.repeatOf}` : `You already have “${displayTitle(ev.dup)}”`;
+      note = `<p class="import-dup">Duplicate · ${escapeHtml(what)}</p>`;
+      if (withChoice) {
+        const choice = clzChoice(i);
+        const opts = [...(ev.dup ? [["update", "Update existing"]] : []), ["add", "Add as separate copy"], ["skip", "Skip"]];
+        const id = `clz-choice-${i}`;
+        side =
+          `<label class="sr-only" for="${id}">Row ${ev.rowNo}: ${escapeHtml(name)}</label>` +
+          `<select class="select import-choice clz-choice" id="${id}" data-row="${i}">` +
+          opts.map(([v, l]) => `<option value="${v}"${v === choice ? " selected" : ""}>${l}</option>`).join("") +
+          `</select>`;
+      }
+    }
+    return (
+      `<li class="import-row is-${ev.kind === "skip" ? "error" : ev.kind}">` +
+      `<div class="import-row-text"><span class="import-line">Row ${ev.rowNo}</span> ` +
+      `<span class="import-title">${escapeHtml(name)}</span>` +
+      (meta ? `<span class="import-meta"> · ${escapeHtml(meta)}</span>` : "") +
+      note +
+      `</div>${side}</li>`
+    );
+  }
+
+  function renderClzPreview() {
+    const c = clzCounts();
+    const label = CLZ_TYPES[clz.typeKey].label;
+    $("#clz-summary").textContent =
+      `${plural(c.total, "row", "rows")} in this ${label} file · ${c.fresh.toLocaleString()} new · ` +
+      `${plural(c.dup, "duplicate", "duplicates")} · ${c.skip.toLocaleString()} skipped`;
+    const ignored = clz.headers.filter((h) => h && clzExcluded(h));
+    const ign = $("#clz-ignored");
+    ign.hidden = !ignored.length;
+    ign.textContent = ignored.length ? `Not imported: ${ignored.join(", ")} (price and value columns are never imported).` : "";
+    $("#clz-first-title").textContent = `First ${Math.min(CLZ_PREVIEW_ROWS, clz.evals.length)} rows`;
+    $("#clz-rows").innerHTML = clz.evals.slice(0, CLZ_PREVIEW_ROWS).map((ev, i) => clzRowHtml(ev, i, false)).join("");
+    const dupIdx = clz.evals.map((ev, i) => (ev.kind === "dup" ? i : -1)).filter((i) => i >= 0);
+    $("#clz-dups").hidden = !dupIdx.length;
+    $("#clz-dup-rows").innerHTML =
+      dupIdx.slice(0, CLZ_LIST_MAX).map((i) => clzRowHtml(clz.evals[i], i, true)).join("") +
+      (dupIdx.length > CLZ_LIST_MAX
+        ? `<li class="import-row import-more">…and ${plural(dupIdx.length - CLZ_LIST_MAX, "more duplicate", "more duplicates")}, which follow the choice above.</li>`
+        : "");
+    const skipIdx = clz.evals.map((ev, i) => (ev.kind === "skip" ? i : -1)).filter((i) => i >= 0);
+    $("#clz-skipped").hidden = !skipIdx.length;
+    $("#clz-skipped-rows").innerHTML =
+      skipIdx.slice(0, CLZ_LIST_MAX).map((i) => clzRowHtml(clz.evals[i], i, false)).join("") +
+      (skipIdx.length > CLZ_LIST_MAX
+        ? `<li class="import-row import-more">…and ${plural(skipIdx.length - CLZ_LIST_MAX, "more skipped row", "more skipped rows")}.</li>`
+        : "");
+    const n = c.add + c.update;
+    const btn = $("#btn-clz-commit");
+    btn.disabled = n === 0;
+    btn.textContent = !n
+      ? "Nothing to import"
+      : c.update
+        ? `Import ${c.add.toLocaleString()} and update ${c.update.toLocaleString()}`
+        : `Import ${plural(c.add, "item", "items")}`;
+    $("#clz-preview").hidden = false;
+  }
+
+  function clzUsableHeaders() {
+    return clz.headers.map((h, i) => ({ h, i })).filter(({ h }) => h && !clzExcluded(h));
+  }
+
+  function showClzMapping(missing) {
+    const aliases = CLZ_HEADER_ALIASES[clz.typeKey];
+    const usable = clzUsableHeaders();
+    const used = new Set(Object.values(clz.mapping));
+    const unmatched = usable.filter(({ i }) => !used.has(i)).map(({ h }) => h);
+    const label = CLZ_TYPES[clz.typeKey].label;
+    $("#clz-mapping-hint").textContent = missing.length
+      ? `No column was recognised for ${missing.map((f) => CLZ_FIELD_LABELS[f]).join(", ")}. Pick the matching column once; the choice is remembered for ${label} files.`
+      : `Pick the column for each field. The choice is remembered for ${label} files.`;
+    $("#clz-unmatched").textContent = unmatched.length ? `Columns not matched yet: ${unmatched.join(", ")}` : "";
+    $("#clz-mapping-fields").innerHTML = Object.keys(aliases)
+      .map((field) => {
+        const id = `clz-map-${field}`;
+        const req = CLZ_TYPES[clz.typeKey].required.includes(field);
+        const cur = clz.mapping[field];
+        const opts =
+          `<option value="">— Not in this file —</option>` +
+          usable.map(({ h, i }) => `<option value="${i}"${cur === i ? " selected" : ""}>${escapeHtml(h)}</option>`).join("");
+        return (
+          `<div class="import-default clz-map-row${missing.includes(field) ? " is-missing" : ""}">` +
+          `<label for="${id}">${escapeHtml(CLZ_FIELD_LABELS[field])}${req ? ` <span class="req">*</span>` : ""}</label>` +
+          `<select class="select" id="${id}" data-field="${field}">${opts}</select></div>`
+        );
+      })
+      .join("");
+    $("#clz-preview").hidden = true;
+    $("#clz-mapping").hidden = false;
+  }
+
+  function applyClzMapping() {
+    const mapping = {};
+    const used = new Set();
+    let clash = false;
+    $$("#clz-mapping-fields select").forEach((sel) => {
+      if (sel.value === "") return;
+      const i = Number(sel.value);
+      if (used.has(i) || clzExcluded(clz.headers[i])) clash = true;
+      used.add(i);
+      mapping[sel.dataset.field] = i;
+    });
+    const missing = CLZ_TYPES[clz.typeKey].required.filter((f) => mapping[f] == null);
+    if (missing.length) {
+      setClzMessage(`Pick a column for ${missing.map((f) => CLZ_FIELD_LABELS[f]).join(", ")} first.`);
+      return;
+    }
+    if (clash) {
+      setClzMessage("Each column can be used for one field only.");
+      return;
+    }
+    clz.mapping = mapping;
+    const all = readClzSavedMappings();
+    all[clz.typeKey] = Object.fromEntries(Object.entries(mapping).map(([f, i]) => [f, clzNorm(clz.headers[i])]));
+    writeLs(CLZ_MAPPING_STORAGE, JSON.stringify(all));
+    setClzMessage("");
+    $("#clz-mapping").hidden = true;
+    previewClz();
+  }
+
+  function previewClz() {
+    if (syncFromStorage()) render();
+    clz.choices = new Map();
+    evaluateClz();
+    renderClzPreview();
+  }
+
+  function resetClz(keepMessage) {
+    clz = null;
+    $("#clz-preview").hidden = true;
+    $("#clz-mapping").hidden = true;
+    if (!keepMessage) setClzMessage("");
+  }
+
+  /** Parse result -> error (nothing changes), the mapping screen, or the preview. */
+  function analyzeClz(parsed, typeKey) {
+    const label = CLZ_TYPES[typeKey].label;
+    const fail = (msg) => {
+      resetClz(true);
+      setClzMessage(`${msg} Nothing was changed.`);
+    };
+    if (parsed.error === "norows") return fail("That file has no rows to import.");
+    if (parsed.error === "unparseable") return fail("That file couldn’t be read as a CSV.");
+    if (parsed.error === "toomany") {
+      return fail(`That file has ${parsed.count.toLocaleString()} rows. The limit is ${CLZ_MAX_ROWS.toLocaleString()} at a time.`);
+    }
+    const mapping = clzAutoMapping(typeKey, parsed.headers);
+    const known = Object.keys(mapping).filter((f) => f !== "status");
+    const mine = clzScore(typeKey, parsed.headers);
+    const other = Object.keys(CLZ_TYPES)
+      .filter((k) => k !== typeKey)
+      .map((k) => ({ k, s: clzScore(k, parsed.headers) }))
+      .sort((a, b) => b.s - a.s)[0];
+    if (other && other.s > mine && (mine === 0 || other.s >= mine + 2)) {
+      return fail(`That file looks like a CLZ ${CLZ_TYPES[other.k].label} export, not ${label}. Pick the matching type and choose the file again.`);
+    }
+    if (!known.length) return fail(`None of that file’s columns were recognised as a CLZ ${label} export.`);
+    clz = { typeKey, headers: parsed.headers, rows: parsed.rows, parsed, mapping, evals: [], choices: new Map() };
+    setClzMessage("");
+    const missing = CLZ_TYPES[typeKey].required.filter((f) => mapping[f] == null);
+    if (missing.length) {
+      showClzMapping(missing);
+      return;
+    }
+    $("#clz-mapping").hidden = true;
+    previewClz();
+  }
+
+  function readClzFile(file) {
+    if (!file) return;
+    resetClz();
+    if (file.size > CLZ_MAX_BYTES) {
+      setClzMessage("That file is too large. Nothing was changed.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => setClzMessage("Couldn’t read that file. Nothing was changed.");
+    reader.onload = () => analyzeClz(parseClzCsv(String(reader.result || "")), $("#clz-type").value);
+    reader.readAsText(file);
+  }
+
+  function commitClz() {
+    if (!clz || !clz.evals.length) return;
+    if (syncFromStorage()) {
+      render();
+      const before = clz.evals.map((e) => e.kind).join();
+      evaluateClz();
+      if (clz.evals.map((e) => e.kind).join() !== before) {
+        renderClzPreview();
+        setClzMessage("Your library changed in another tab. Check the preview again, then import.");
+        return;
+      }
+    }
+    const now = nowIso();
+    const toAdd = [];
+    const toUpdate = new Map();
+    clz.evals.forEach((ev, i) => {
+      const ch = clzChoice(i);
+      if (ch === "update" && ev.dup && !toUpdate.has(ev.dup.id)) {
+        toUpdate.set(ev.dup.id, ev.item);
+      } else if (ch === "add" || ch === "update") {
+        // "update" twice against one existing item: the second row is another copy.
+        toAdd.push(normalizeItem({ ...ev.item, id: uid(), dateAdded: now, dateUpdated: now, seed: false }));
+      }
+    });
+    if (!toAdd.length && !toUpdate.size) return;
+    const previous = new Map();
+    const ok = commitItems((list) => {
+      const next = list.map((it) => {
+        const inc = toUpdate.get(it.id);
+        if (!inc) return it;
+        previous.set(it.id, JSON.parse(JSON.stringify(it)));
+        return normalizeItem({ ...mergeIncomingIntoExisting(it, inc, false), dateUpdated: now });
+      });
+      return [...toAdd, ...next];
+    }, "import");
+    if (!ok) {
+      setClzMessage(STORAGE_FAIL_MESSAGES.import); // the preview stays; nothing was written
+      return;
+    }
+    importUndo = {
+      addedIds: new Set(toAdd.map((i) => i.id)),
+      previous,
+      raw: lastSyncedRaw,
+      until: Date.now() + IMPORT_UNDO_MS,
+    };
+    const byId = new Map(items.map((it) => [it.id, it]));
+    writeLastImport({
+      v: 1,
+      kind: "clz",
+      at: now,
+      added: toAdd.map((it) => ({ id: it.id, fp: itemFingerprint(byId.get(it.id) || it) })),
+      updated: [...previous.entries()].map(([id, before]) => ({ id, fp: itemFingerprint(byId.get(id)), before })),
+    });
+    render();
+    resetClz();
+    const n = toAdd.length;
+    const u = previous.size;
+    const msg = n && u
+      ? `Imported ${plural(n, "item", "items")} and updated ${u.toLocaleString()}`
+      : n
+        ? `Imported ${plural(n, "item", "items")}`
+        : `Updated ${plural(u, "item", "items")}`;
+    showToast(msg, { actionLabel: "Undo", onAction: undoImport, duration: IMPORT_UNDO_MS });
+  }
+
+  function bindClz() {
+    const typeSel = $("#clz-type");
+    if (!typeSel) return;
+    $("#btn-clz-file").addEventListener("click", () => $("#clz-file").click());
+    $("#clz-file").addEventListener("change", (e) => {
+      const f = e.target.files && e.target.files[0];
+      e.target.value = "";
+      readClzFile(f);
+    });
+    typeSel.addEventListener("change", () => {
+      // Same file, another type: check it again instead of asking for the file twice.
+      if (clz && clz.parsed) analyzeClz(clz.parsed, typeSel.value);
+      else setClzMessage("");
+    });
+    $("#btn-clz-mapping-apply").addEventListener("click", applyClzMapping);
+    $("#btn-clz-remap").addEventListener("click", () => {
+      if (clz) showClzMapping([]);
+    });
+    $("#btn-clz-commit").addEventListener("click", commitClz);
+    $("#btn-clz-remove-last").addEventListener("click", removeLastImport);
+    $("#clz-dup-mode").addEventListener("change", () => {
+      if (!clz) return;
+      clz.choices = new Map(); // the import-wide choice resets per-row overrides
+      renderClzPreview();
+    });
+    $("#clz-dup-rows").addEventListener("change", (e) => {
+      const sel = e.target.closest(".clz-choice");
+      if (!sel || !clz) return;
+      const i = Number(sel.dataset.row);
+      clz.choices.set(i, sel.value);
+      renderClzPreview();
+      const again = document.getElementById(`clz-choice-${i}`);
+      if (again) again.focus();
+    });
+  }
+
   function fillPlatformOptions() {
     const dl = document.getElementById("platform-options");
     if (dl) dl.innerHTML = PLATFORM_SUGGESTIONS.map((p) => `<option value="${escapeHtml(p)}"></option>`).join("");
@@ -5990,6 +6703,8 @@
     updateProgressPlaceholder();
     bind();
     bindImport();
+    bindClz();
+    renderComicFooterCredit();
     window.addEventListener("storage", onStorageEvent);
     updateFormatOptions();
     await seedIfEmpty();
