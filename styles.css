@@ -40,6 +40,9 @@
   --music: #4c468f;
   --music-stripe: #7a72e0;
   --music-dim: rgba(122, 114, 224, 0.28);
+  --comic: #1d5486; /* 5.6:1 on its chip tint over paper */
+  --comic-stripe: #2f8fdc;
+  --comic-dim: rgba(47, 143, 220, 0.28);
 
   /* Status + feedback (text darkened for the light card) */
   --want: #345f86;
@@ -480,8 +483,8 @@ body {
 @media (max-width: 479px) {
   .type-tabs {
     display: grid;
-    /* auto tracks: each label plus padding, then free space shared equally */
-    grid-template-columns: repeat(5, auto);
+    /* auto tracks: each label plus padding, then free space shared equally (six with Comics) */
+    grid-template-columns: repeat(6, auto);
     gap: 0;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -524,6 +527,15 @@ body {
 
   .type-tabs .chip:focus-visible {
     box-shadow: inset 0 0 0 3px #c46a3a;
+  }
+}
+
+/* Six segments (Comics added): below 400px the labels drop to 13px with 4px padding so
+   "All Books Games Movies Music Comics" fits one row at 320 without sideways scroll. */
+@media (max-width: 399px) {
+  .type-tabs .chip {
+    padding: 0 var(--space-1);
+    font-size: var(--fs-sm);
   }
 }
 
@@ -688,6 +700,11 @@ body {
   border-left-color: var(--music-stripe);
 }
 
+.item-card:has(.item-cover-col[data-type="comic"]) {
+  border-left-width: 4px;
+  border-left-color: var(--comic-stripe);
+}
+
 
 .item-top {
   display: flex;
@@ -733,6 +750,7 @@ body {
 .badge-type.game { background: var(--game-dim); color: var(--game); }
 .badge-type.movie { background: var(--movie-dim); color: var(--movie); }
 .badge-type.music { background: var(--music-dim); color: var(--music); }
+.badge-type.comic { background: var(--comic-dim); color: var(--comic); }
 
 .badge-status.want { background: rgba(52, 95, 134, 0.15); color: var(--want); }
 .badge-status.owned { background: rgba(110, 47, 85, 0.15); color: var(--owned); }
@@ -1168,6 +1186,15 @@ label.check input[type="checkbox"]:focus-visible {
   gap: var(--space-3);
 }
 
+/* Comics: Series takes the room, Issue stays short */
+.form-grid.form-grid-issue {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+.form-grid > .form-row {
+  min-width: 0;
+}
+
 .form-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1569,6 +1596,14 @@ body.modal-open {
 
 .card-credit-link:focus-visible {
   outline: none;
+}
+
+/* Comic source credit without a link (no source page known) */
+.card-credit-plain {
+  display: inline-block;
+  max-width: 100%;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
 }
 
 .card-credit-link:focus-visible .card-credit-text {

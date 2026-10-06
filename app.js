@@ -33,7 +33,7 @@
   const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
   const HTML5_QRCODE_CDN =
     "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js";
-  const TYPE_LABELS = { book: "Book", game: "Game", movie: "Movie", music: "Music" };
+  const TYPE_LABELS = { book: "Book", game: "Game", movie: "Movie", music: "Music", comic: "Comic" };
   const STATUS_LABELS = {
     want: "Want",
     owned: "Owned",
@@ -103,6 +103,7 @@
     game: ["game", "games"],
     movie: ["movie", "movies"],
     music: ["Music", "Music"],
+    comic: ["comic", "comics"],
     item: ["item", "items"],
     want: ["want", "want"],
     owned: ["owned", "owned"],
@@ -258,6 +259,24 @@
     fieldSignedSingle: $("#field-signed-single"),
     fieldSignedParent: $("#field-signed-parent"),
     signedAuthors: $("#signed-authors"),
+    labelSignedSingle: $("#label-signed-single"),
+    // Comics
+    comicFields: $("#comic-fields"),
+    comicFieldsMore: $("#comic-fields-more"),
+    creatorRow: $("#creator-row"),
+    labelTitleReq: $("#label-title-req"),
+    fieldSeries: $("#field-series"),
+    fieldIssue: $("#field-issue"),
+    fieldPublisher: $("#field-publisher"),
+    fieldCondition: $("#field-condition"),
+    fieldWriter: $("#field-writer"),
+    fieldArtist: $("#field-artist"),
+    fieldSourceId: $("#field-source-id"),
+    fieldSourceName: $("#field-source-name"),
+    fieldSourceUrl: $("#field-source-url"),
+    fieldCoverLabel: $("#field-cover-label"),
+    fieldCoverVariant: $("#field-cover-variant"),
+    btnSave: $("#btn-save"),
   };
 
   function uid() {
@@ -373,7 +392,7 @@
   }
 
   /* ---------- v1.2 schema (additive; old items and backups lack these keys) ---------- */
-  const TYPES = ["book", "game", "movie", "music"];
+  const TYPES = ["book", "game", "movie", "music", "comic"];
   /** Physical "format detail" (the reused `disc` field) allowed per type. */
   const DISC_OPTIONS = {
     game: ["cart", "disc", "code"],
@@ -466,14 +485,119 @@
     game: ["Game", "Case", "Manual"],
     music: ["Media", "Case", "Insert"],
     movie: ["Disc", "Case", "Insert"],
+    // Comics: ownsGame = the comic itself, ownsCase = a case (slab), ownsManual = bag/board.
+    // Labels follow COMPONENT_KEYS order; COMPONENT_ORDER shows them Comic, Bag/board, Case.
+    comic: ["Comic", "Case", "Bag/board"],
   };
+  /** Display order of the trio (indexes into COMPONENT_KEYS) where it isn't 0, 1, 2. */
+  const COMPONENT_ORDER = { comic: [0, 2, 1] };
+  /** Types where all three ticked means "complete in box" (Nathan risk 5: never comics). */
+  const CIB_TYPES = new Set(["game", "movie", "music"]);
+
+  function componentOrder(type) {
+    return COMPONENT_ORDER[type] || [0, 1, 2];
+  }
 
   function hasComponents(item) {
     return item.format === "physical" && Boolean(COMPONENT_LABELS[item.type]);
   }
 
   function isCib(item) {
-    return hasComponents(item) && COMPONENT_KEYS.every((k) => item[k] === true);
+    return (
+      CIB_TYPES.has(item.type) &&
+      hasComponents(item) &&
+      COMPONENT_KEYS.every((k) => item[k] === true)
+    );
+  }
+
+  /* ---------- Comics (type "comic") ---------- */
+  /** Condition of a comic copy. Not a grade and never a price. */
+  const CONDITION_LABELS = { unread: "Unread", fine: "Fine", read: "Read", damaged: "Damaged" };
+  /** Types whose signed copy is tracked per name (books: creator; comics: writer + artist). */
+  const SIGNED_TYPES = new Set(["book", "comic"]);
+
+  function cleanText(v, max = 200) {
+    if (Array.isArray(v)) v = v.map((x) => String(x ?? "").trim()).filter(Boolean).join(", ");
+    return String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+  }
+
+  /** "#12" → "12". Issue numbers stay text ("1.MU", "Annual 2", "½"). */
+  function cleanIssue(v) {
+    return cleanText(v, 20).replace(/^#\s*/, "");
+  }
+
+  function safeHttpsUrl(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return "";
+    try {
+      const u = new URL(s);
+      return u.protocol === "https:" ? u.toString() : "";
+    } catch {
+      return "";
+    }
+  }
+
+  /** Writer names then artist names, split the way book authors are, de-duplicated. */
+  function comicCreatorNames(writer, artist) {
+    const seen = new Set();
+    const out = [];
+    for (const n of [...parseCreatorNames(writer), ...parseCreatorNames(artist)]) {
+      const k = n.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(n);
+    }
+    return out;
+  }
+
+  /**
+   * Comic-only fields. Added to the item only when type is "comic", so every other item
+   * normalizes byte-for-byte as before (fingerprints of the last import stay valid).
+   */
+  function normalizeComicFields(raw) {
+    const writer = cleanText(raw.writer);
+    const artist = cleanText(raw.artist);
+    const names = comicCreatorNames(writer, artist);
+    const flags = new Map(normalizeAuthors(raw.authors).map((a) => [a.name.toLowerCase(), a.signed]));
+    const authors = names.length
+      ? names.map((name) => ({ name, signed: flags.get(name.toLowerCase()) === true }))
+      : normalizeAuthors(raw.authors);
+    return {
+      series: cleanText(raw.series),
+      issue: cleanIssue(raw.issue),
+      publisher: cleanText(raw.publisher),
+      writer,
+      artist,
+      authors,
+      condition: Object.prototype.hasOwnProperty.call(CONDITION_LABELS, raw.condition) ? raw.condition : "",
+      coverLabel: cleanText(raw.coverLabel, 120),
+      coverVariant: raw.coverVariant === true,
+      sourceId: cleanText(raw.sourceId, 80),
+      sourceName: cleanText(raw.sourceName, 80),
+      sourceUrl: safeHttpsUrl(raw.sourceUrl),
+    };
+  }
+
+  /**
+   * Credit for comic details and covers. PLACEHOLDER until the source (likely Metron via a
+   * relay) and its attribution terms are confirmed — fact check before release.
+   */
+  const COMIC_CREDIT_TEXT = "PLACEHOLDER: Metron credit";
+
+  /** Card / form credit line; a link only when the source gave an https page. */
+  function comicCreditHtml(url) {
+    const safe = safeHttpsUrl(url);
+    const text = escapeHtml(COMIC_CREDIT_TEXT);
+    return safe
+      ? `<p class="card-credit"><a class="card-credit-link" href="${escapeHtml(safe)}" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">${text}</span></a></p>`
+      : `<p class="card-credit"><span class="card-credit-plain">${text}</span></p>`;
+  }
+
+  /** What a card, list or prompt calls the item. Comics: "Saga #1: Chapter One". */
+  function displayTitle(item) {
+    if (!item || item.type !== "comic") return (item && item.title) || "Untitled";
+    const head = `${item.series || "Untitled"}${item.issue ? ` #${item.issue}` : ""}`;
+    return item.title ? `${head}: ${item.title}` : head;
   }
 
   /** true / false / null (unknown). Anything else is unknown, never a guess. */
@@ -500,6 +624,9 @@
     let format = raw.format;
     if (type === "book") {
       if (!["physical", "digital", "audiobook"].includes(format)) format = "physical";
+    } else if (type === "comic") {
+      // Comics default to Physical (Nathan risk 5), unlike games / movies / music.
+      if (!["physical", "digital"].includes(format)) format = "physical";
     } else {
       if (!["physical", "digital"].includes(format)) format = "digital";
     }
@@ -529,16 +656,21 @@
     const sources = Array.isArray(raw.sources)
       ? [...new Set(raw.sources.map((x) => String(x).trim()).filter(Boolean))]
       : [];
-    const authors = normalizeAuthors(raw.authors);
+    const comic = type === "comic" ? normalizeComicFields(raw) : null;
+    const authors = comic ? comic.authors : normalizeAuthors(raw.authors);
     // `signed` is derived from authors[]; a bare flag only survives when no author is known.
     const signed = authors.length
       ? authors.some((a) => a.signed)
       : raw.signed === true;
-    return {
+    const out = {
       id: String(raw.id || uid()),
       type,
-      title: String(raw.title || "Untitled").trim() || "Untitled",
-      creator: String(raw.creator || "").trim(),
+      // Comic titles are optional (series + issue name a comic), so no "Untitled" filler.
+      title: comic
+        ? String(raw.title || "").trim()
+        : String(raw.title || "Untitled").trim() || "Untitled",
+      // Comics: creator mirrors the writer, so search and older readers still see a name.
+      creator: comic ? comic.writer : String(raw.creator || "").trim(),
       year: Number.isFinite(year) ? year : null,
       status: ["want", "owned", "in_progress", "done", "dropped"].includes(raw.status)
         ? raw.status
@@ -577,6 +709,8 @@
       signed,
       googleBooksUrl: safeGoogleBooksUrl(raw.googleBooksUrl),
     };
+    if (comic) Object.assign(out, comic);
+    return out;
   }
 
   /**
@@ -646,7 +780,8 @@
     if (item.platform) parts.push(PLATFORM_LABELS[item.platform] || item.platform);
     if (item.format === "physical" && item.disc) parts.push(DISC_LABELS[item.disc] || item.disc);
     if (isCib(item)) parts.push("CIB");
-    if (item.type === "book" && item.signed) {
+    if (item.type === "comic" && item.condition) parts.push(CONDITION_LABELS[item.condition]);
+    if (SIGNED_TYPES.has(item.type) && item.signed) {
       // "Signed" when every listed author signed; names only for a subset (Oholiab Pass 1
       // fix 4). The full list stays in the edit form.
       const who = item.authors.filter((a) => a.signed).map((a) => a.name);
@@ -741,9 +876,21 @@
     els.fieldFormat.value = allowed.includes(current) ? current : allowed[0];
     els.labelCreator.textContent = CREATOR_HINTS[type] || "Creator";
     els.fieldCreator.placeholder = CREATOR_PLACEHOLDERS[type] || "";
+    updateComicUi();
     updateProgressPlaceholder();
     updateDiscOptions();
     updateDiscVisibility();
+  }
+
+  /** Comic rows replace Creator; Title is optional for comics (series + issue name it). */
+  function updateComicUi() {
+    const comic = els.fieldType.value === "comic";
+    if (els.comicFields) els.comicFields.hidden = !comic;
+    if (els.comicFieldsMore) els.comicFieldsMore.hidden = !comic;
+    if (els.creatorRow) els.creatorRow.hidden = comic;
+    if (els.labelTitleReq) els.labelTitleReq.hidden = comic;
+    els.fieldTitle.required = !comic;
+    if (els.fieldSeries) els.fieldSeries.required = comic;
   }
 
   const PROGRESS_PLACEHOLDERS = {
@@ -751,6 +898,7 @@
     game: "hour 8",
     movie: "ep 3 or 1:20",
     music: "track 4",
+    comic: "page 12",
   };
 
   function updateProgressPlaceholder() {
@@ -875,9 +1023,17 @@
   }
 
 
+  /** Names that can sign: book creator, or comic writer + artist (Nathan risk 5). */
+  function formSignedNames() {
+    if (els.fieldType.value === "comic") {
+      return comicCreatorNames(els.fieldWriter.value, els.fieldArtist.value);
+    }
+    return parseCreatorNames(els.fieldCreator.value);
+  }
+
   /** Re-derive authors from the creator field, keeping signed flags by case-insensitive name. */
   function syncAuthorsFromCreator() {
-    const names = parseCreatorNames(els.fieldCreator.value);
+    const names = formSignedNames();
     const prev = new Map(formAuthors.map((a) => [a.name.toLowerCase(), a.signed]));
     const carryBare = formSignedNoAuthor && !formAuthors.length && names.length === 1;
     formAuthors = names.map((name) => ({
@@ -890,9 +1046,14 @@
 
   function renderSignedUi() {
     if (!els.signedRow) return;
-    const isBook = els.fieldType.value === "book";
+    const type = els.fieldType.value;
+    const isBook = SIGNED_TYPES.has(type);
     els.signedRow.hidden = !isBook;
     if (!isBook) return;
+    // NEW COPY (fact check): "Signed" is the comic label; books keep "Signed by author".
+    if (els.labelSignedSingle) {
+      els.labelSignedSingle.textContent = type === "comic" ? "Signed" : "Signed by author";
+    }
     const multi = formAuthors.length > 1;
     els.signedSingle.hidden = multi;
     els.signedMulti.hidden = !multi;
@@ -932,9 +1093,10 @@
     els.fieldSignedParent.indeterminate =
       formAuthors.some((a) => !a.signed);
     // PLACEHOLDER copy (Berean).
+    const comic = els.fieldType.value === "comic";
     openConfirm(
-      "Clear signed authors?",
-      "This unticks every author on this book.",
+      comic ? "Clear signed names?" : "Clear signed authors?", // comic text: NEW COPY (fact check)
+      comic ? "This unticks every name on this comic." : "This unticks every author on this book.",
       () => {
         setAllAuthorsSigned(false);
         closeConfirm();
@@ -944,7 +1106,7 @@
   }
 
   function collectAuthors() {
-    if (els.fieldType.value === "book") syncAuthorsFromCreator();
+    if (SIGNED_TYPES.has(els.fieldType.value)) syncAuthorsFromCreator();
     const authors = formAuthors.map((a) => ({ ...a }));
     return {
       authors,
@@ -962,7 +1124,17 @@
       [els.labelOwnsGame, els.labelOwnsCase, els.labelOwnsManual].forEach((el, i) => {
         if (el) el.textContent = labels[i];
       });
+      // Put the three checkboxes in this type's order (DOM order, so Tab order matches).
+      const list = els.labelOwnsGame && els.labelOwnsGame.closest(".check-list");
+      if (list) {
+        const boxes = componentInputs().map((el) => el && el.closest("label.check"));
+        componentOrder(type).forEach((i) => {
+          if (boxes[i]) list.appendChild(boxes[i]);
+        });
+      }
     }
+    // "Complete in box" is a game / movie / music idea; comics never get it (Nathan risk 5).
+    if (els.btnCib) els.btnCib.hidden = !CIB_TYPES.has(type);
   }
 
   /**
@@ -986,7 +1158,9 @@
     els.modalTitle.textContent = item ? "Edit item" : "Add item";
     els.btnDelete.hidden = !item;
     els.fieldId.value = item ? item.id : "";
-    els.fieldType.value = item ? item.type : "book";
+    // The Comics tab opens Add as a comic; other tabs keep the Book default as before.
+    els.fieldType.value = item ? item.type : filterType === "comic" ? "comic" : "book";
+    fillComicFields(item);
     updateFormatOptions();
     updateCoverFrame();
     els.fieldBarcode.value = item ? item.barcode || "" : "";
@@ -994,7 +1168,7 @@
     els.fieldCreator.value = item ? item.creator : "";
     formAuthors = item && Array.isArray(item.authors) ? item.authors.map((a) => ({ ...a })) : [];
     formSignedNoAuthor = Boolean(item && !formAuthors.length && item.signed);
-    if (els.fieldType.value === "book") syncAuthorsFromCreator();
+    if (SIGNED_TYPES.has(els.fieldType.value)) syncAuthorsFromCreator();
     else renderSignedUi();
     els.fieldYear.value = item && item.year != null ? item.year : "";
     els.fieldStatus.value = item ? item.status : "want";
@@ -1025,6 +1199,24 @@
     els.modal.setAttribute("aria-hidden", "false");
     document.body.classList.add("modal-open");
     requestAnimationFrame(() => els.fieldTitle.focus());
+  }
+
+  function fillComicFields(item) {
+    const c = item && item.type === "comic" ? item : {};
+    const set = (el, v) => {
+      if (el) el.value = v == null ? "" : String(v);
+    };
+    set(els.fieldSeries, c.series);
+    set(els.fieldIssue, c.issue);
+    set(els.fieldPublisher, c.publisher);
+    set(els.fieldCondition, c.condition);
+    set(els.fieldWriter, c.writer);
+    set(els.fieldArtist, c.artist);
+    set(els.fieldSourceId, c.sourceId);
+    set(els.fieldSourceName, c.sourceName);
+    set(els.fieldSourceUrl, c.sourceUrl);
+    set(els.fieldCoverLabel, c.coverLabel);
+    set(els.fieldCoverVariant, c.coverVariant ? "1" : "");
   }
 
   function closeModal() {
@@ -1162,7 +1354,7 @@
       if (!["physical", "digital", "audiobook"].includes(format)) format = "physical";
     } else {
       if (format === "audiobook") format = "digital";
-      if (!["physical", "digital"].includes(format)) format = "digital";
+      if (!["physical", "digital"].includes(format)) format = type === "comic" ? "physical" : "digital";
     }
     let disc = null;
     if (format === "physical" && DISC_OPTIONS[type]) {
@@ -1200,7 +1392,26 @@
       ownsCase: componentState.ownsCase,
       ownsManual: componentState.ownsManual,
       ...collectAuthors(),
+      ...(type === "comic" ? collectComicFields() : {}),
       seed: false,
+    };
+  }
+
+  function collectComicFields() {
+    const v = (el) => (el ? el.value.trim() : "");
+    return {
+      series: v(els.fieldSeries),
+      issue: v(els.fieldIssue),
+      publisher: v(els.fieldPublisher),
+      condition: v(els.fieldCondition),
+      writer: v(els.fieldWriter),
+      artist: v(els.fieldArtist),
+      creator: v(els.fieldWriter),
+      sourceId: v(els.fieldSourceId),
+      sourceName: v(els.fieldSourceName),
+      sourceUrl: v(els.fieldSourceUrl),
+      coverLabel: v(els.fieldCoverLabel),
+      coverVariant: v(els.fieldCoverVariant) === "1",
     };
   }
 
@@ -1215,7 +1426,13 @@
   function saveItem(e) {
     e.preventDefault();
     const data = collectFormWithCoverIds();
-    if (!data.title) {
+    if (data.type === "comic") {
+      if (!data.series) {
+        els.fieldSeries.focus();
+        showToast("Series is required"); // NEW COPY (fact check)
+        return;
+      }
+    } else if (!data.title) {
       els.fieldTitle.focus();
       showToast("Title is required");
       return;
@@ -1326,8 +1543,11 @@
   function matchesSearch(item, q) {
     if (!q) return true;
     const hay = [
-      item.title,
+      displayTitle(item),
       item.creator,
+      ...(item.type === "comic"
+        ? [item.series, item.issue, item.publisher, item.writer, item.artist, CONDITION_LABELS[item.condition] || ""]
+        : []),
       item.notes,
       item.barcode || "",
       ...(item.tags || []),
@@ -1354,14 +1574,16 @@
     if (q) list = list.filter((i) => matchesSearch(i, q));
 
     list.sort((a, b) => {
+      const byTitle = () =>
+        displayTitle(a).localeCompare(displayTitle(b), undefined, { sensitivity: "base", numeric: a.type === "comic" && b.type === "comic" });
       if (sortMode === "title") {
-        return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+        return byTitle();
       }
       if (sortMode === "rating") {
         const ra = a.rating == null ? -1 : a.rating;
         const rb = b.rating == null ? -1 : b.rating;
         if (rb !== ra) return rb - ra;
-        return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+        return byTitle();
       }
       return String(b.dateUpdated).localeCompare(String(a.dateUpdated));
     });
@@ -1369,7 +1591,7 @@
   }
 
   function renderStats() {
-    const byType = { book: 0, game: 0, movie: 0, music: 0 };
+    const byType = { book: 0, game: 0, movie: 0, music: 0, comic: 0 };
     const byStatus = { want: 0, owned: 0, in_progress: 0, done: 0, dropped: 0 };
     for (const i of items) {
       byType[i.type] = (byType[i.type] || 0) + 1;
@@ -1382,6 +1604,7 @@
       pill("game", byType.game, "game"),
       pill("movie", byType.movie, "movie"),
       pill("music", byType.music, "music"),
+      pill("comic", byType.comic, "comic"),
       pill("", byStatus.want, "want"),
       pill("", byStatus.owned, "owned"),
       pill("", byStatus.in_progress, "in_progress"),
@@ -1439,6 +1662,11 @@
           .map((t) => `<span class="tag">${escapeHtml(t)}</span>`)
           .join("");
         const year = item.year != null ? ` · ${item.year}` : "";
+        const name = displayTitle(item);
+        const metaText =
+          item.type === "comic"
+            ? [comicCreatorNames(item.writer, item.artist).join(", "), item.publisher].filter(Boolean).join(" · ") || "—"
+            : item.creator || "—";
         const progress = item.progress
           ? `<span class="progress">${escapeHtml(item.progress)}</span>`
           : "";
@@ -1481,18 +1709,19 @@
           : "";
         // Google Books credit (Oholiab F2): only for a Google Books cover with a safe link.
         const gbUrl = item.coverSource === "googlebooks" ? safeGoogleBooksUrl(item.googleBooksUrl) : "";
-        const creditHtml = gbUrl
+        let creditHtml = gbUrl
           ? `<p class="card-credit"><a class="card-credit-link" href="${escapeHtml(gbUrl)}" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">Cover from Google Books</span></a></p>`
           : "";
+        if (item.type === "comic" && item.sourceName) creditHtml = comicCreditHtml(item.sourceUrl, "card");
         return `
 <li>
-  <article class="item-card" tabindex="0" data-id="${escapeHtml(item.id)}" role="button" aria-label="Edit ${escapeHtml(item.title)}">
+  <article class="item-card" tabindex="0" data-id="${escapeHtml(item.id)}" role="button" aria-label="Edit ${escapeHtml(name)}">
     ${coverMarkup(item)}
     <div class="item-body">
       <div class="item-top">
         <div>
-          <h3 class="item-title">${escapeHtml(item.title)}</h3>
-          <p class="item-meta">${escapeHtml(item.creator || "—")}${year}</p>
+          <h3 class="item-title">${escapeHtml(name)}</h3>
+          <p class="item-meta">${escapeHtml(metaText)}${year}</p>
         </div>
         <div class="item-badges">
           <span class="badge badge-type ${item.type}">${TYPE_LABELS[item.type]}</span>
@@ -1943,7 +2172,7 @@
     }
     updateGoogleBooksAttr();
     // Lookup can change the creator string: re-derive authors (flags kept by name).
-    if (els.fieldType.value === "book") syncAuthorsFromCreator();
+    if (SIGNED_TYPES.has(els.fieldType.value)) syncAuthorsFromCreator();
   }
 
   function wouldOverwrite(data) {
@@ -4011,7 +4240,13 @@
       updateFormatOptions();
       updateCoverFrame();
       updateGoogleBooksAttr();
-      if (els.fieldType.value === "book") syncAuthorsFromCreator();
+      if (els.fieldType.value === "comic" && !editingId) {
+        // Comics default to Physical (spec); status follows as for any new physical item.
+        els.fieldFormat.value = "physical";
+        updateDiscVisibility();
+        applyNewStatusDefault();
+      }
+      if (SIGNED_TYPES.has(els.fieldType.value)) syncAuthorsFromCreator();
       else renderSignedUi();
       updateReferenceLinks();
       updateApiKeyHint();
@@ -4031,6 +4266,12 @@
     });
     els.fieldCreator.addEventListener("blur", () => {
       if (els.fieldType.value === "book") syncAuthorsFromCreator();
+    });
+    [els.fieldWriter, els.fieldArtist].forEach((el) => {
+      if (!el) return;
+      el.addEventListener("blur", () => {
+        if (els.fieldType.value === "comic") syncAuthorsFromCreator();
+      });
     });
     if (els.fieldSignedSingle) {
       els.fieldSignedSingle.addEventListener("change", () => {
@@ -4223,6 +4464,7 @@
    * @returns {{ item: object, reason: string } | null}
    */
   function findDuplicate(candidate, excludeId) {
+    if (candidate.type === "comic") return findComicDuplicate(candidate, excludeId);
     const pool = items.filter((i) => i.id !== excludeId);
     // Several matches (e.g. a digital and a physical Hades II): point at the one that
     // looks like the same copy, so Update is offered against the right row.
@@ -4276,6 +4518,56 @@
     return null;
   }
 
+  /** Lowercase, accents and punctuation folded, spaces collapsed ("The Amazing  Spider-Man"). */
+  function comicKeyPart(v) {
+    return String(v || "")
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9.½]+/g, " ")
+      .trim();
+  }
+
+  /** Issue "#001" = "1"; "1.MU" and "Annual 1" stay distinct. */
+  function comicIssueKey(v) {
+    const s = comicKeyPart(cleanIssue(v));
+    return /^\d+$/.test(s) ? String(Number(s)) : s;
+  }
+
+  /** Cover URLs compared without scheme case, http/https, trailing slash or #fragment. */
+  function comicCoverKey(url) {
+    const s = String(url || "").trim();
+    if (!s) return "";
+    try {
+      const u = new URL(s);
+      u.hash = "";
+      return `${u.host.toLowerCase()}${u.pathname.replace(/\/+$/, "")}${u.search}`;
+    } catch {
+      return s.toLowerCase();
+    }
+  }
+
+  function comicDupKey(it) {
+    return `${comicKeyPart(it.series)}|${comicIssueKey(it.issue)}|${comicCoverKey(it.coverUrl)}`;
+  }
+
+  /**
+   * Comics (Nathan risk 3): the same comic means the same series + issue + picked cover.
+   * Never title (optional, "Untitled") and never barcode: one UPC is shared by every
+   * variant cover, so a barcode hit opens the cover picker instead (see the comic Lookup).
+   */
+  function findComicDuplicate(candidate, excludeId) {
+    if (!comicKeyPart(candidate.series)) return null;
+    const key = comicDupKey(candidate);
+    const hits = items.filter((i) => i.id !== excludeId && i.type === "comic" && comicDupKey(i) === key);
+    if (!hits.length) return null;
+    const same = hits.filter((i) => !looksLikeDifferentCopy(i, candidate));
+    const best = (same.length ? same : hits)
+      .slice()
+      .sort((a, b) => String(b.dateUpdated).localeCompare(String(a.dateUpdated)))[0];
+    return { item: best, reason: "comic" };
+  }
+
   /** Steam vs Switch, digital vs physical, CD vs vinyl: two rows is the right answer. */
   function looksLikeDifferentCopy(existing, incoming) {
     if (existing.platform && incoming.platform && !samePlatform(existing.platform, incoming.platform)) return true;
@@ -4290,7 +4582,9 @@
     meta.push(FORMAT_LABELS[it.format] || it.format);
     if (it.format === "physical" && it.disc) meta.push(DISC_LABELS[it.disc] || it.disc);
     if (it.playtimeMinutes != null) meta.push(`${Math.round(it.playtimeMinutes / 60)}h`);
-    if (it.type === "book" && it.signed) meta.push("Signed");
+    if (it.type === "comic" && it.condition) meta.push(CONDITION_LABELS[it.condition]);
+    if (it.type === "comic" && it.coverVariant) meta.push(it.coverLabel ? `Variant: ${it.coverLabel}` : "Variant");
+    if (SIGNED_TYPES.has(it.type) && it.signed) meta.push("Signed");
     let parts = "";
     const labels = COMPONENT_LABELS[it.type];
     if (it.format === "physical" && labels && COMPONENT_KEYS.some((k) => it[k] != null)) {
@@ -4301,12 +4595,12 @@
           : v === false
             ? `<span class="dup-mark" aria-hidden="true">✗</span><span class="sr-only">no</span>`
             : `<span class="dup-mark is-unknown" aria-hidden="true">–</span><span class="sr-only">not recorded</span>`;
-      parts = `<span class="dup-parts">${labels
-        .map((l, i) => `<span class="dup-part">${escapeHtml(l)} ${mark(it[COMPONENT_KEYS[i]])}</span>`)
+      parts = `<span class="dup-parts">${componentOrder(it.type)
+        .map((i) => `<span class="dup-part">${escapeHtml(labels[i])} ${mark(it[COMPONENT_KEYS[i]])}</span>`)
         .join(" ")}</span>`;
     }
     const year = it.year != null ? ` (${it.year})` : "";
-    return `<span class="dup-title">${escapeHtml(it.title)}${year}</span><span class="dup-meta">${escapeHtml(meta.join(" · "))}</span>${parts}`;
+    return `<span class="dup-title">${escapeHtml(displayTitle(it))}${year}</span><span class="dup-meta">${escapeHtml(meta.join(" · "))}</span>${parts}`;
   }
 
   /**
@@ -4341,7 +4635,18 @@
       if (incoming[k] === true) out[k] = true;
       else if (incoming[k] === false && out[k] == null) out[k] = false;
     }
-    if (existing.type === "book") {
+    if (existing.type === "comic") {
+      // Comic-only fields: fill what's empty, never overwrite (Nathan risk 5).
+      for (const k of ["title", "series", "issue", "publisher", "writer", "artist", "condition", "sourceId", "sourceName", "sourceUrl"]) {
+        if (empty(out[k]) && !empty(incoming[k])) out[k] = incoming[k];
+      }
+      if (out.coverUrl === incoming.coverUrl) {
+        if (empty(out.coverLabel) && !empty(incoming.coverLabel)) out.coverLabel = incoming.coverLabel;
+        if (incoming.coverVariant === true) out.coverVariant = true;
+      }
+      if (empty(out.creator) && !empty(out.writer)) out.creator = out.writer;
+    }
+    if (SIGNED_TYPES.has(existing.type)) {
       const inc = new Map((incoming.authors || []).map((a) => [a.name.toLowerCase(), a.signed]));
       if (!(existing.authors || []).length && (incoming.authors || []).length) {
         out.authors = incoming.authors.map((a) => ({ ...a }));
@@ -4350,6 +4655,14 @@
           ...a,
           signed: a.signed || inc.get(a.name.toLowerCase()) === true,
         }));
+        if (existing.type === "comic") {
+          // A writer / artist filled from incoming brings its signed flag along; the
+          // comic's normalizeItem keeps only names that are in writer or artist.
+          const have = new Set(out.authors.map((a) => a.name.toLowerCase()));
+          (incoming.authors || []).forEach((a) => {
+            if (!have.has(a.name.toLowerCase())) out.authors.push({ ...a });
+          });
+        }
       }
       if (!out.authors.length && incoming.signed) out.signed = true;
     }

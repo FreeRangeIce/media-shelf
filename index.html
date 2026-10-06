@@ -50,6 +50,7 @@
       <button type="button" class="chip" data-type="game" role="tab" aria-selected="false">Games</button>
       <button type="button" class="chip" data-type="movie" role="tab" aria-selected="false">Movies</button>
       <button type="button" class="chip" data-type="music" role="tab" aria-selected="false">Music</button>
+      <button type="button" class="chip" data-type="comic" role="tab" aria-selected="false">Comics</button>
     </nav>
 
     <div class="filters-row">
@@ -127,6 +128,7 @@
             <option value="game">Game</option>
             <option value="movie">Movie</option>
             <option value="music">Music</option>
+            <option value="comic">Comic</option>
           </select>
         </div>
 
@@ -153,8 +155,25 @@
           </div>
         </div>
 
+        <!-- Comics: series + issue name the comic (Lookup uses them with the barcode). -->
+        <div class="form-grid form-grid-issue" id="comic-fields" hidden>
+          <div class="form-row">
+            <label for="field-series">Series <span class="req">*</span></label>
+            <input type="text" id="field-series" maxlength="200" autocomplete="off" />
+          </div>
+          <div class="form-row">
+            <label for="field-issue">Issue</label>
+            <input type="text" id="field-issue" maxlength="20" autocomplete="off" />
+          </div>
+          <input type="hidden" id="field-source-id" />
+          <input type="hidden" id="field-source-name" />
+          <input type="hidden" id="field-source-url" />
+          <input type="hidden" id="field-cover-label" />
+          <input type="hidden" id="field-cover-variant" />
+        </div>
+
         <div class="form-row">
-          <label for="field-title">Title <span class="req">*</span></label>
+          <label for="field-title">Title <span class="req" id="label-title-req">*</span></label>
           <input type="text" id="field-title" required maxlength="200" />
         </div>
 
@@ -169,14 +188,42 @@
           <p class="field-hint">Opens a search on that site in a new tab. No API key needed. IMDb: movies and many games. ISFDB: science fiction and fantasy books. RAWG, IGDB: games.</p>
         </div>
 
-        <div class="form-row">
+        <div class="form-row" id="creator-row">
           <label for="field-creator" id="label-creator">Creator</label>
           <input type="text" id="field-creator" maxlength="200" placeholder="e.g. Andy Weir" />
         </div>
 
+        <div id="comic-fields-more" hidden>
+          <div class="form-grid">
+            <div class="form-row">
+              <label for="field-publisher">Publisher</label>
+              <input type="text" id="field-publisher" maxlength="200" autocomplete="off" />
+            </div>
+            <div class="form-row">
+              <label for="field-condition">Condition</label>
+              <select id="field-condition">
+                <option value="">—</option>
+                <option value="unread">Unread</option>
+                <option value="fine">Fine</option>
+                <option value="read">Read</option>
+                <option value="damaged">Damaged</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="field-writer">Writer</label>
+            <input type="text" id="field-writer" maxlength="200" autocomplete="off" aria-describedby="comic-names-hint" />
+          </div>
+          <div class="form-row">
+            <label for="field-artist">Artist</label>
+            <input type="text" id="field-artist" maxlength="200" autocomplete="off" aria-describedby="comic-names-hint" />
+            <p class="field-hint" id="comic-names-hint">Separate several names with commas.</p>
+          </div>
+        </div>
+
         <div class="form-row check-group signed-group" id="signed-row" hidden>
           <div id="signed-single">
-            <label class="check"><input type="checkbox" id="field-signed-single" /> <span>Signed by author</span></label>
+            <label class="check"><input type="checkbox" id="field-signed-single" /> <span id="label-signed-single">Signed by author</span></label>
           </div>
           <div id="signed-multi" hidden>
             <label class="check"><input type="checkbox" id="field-signed-parent" /> <span id="label-signed-parent">Signed copy</span></label>
