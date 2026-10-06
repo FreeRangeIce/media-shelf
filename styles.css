@@ -727,6 +727,14 @@ body {
   color: var(--text-muted);
 }
 
+/* Names-only mode: a comic card names its cover / variant, quietly, under the title. */
+.item-cover-name {
+  margin: 2px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
 .item-badges {
   display: flex;
   flex-wrap: wrap;
@@ -1296,6 +1304,36 @@ label.check input[type="checkbox"]:focus-visible {
   color: var(--text-dim);
 }
 
+/* Comic duplicate prompt: the stored cover URL as a small thumbnail (or, names-only, the
+   cover name) beside each side's details. */
+.dup-with-thumb {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.dup-with-thumb > .dup-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dup-thumb {
+  flex: 0 0 auto;
+  display: block;
+  width: 48px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-card-hover);
+}
+
+.dup-cover-name {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
 .confirm-option {
   color: var(--text-muted);
 }
@@ -1371,10 +1409,29 @@ body.modal-open {
   white-space: nowrap;
 }
 
+/* Narrow phones: the input full width, then Scan and Lookup side by side, equal widths. */
+@media (max-width: 359px) {
+  .barcode-row input {
+    flex-basis: 100%;
+  }
+
+  .barcode-row .btn {
+    flex: 1 1 0;
+  }
+}
+
 .field-hint {
   margin: var(--space-2) 0 0;
   font-size: var(--fs-xs);
   color: var(--text-dim);
+  line-height: var(--lh-tight);
+}
+
+/* A field that shows red (:user-invalid) always says why (Oholiab fix 11). */
+.field-error {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--danger);
   line-height: var(--lh-tight);
 }
 
@@ -2027,6 +2084,27 @@ body.modal-open {
   color: var(--text-on-accent);
 }
 
+/* 10. "This row:" on its own small line just above a row's buttons: they override the
+   default for that row only. The buttons keep their single row at 390. */
+.clz-row-label {
+  flex: 1 0 100%;
+  margin-bottom: calc(var(--space-1) - var(--space-2));
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* 9. Narrow phones (320): Update / Separate copy / Skip stacked full width, 44px, 8px gap. */
+@media (max-width: 360px) {
+  .clz-choice-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .clz-row-label {
+    flex: 0 0 auto;
+  }
+}
+
 .import-actions {
   display: flex;
   justify-content: flex-end;
@@ -2320,8 +2398,15 @@ body.modal-open {
 
 .comic-cover-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  /* Two columns on phones, three from 420px (Oholiab). */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
+}
+
+@media (min-width: 420px) {
+  .comic-cover-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .comic-cover {
@@ -2415,60 +2500,60 @@ body.modal-open {
 
 .comic-cover.comic-name.is-selected::after {
   top: 50%;
+  left: auto;
+  right: var(--space-2);
   transform: translateY(-50%);
 }
 
 .comic-name-variant {
   flex: 0 0 auto;
-  padding: 1px var(--space-1);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
-  background: var(--text);
-  color: #fffdf8;
+  background: transparent;
+  color: var(--text-muted);
   font-size: var(--fs-xs);
-  font-weight: var(--fw-semibold);
+  font-weight: var(--fw-medium);
 }
 
 .comic-cover-link {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+  min-height: var(--tap);
   white-space: nowrap;
   font-size: var(--fs-xs);
   line-height: var(--lh-tight);
   color: var(--text-muted);
   text-decoration: underline;
   text-underline-offset: 2px;
-  padding: var(--space-2) 0;
+  padding: 0 var(--space-1);
 }
 
-/* "Show all N covers": quiet full-width text button under the first five covers. */
+/* "Show all N covers": quiet full-width ghost button (.btn .btn-ghost) under the first
+   five covers. */
 .comic-show-all {
   grid-column: 1 / -1;
   width: 100%;
   min-height: var(--tap);
-  padding: var(--space-2);
-  border: 0;
-  background: none;
   color: var(--text-muted);
-  font: inherit;
   font-size: var(--fs-sm);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
 }
 
 .comic-show-all:hover {
   color: var(--text);
 }
 
-.comic-show-all:focus-visible {
-  outline: none;
-  box-shadow: var(--focus);
-  border-radius: var(--radius-sm);
+/* Busy / isn't-working line after Show all: directly under the covers. */
+.comic-show-all-status {
+  margin-top: var(--space-2);
 }
 
 .comic-cover-variant {
   position: absolute;
   top: var(--space-2);
-  left: var(--space-2);
+  right: var(--space-2);
   padding: 1px var(--space-1);
   border-radius: 4px;
   background: var(--text);
@@ -2491,11 +2576,12 @@ body.modal-open {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
+/* The check sits on the image's top-left corner; the Variant tag is top-right. */
 .comic-cover.is-selected::after {
   content: "✓";
   position: absolute;
   top: var(--space-2);
-  right: var(--space-2);
+  left: var(--space-2);
   width: 22px;
   height: 22px;
   border-radius: 50%;

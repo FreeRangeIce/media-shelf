@@ -635,6 +635,8 @@
   /* ---------- Comics (type "comic") ---------- */
   /** Condition of a comic copy. Not a grade and never a price. */
   const CONDITION_LABELS = { unread: "Unread", fine: "Fine", read: "Read", damaged: "Damaged" };
+  /** Conditions only a physical comic can have; a Digital comic offers Unread / Read (Bezalel). */
+  const PHYSICAL_ONLY_CONDITIONS = ["fine", "damaged"];
   /** Types whose signed copy is tracked per name (books: creator; comics: writer + artist). */
   const SIGNED_TYPES = new Set(["book", "comic"]);
 
@@ -787,6 +789,18 @@
     return item.title ? `${head}: ${item.title}` : head;
   }
 
+  /**
+   * Names one copy for "Update changes {copy}" (Berean): the title plus the cover/variant
+   * name when a comic has one, else plus its format ("Saga #1 · Physical"). Types without
+   * a format would get the title alone.
+   */
+  function namedCopy(item) {
+    const title = displayTitle(item);
+    if (item && item.type === "comic" && item.coverLabel) return `${title} · ${item.coverLabel}`;
+    const fmt = item && FORMAT_LABELS[item.format];
+    return fmt ? `${title} · ${fmt}` : title;
+  }
+
   /** true / false / null (unknown). Anything else is unknown, never a guess. */
   function triState(v) {
     return v === true || v === false ? v : null;
@@ -844,11 +858,18 @@
       ? [...new Set(raw.sources.map((x) => String(x).trim()).filter(Boolean))]
       : [];
     const comic = type === "comic" ? normalizeComicFields(raw) : null;
+    // A Digital comic is never signed and is only Unread / Read (Bezalel): Fine or Damaged
+    // becomes blank (never a guessed Unread). Same rule on Save, load, restore and import.
+    const digitalComic = Boolean(comic) && format === "digital";
+    if (digitalComic) {
+      comic.authors = comic.authors.map((a) => ({ ...a, signed: false }));
+      if (PHYSICAL_ONLY_CONDITIONS.includes(comic.condition)) comic.condition = "";
+    }
     const authors = comic ? comic.authors : normalizeAuthors(raw.authors);
     // `signed` is derived from authors[]; a bare flag only survives when no author is known.
     const signed = authors.length
       ? authors.some((a) => a.signed)
-      : raw.signed === true;
+      : raw.signed === true && !digitalComic;
     const out = {
       id: String(raw.id || uid()),
       type,
@@ -1031,8 +1052,37 @@
     );
   }
 
+  /**
+   * Cover URL: the browser outlines it red (:user-invalid) only for a value that isn't a
+   * full URL (an https URL never is); when it does, the reason is shown under it too.
+   */
+  function updateCoverUrlError() {
+    [
+      [els.fieldCover, "cover-url-error"],
+      [$("#field-comic-cover-url"), "comic-cover-url-error"], // the picker's photo URL field
+    ].forEach(([el, id]) => {
+      const msg = document.getElementById(id);
+      if (!el || !msg) return;
+      let bad;
+      try {
+        bad = el.matches(":user-invalid");
+      } catch {
+        bad = Boolean(el.value.trim()) && !el.validity.valid;
+      }
+      msg.hidden = !bad;
+      if (bad) {
+        el.setAttribute("aria-invalid", "true");
+        el.setAttribute("aria-describedby", id);
+      } else {
+        el.removeAttribute("aria-invalid");
+        el.removeAttribute("aria-describedby");
+      }
+    });
+  }
+
   function updateCoverPreview() {
     updateGoogleBooksAttr();
+    updateCoverUrlError();
     const url = els.fieldCover.value.trim();
     if (url) {
       els.coverPreview.src = url;
@@ -1238,7 +1288,9 @@
     if (!els.signedRow) return;
     const type = els.fieldType.value;
     const isBook = SIGNED_TYPES.has(type);
-    els.signedRow.hidden = !isBook;
+    // Digital comics have no signed copy: hidden, but the ticks stay in the form so
+    // Physical → Digital → Physical loses nothing; a Digital Save drops them.
+    els.signedRow.hidden = !isBook || (type === "comic" && els.fieldFormat.value === "digital");
     if (!isBook) return;
     // NEW COPY (fact check): "Signed" is the comic label; books keep "Signed by author".
     if (els.labelSignedSingle) {
@@ -1295,13 +1347,50 @@
     );
   }
 
-  function collectAuthors() {
+  /** @param {boolean} [unsigned]  a Digital comic: names kept, every signed flag dropped */
+  function collectAuthors(unsigned = false) {
     if (SIGNED_TYPES.has(els.fieldType.value)) syncAuthorsFromCreator();
-    const authors = formAuthors.map((a) => ({ ...a }));
+    const authors = formAuthors.map((a) => ({ ...a, signed: unsigned ? false : a.signed }));
     return {
       authors,
-      signed: authors.length ? authors.some((a) => a.signed) : formSignedNoAuthor,
+      signed: unsigned ? false : authors.length ? authors.some((a) => a.signed) : formSignedNoAuthor,
     };
+  }
+
+  /** Every Condition option, in order, as in index.html (captured once). */
+  let conditionOptions = null;
+
+  /**
+   * Digital comics offer only — / Unread / Read. A Fine or Damaged value picked for
+   * Physical is remembered in data-physical-only while Digital shows —, and comes back
+   * when Physical is picked again (unless another condition was chosen meanwhile).
+   * Only a Digital Save drops it (collectComicFields reads the select's value).
+   */
+  function updateConditionOptions() {
+    const sel = els.fieldCondition;
+    if (!sel) return;
+    if (!conditionOptions) conditionOptions = [...sel.options];
+    const digital = els.fieldType.value === "comic" && els.fieldFormat.value === "digital";
+    const cur = sel.value;
+    if (digital) {
+      if (PHYSICAL_ONLY_CONDITIONS.includes(cur)) sel.dataset.physicalOnly = cur;
+      sel.replaceChildren(...conditionOptions.filter((o) => !PHYSICAL_ONLY_CONDITIONS.includes(o.value)));
+      sel.value = PHYSICAL_ONLY_CONDITIONS.includes(cur) ? "" : cur;
+    } else {
+      if (sel.options.length !== conditionOptions.length) sel.replaceChildren(...conditionOptions);
+      const kept = sel.dataset.physicalOnly;
+      sel.value = !cur && kept ? kept : cur;
+      delete sel.dataset.physicalOnly;
+    }
+  }
+
+  /** A fresh form: every option back, nothing remembered. */
+  function resetConditionOptions() {
+    const sel = els.fieldCondition;
+    if (!sel) return;
+    if (!conditionOptions) conditionOptions = [...sel.options];
+    sel.replaceChildren(...conditionOptions);
+    delete sel.dataset.physicalOnly;
   }
 
   function updateComponentsUi() {
@@ -1325,6 +1414,7 @@
     }
     // "Complete in box" is a game / movie / music idea; comics never get it (Nathan risk 5).
     if (els.btnCib) els.btnCib.hidden = !CIB_TYPES.has(type);
+    updateConditionOptions();
   }
 
   /**
@@ -1350,6 +1440,7 @@
     els.fieldId.value = item ? item.id : "";
     // The Comics tab opens Add as a comic; other tabs keep the Book default as before.
     els.fieldType.value = item ? item.type : filterType === "comic" ? "comic" : "book";
+    resetConditionOptions();
     fillComicFields(item);
     updateFormatOptions();
     updateCoverFrame();
@@ -1364,6 +1455,7 @@
     els.fieldStatus.value = item ? item.status : "want";
     els.fieldFormat.value = item ? item.format : els.fieldFormat.value;
     updateDiscVisibility();
+    renderSignedUi(); // the Signed row follows this item's format (hidden for Digital comics)
     if (!item) applyNewStatusDefault();
     els.fieldDisc.value =
       item && item.disc ? item.disc : els.fieldType.value === "movie" ? "blu-ray" : "";
@@ -1583,7 +1675,7 @@
       ownsGame: componentState.ownsGame,
       ownsCase: componentState.ownsCase,
       ownsManual: componentState.ownsManual,
-      ...collectAuthors(),
+      ...collectAuthors(type === "comic" && format === "digital"),
       ...(type === "comic" ? collectComicFields() : {}),
       seed: false,
     };
@@ -1861,6 +1953,11 @@
           .join("");
         const year = item.year != null ? ` · ${item.year}` : "";
         const name = displayTitle(item);
+        // Names-only mode: two variants of one issue are told apart by their cover name.
+        const coverNameLine =
+          item.type === "comic" && item.coverLabel && !comicCoverImagesOn()
+            ? `<p class="item-cover-name">${escapeHtml(item.coverLabel)}</p>`
+            : "";
         const metaText =
           item.type === "comic"
             ? [comicCreatorNames(item.writer, item.artist).join(", "), item.publisher].filter(Boolean).join(" · ") || "—"
@@ -1918,6 +2015,7 @@
       <div class="item-top">
         <div>
           <h3 class="item-title">${escapeHtml(name)}</h3>
+          ${coverNameLine}
           <p class="item-meta">${escapeHtml(metaText)}${year}</p>
         </div>
         <div class="item-badges">
@@ -4340,7 +4438,28 @@
     if (box) box.hidden = true;
     const list = $("#comic-cover-list");
     if (list) list.innerHTML = "";
+    setComicShowAllStatus("");
+    syncCoverRow();
     updateSaveGate();
+  }
+
+  /**
+   * While the cover picker is open the cover is set only there (it has its own photo URL
+   * field and No cover), so the form's Cover URL block is hidden; it's back when the
+   * picker closes. The hidden field still carries the picked cover to Save.
+   */
+  function syncCoverRow() {
+    const row = $("#cover-row");
+    if (row) row.hidden = Boolean(comicPicker.open);
+  }
+
+  /** Show all's busy / isn't-working line, directly under the covers (Oholiab fix 5). */
+  function setComicShowAllStatus(msg) {
+    const el = $("#comic-show-all-status");
+    if (!el) return;
+    el.textContent = msg || "";
+    el.classList.toggle("is-error", Boolean(msg));
+    el.hidden = !msg;
   }
 
   /**
@@ -4381,6 +4500,7 @@
     }
     $("#comic-picker-hint").textContent = hint;
     $("#comic-picker").hidden = false;
+    setComicShowAllStatus("");
     renderComicPicker();
   }
 
@@ -4430,6 +4550,7 @@
   async function showAllComicCovers() {
     if (!comicPicker.open || comicPicker.expanded) return;
     comicPicker.expanded = true;
+    setComicShowAllStatus("");
     const token = comicPicker.token;
     // Names-only mode never asks for images.
     const missing = comicCoverImagesOn() ? comicPicker.tiles.filter((t) => !t.url && t.sourceId).map((t) => t.sourceId) : [];
@@ -4454,8 +4575,9 @@
     if (comicPicker.choice === "cover" && p && p.url && !els.fieldCover.value.trim() && comicCoverImagesOn()) {
       setComicCover(p.url, "comiclookup", { label: p.label, variant: p.variant });
     }
-    if (res.busy) setLookupStatus(COMIC_BUSY_MESSAGE, "error");
-    else if (res.failed) setLookupStatus(COMIC_FAIL_MESSAGE, "error");
+    // Same texts as Lookup, but under the covers, not at the top of the form.
+    if (res.busy) setComicShowAllStatus(COMIC_BUSY_MESSAGE);
+    else if (res.failed) setComicShowAllStatus(COMIC_FAIL_MESSAGE);
     renderComicPicker();
   }
 
@@ -4499,11 +4621,12 @@
       );
     });
     if (!comicPicker.expanded && comicPicker.total > COMIC_COVER_MAX) {
-      tiles.push(`<button type="button" class="comic-show-all" id="btn-comic-show-all">Show all ${comicPicker.total} covers</button>`);
+      tiles.push(`<button type="button" class="btn btn-ghost comic-show-all" id="btn-comic-show-all">Show all ${comicPicker.total} covers</button>`);
     }
     list.innerHTML = tiles.length ? tiles.join("") : `<p class="comic-picker-empty">No covers from this source.</p>`;
     list.setAttribute("aria-busy", String(comicPicker.loading));
     list.classList.toggle("is-names", !images);
+    syncCoverRow();
     const urlInput = $("#field-comic-cover-url");
     if (urlInput && document.activeElement !== urlInput) {
       urlInput.value = comicPicker.choice === "url" ? cur : "";
@@ -4655,7 +4778,7 @@
         setLookupStatus(
           barcodeMiss
             ? "Comic lookup can’t search by barcode alone. Your barcode is kept. Add the series and issue number, then look up again."
-            : "No match. Everything you entered is kept.",
+            : "No match. What you typed is kept.", // cleared (Berean): comics only
           "error"
         );
         if (barcodeMiss) (els.fieldSeries.value.trim() ? els.fieldIssue : els.fieldSeries).focus();
@@ -5177,7 +5300,14 @@
     els.fieldFormat.addEventListener("change", () => {
       updateDiscVisibility();
       applyNewStatusDefault();
+      renderSignedUi();
     });
+    // A condition chosen by hand replaces one remembered while Digital was shown.
+    if (els.fieldCondition) {
+      els.fieldCondition.addEventListener("change", () => {
+        delete els.fieldCondition.dataset.physicalOnly;
+      });
+    }
     els.fieldStatus.addEventListener("change", () => {
       statusTouched = true;
     });
@@ -5241,6 +5371,9 @@
       renderCoverChoices();
       onComicCoverTyped(els.fieldCover.value);
     });
+    // :user-invalid settles on blur and on a Save attempt; the message follows it.
+    els.fieldCover.addEventListener("blur", () => requestAnimationFrame(updateCoverUrlError));
+    els.form.addEventListener("submit", () => requestAnimationFrame(updateCoverUrlError));
     const comicCoverList = $("#comic-cover-list");
     if (comicCoverList) {
       comicCoverList.addEventListener("click", (e) => {
@@ -5259,6 +5392,7 @@
         setComicCover(v, "manual", { label: "", variant: false });
         onComicCoverTyped(v);
       });
+      comicUrl.addEventListener("blur", () => requestAnimationFrame(updateCoverUrlError));
     }
     bindClick("#btn-comic-no-cover", () => {
       setComicCover("", "", { label: "", variant: false });
@@ -5566,17 +5700,24 @@
   }
 
   function dupSummaryHtml(it) {
+    const comic = it.type === "comic";
+    const images = comic && comicCoverImagesOn();
     const meta = [TYPE_LABELS[it.type] || it.type];
     if (it.platform) meta.push(PLATFORM_LABELS[it.platform] || it.platform);
     meta.push(FORMAT_LABELS[it.format] || it.format);
     if (it.format === "physical" && it.disc) meta.push(DISC_LABELS[it.disc] || it.disc);
     if (it.playtimeMinutes != null) meta.push(`${Math.round(it.playtimeMinutes / 60)}h`);
     if (it.type === "comic" && it.condition) meta.push(CONDITION_LABELS[it.condition]);
-    if (it.type === "comic" && it.coverVariant) meta.push(it.coverLabel ? `Variant: ${it.coverLabel}` : "Variant");
+    // Names-only mode shows the cover name in the thumbnail's place, so "Variant" alone here.
+    if (comic && it.coverVariant) meta.push(it.coverLabel && images ? `Variant: ${it.coverLabel}` : "Variant");
     if (SIGNED_TYPES.has(it.type) && it.signed) meta.push("Signed");
     let parts = "";
     const labels = COMPONENT_LABELS[it.type];
-    if (it.format === "physical" && labels && COMPONENT_KEYS.some((k) => it[k] != null)) {
+    if (comic) {
+      // Comics: only what's on the shelf, on one line ("Comic, Bag/board"), Oholiab fix 8.
+      const have = it.format === "physical" && labels ? componentOrder(it.type).filter((i) => it[COMPONENT_KEYS[i]] === true).map((i) => labels[i]) : [];
+      if (have.length) parts = `<span class="dup-parts">${escapeHtml(have.join(", "))}</span>`;
+    } else if (it.format === "physical" && labels && COMPONENT_KEYS.some((k) => it[k] != null)) {
       // ✓ / ✗ / dim en dash; screen readers hear yes / no / not recorded instead of symbols.
       const mark = (v) =>
         v === true
@@ -5589,7 +5730,18 @@
         .join(" ")}</span>`;
     }
     const year = it.year != null ? ` (${it.year})` : "";
-    return `<span class="dup-title">${escapeHtml(displayTitle(it))}${year}</span><span class="dup-meta">${escapeHtml(meta.join(" · "))}</span>${parts}`;
+    const text = `<span class="dup-title">${escapeHtml(displayTitle(it))}${year}</span><span class="dup-meta">${escapeHtml(meta.join(" · "))}</span>${parts}`;
+    if (!comic) return text;
+    // Comics: the stored cover URL as-is in an <img> (bytes are never fetched or copied);
+    // names-only mode shows the cover / variant name instead of an image.
+    const url = String(it.coverUrl || "").trim();
+    const thumb = images
+      ? url
+        ? `<img class="dup-thumb" src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`
+        : `<span class="dup-thumb" aria-hidden="true"></span>`
+      : "";
+    const name = !images && it.coverLabel ? `<span class="dup-cover-name">${escapeHtml(it.coverLabel)}</span>` : "";
+    return `<span class="dup-with-thumb">${thumb}<span class="dup-text">${text}${name}</span></span>`;
   }
 
   /**
@@ -5696,7 +5848,7 @@
       `<dt>Incoming</dt><dd>${dupSummaryHtml(incoming)}</dd>`;
     // PLACEHOLDER copy (Berean): description, option label, toasts and status lines.
     const desc = dup.ambiguous
-      ? `${dup.count} comics you have match on series and issue. Update changes the newest one, or add this as a separate copy.` // NEW COPY (fact check)
+      ? `${dup.count} comics you have match on series and issue. Update changes ${namedCopy(existing)}, the one you edited most recently. Or add this as a separate copy.` // cleared (Berean)
       : separateFirst
       ? "These look like different copies (another format, disc or platform), so adding a separate copy is suggested."
       : "Update the item you have with the new details, or add this as a separate copy.";
@@ -6765,7 +6917,7 @@
         : ev.ambiguous
           ? `${ev.count} comics match “${displayTitle(ev.dup)}” on series and issue. Nothing is updated unless you choose.`
           : ev.count > 1
-            ? `You already have ${ev.count} copies of “${displayTitle(ev.dup)}”. Update changes the newest.`
+            ? `You already have ${ev.count} copies of “${displayTitle(ev.dup)}”. Update changes ${namedCopy(ev.dup)}, the one you edited most recently.` // cleared (Berean)
           : `You already have “${displayTitle(ev.dup)}”`;
       // The status line sits on its own line, above the buttons (Oholiab).
       note = `<p class="import-dup clz-dup-status">Duplicate · ${escapeHtml(what)}</p>`;
@@ -6774,6 +6926,8 @@
         const opts = [...(ev.dup ? [["update", "Update"]] : []), ["add", "Separate copy"], ["skip", "Skip"]];
         side =
           `<div class="clz-choice-group" role="group" aria-label="Row ${ev.rowNo}: ${escapeHtml(name)}">` +
+          // PLACEHOLDER (Berean): the row's buttons override the default above for this row.
+          `<span class="clz-row-label" aria-hidden="true">This row:</span>` +
           opts
             .map(
               ([v, l]) =>

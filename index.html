@@ -149,10 +149,14 @@
             <p class="comic-picker-title" id="comic-picker-title">Choose the cover</p>
             <p class="comic-picker-hint" id="comic-picker-hint"></p>
             <div id="comic-cover-list" class="comic-cover-list"></div>
+            <!-- Show all: busy / isn't-working line under the covers (same texts as Lookup). -->
+            <p id="comic-show-all-status" class="lookup-status comic-show-all-status" role="status" aria-live="polite" hidden></p>
             <div id="comic-picker-credit" class="comic-credit" hidden></div>
             <div class="comic-picker-url">
               <label for="field-comic-cover-url">Or paste a photo URL</label>
               <input type="url" id="field-comic-cover-url" maxlength="500" placeholder="https://…" autocomplete="off" />
+              <!-- PLACEHOLDER (Berean): same line as under Cover URL -->
+              <p id="comic-cover-url-error" class="field-error" hidden>Enter a full web address starting with https://, or clear this field.</p>
             </div>
             <button type="button" class="btn btn-ghost btn-sm comic-no-cover" id="btn-comic-no-cover" aria-pressed="false">No cover</button>
           </div>
@@ -345,9 +349,12 @@
           <textarea id="field-notes" rows="3" maxlength="2000" placeholder="Thoughts, reminders…"></textarea>
         </div>
 
-        <div class="form-row">
+        <!-- Hidden while the comic cover picker is open: the cover is set in the picker. -->
+        <div class="form-row" id="cover-row">
           <label for="field-cover">Cover URL</label>
           <input type="url" id="field-cover" maxlength="500" placeholder="https://…" />
+          <!-- PLACEHOLDER (Berean) -->
+          <p id="cover-url-error" class="field-error" hidden>Enter a full web address starting with https://, or clear this field.</p>
           <input type="hidden" id="field-cover-source" />
           <input type="hidden" id="field-cover-source-id" />
           <input type="hidden" id="field-cover-platform" />
@@ -555,7 +562,8 @@
           <div id="clz-dups" hidden>
             <p class="clz-subhead">Duplicates</p>
             <div class="import-default clz-dup-default">
-              <label for="clz-dup-mode">For items you already have</label>
+              <!-- PLACEHOLDER (Berean): the default; each row's buttons override it ("This row:"). -->
+              <label for="clz-dup-mode">Default for items you already have</label>
               <select id="clz-dup-mode" class="select">
                 <option value="update">Update existing</option>
                 <option value="add">Add as separate copy</option>
