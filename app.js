@@ -659,6 +659,20 @@
     }
   }
 
+  /**
+   * A cover URL kept exactly as the source sent it (no size rewrite, no re-serialising):
+   * the trimmed string when it parses as https, else "". Never a data: or blob: URL.
+   */
+  function exactHttpsUrl(raw) {
+    const s = String(raw || "").trim();
+    if (!s || /\s/.test(s)) return "";
+    try {
+      return new URL(s).protocol === "https:" ? s : "";
+    } catch {
+      return "";
+    }
+  }
+
   /** Writer names then artist names, split the way book authors are, de-duplicated. */
   function comicCreatorNames(writer, artist) {
     const seen = new Set();
@@ -858,7 +872,8 @@
             .filter(Boolean),
       progress: String(raw.progress || ""),
       barcode: String(raw.barcode || "").trim(),
-      coverUrl: String(raw.coverUrl || "").trim(),
+      // Comics never keep image bytes (data:/blob:) — only a URL (Berean, GCD covers).
+      coverUrl: type === "comic" && /^(data|blob):/i.test(String(raw.coverUrl || "").trim()) ? "" : String(raw.coverUrl || "").trim(),
       coverSource: coverSource || "",
       coverSourceId: String(raw.coverSourceId ?? "").trim(),
       coverPlatform: String(raw.coverPlatform ?? "").trim(),
@@ -3971,6 +3986,24 @@
   const COMIC_RELAY_URL = "";
   /** DEV ONLY: set this localStorage key to get fixture results (see devComicFixture). */
   const COMIC_DEV_FIXTURE_STORAGE = "frm:devComicFixture";
+  /**
+   * Show cover images from the source in the picker (2:3 thumbnails). false = names only:
+   * a one-column list, one variant per row with a link to its issue page at the source, no
+   * images and no /comic-covers calls ("Show all" just lists the names from the search);
+   * picking a row stores the cover name only (no image URL), so no source image is shown
+   * anywhere. Default true until Micah decides.
+   */
+  const COMIC_COVER_IMAGES = true;
+  /** DEV ONLY: localStorage["frm:devComicCoverImages"] = "off" previews names-only mode. */
+  function comicCoverImagesOn() {
+    if (!COMIC_COVER_IMAGES) return false;
+    try {
+      return localStorage.getItem("frm:devComicCoverImages") !== "off";
+    } catch {
+      return true;
+    }
+  }
+
   /** The picker shows the main cover plus 4 more until "Show all N covers" is tapped. */
   const COMIC_COVER_MAX = 5;
   /** /comic-covers takes at most this many ids per request. */
@@ -4013,7 +4046,7 @@
         got = await comicRelayGet(route.path, route.query);
       }
       if (got.busy || (got.body && got.body.partial === true)) return { ...empty, busy: true };
-      const res = sanitizeComicLookup(got.body, { allowData: useFixture });
+      const res = sanitizeComicLookup(got.body, { fixture: useFixture });
       if (res.match) return { ...empty, ...res, matchedBy: route.by };
       last = res;
     }
@@ -4040,12 +4073,8 @@
   }
 
   /** Whatever the relay (or fixture) returns, the UI only ever sees this shape (no price). */
-  function sanitizeComicLookup(res, { allowData = false } = {}) {
-    const okUrl = (u) => {
-      const s = String(u || "").trim();
-      if (allowData && /^data:image\/(svg\+xml|png|jpeg|webp)[;,]/i.test(s)) return s; // dev fixture only
-      return safeHttpsUrl(s);
-    };
+  function sanitizeComicLookup(res, { fixture = false } = {}) {
+    const okUrl = (u) => comicCoverUrl(u, fixture);
     const names = (v) =>
       (Array.isArray(v) ? v : String(v || "").split(","))
         .map((n) => cleanText(n, 120))
@@ -4086,15 +4115,28 @@
     return { match, covers, variants, total, candidates, reason };
   }
 
-  /** Covers from any relay answer: https only (data: for the dev fixture), no repeats. */
+  /**
+   * A cover URL from the relay, kept exactly as sent (e.g. files1.comics.org …/w400/<id>.jpg;
+   * the size is never rewritten). https only; the dev fixture may also use its own
+   * placeholder files. Image bytes are never fetched or copied: no data:, blob: or canvas.
+   */
+  function comicCoverUrl(u, fixture) {
+    const s = String(u || "").trim();
+    if (fixture && /^\.\/dev\/fixture-cover-\d\.svg$/.test(s)) return s; // dev placeholder files only
+    return exactHttpsUrl(s);
+  }
+
+  /** Covers from any relay answer: URL kept as sent, no repeats. */
   function sanitizeComicCovers(list, okUrl) {
     const seen = new Set();
     const out = [];
     (Array.isArray(list) ? list : []).forEach((c) => {
       const url = c && okUrl(c.url);
-      if (!url || seen.has(url)) return;
-      seen.add(url);
-      out.push({ sourceId: cleanText(c.sourceId, 80), url, label: cleanText(c.label, 160), variant: c.variant === true });
+      const sourceId = c ? cleanText(c.sourceId, 80) : "";
+      const key = sourceId || url; // one entry per cover record (or per URL without ids)
+      if (!url || seen.has(key)) return;
+      seen.add(key);
+      out.push({ sourceId, url, label: cleanText(c.label, 160), variant: c.variant === true });
     });
     return out;
   }
@@ -4107,11 +4149,7 @@
   async function comicFetchCovers(ids) {
     const want = [...new Set(ids.filter(Boolean))];
     const useFixture = devComicFixtureMode() !== null;
-    const okUrl = (u) => {
-      const s = String(u || "").trim();
-      if (useFixture && /^data:image\/(svg\+xml|png|jpeg|webp)[;,]/i.test(s)) return s; // dev fixture only
-      return safeHttpsUrl(s);
-    };
+    const okUrl = (u) => comicCoverUrl(u, useFixture);
     const covers = [];
     for (let i = 0; i < want.length; i += COMIC_COVERS_CHUNK) {
       const chunk = want.slice(i, i + COMIC_COVERS_CHUNK);
@@ -4163,18 +4201,13 @@
   /** DEV ONLY: in the 18-cover fixture these have a name but no cover image yet. */
   const DEV_FIXTURE_NO_IMAGE = new Set([9, 14]);
 
-  /** DEV ONLY: a generated placeholder cover (a coloured card with a letter). */
+  /** DEV ONLY: one of five plain placeholder covers in ./dev (a URL, like the relay's). */
   function devFixtureCoverUrl(i) {
-    return (
-      "data:image/svg+xml," +
-      encodeURIComponent(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="${["#1d5486", "#9a3b3b", "#146354", "#8f4e12", "#4c468f"][i % 5]}"/><text x="16" y="270" fill="#fff" font-family="sans-serif" font-size="22">${String.fromCharCode(65 + i)}</text></svg>`
-      )
-    );
+    return `./dev/fixture-cover-${i % 5}.svg`;
   }
 
   function devFixtureVariant(i) {
-    return { sourceId: `${COMIC_ACTIVE_SOURCE.prefix}cover-${900100 + i}`, label: DEV_FIXTURE_LABELS[i], variant: i > 0 };
+    return { sourceId: `${COMIC_ACTIVE_SOURCE.prefix}issue-${900100 + i}`, label: DEV_FIXTURE_LABELS[i], variant: i > 0 };
   }
 
   /**
@@ -4182,7 +4215,7 @@
    * by hand; nothing in the app does). Answers one relay route ("barcode" | "series") in
    * the relay's shape, as { busy, body }, labelled as COMIC_ACTIVE_SOURCE. The body carries
    * a stray price that must be dropped.
-   * Placeholder data only (generated SVG covers, made-up names) — never real source data.
+   * Placeholder data only (plain SVG files in ./dev, made-up names) — never real source data.
    * Modes: "5" five covers · "2" · "1" · "0" match without covers · "18" eighteen named
    * covers (5 sent, the rest via "Show all"; two have no image yet) · "18busy" / "18partial"
    * the same, but fetching the rest is busy / partial · "miss" no match (with a candidate) ·
@@ -4310,6 +4343,8 @@
       choice,
       credit,
       token: comicPicker.token + 1,
+      // The match's own record; picking a variant swaps in that variant's record.
+      base: { id: els.fieldSourceId.value, url: els.fieldSourceUrl.value },
     };
     if (!choice && tiles.length === 1) {
       pickComicCover(0, { render: false }); // exactly one: preselected, still shown
@@ -4330,13 +4365,35 @@
     updateCoverPreview();
   }
 
+  /**
+   * Point sourceId/sourceUrl at the picked cover's own record (at GCD every variant is its
+   * own issue, e.g. gcd-issue-953800), or back at the match's record when the cover isn't
+   * one of the source's (No cover, a pasted URL, a cover without its own id).
+   */
+  function setComicSourceRecord(tile) {
+    const base = comicPicker.base || { id: "", url: "" };
+    const own = tile && comicSourceIssueId(tile);
+    els.fieldSourceId.value = own ? tile.sourceId : base.id;
+    els.fieldSourceUrl.value = own ? comicIssuePageUrl(tile.sourceId) || base.url : base.url;
+  }
+
   function pickComicCover(i, { render = true } = {}) {
     const c = comicPicker.tiles[i];
     if (!c) return;
-    setComicCover(c.url || "", "comiclookup", { label: c.label, variant: c.variant });
+    setComicSourceRecord(c);
+    setComicCover(comicCoverImagesOn() ? c.url || "" : "", "comiclookup", { label: c.label, variant: c.variant });
     comicPicker.choice = "cover";
     comicPicker.picked = i;
     if (render) renderComicPicker();
+  }
+
+  /** The source's issue page for a cover's sourceId ("gcd-issue-<id>"), else the match's page. */
+  function comicIssuePageUrl(sourceId) {
+    const src = comicSourceFor(sourceId);
+    const m = String(sourceId || "").match(/-issue-(\d+)$/i);
+    if (src && m) return src.issueUrl(m[1]);
+    const fallback = safeHttpsUrl((comicPicker.base && comicPicker.base.url) || els.fieldSourceUrl.value);
+    return src && fallback && src.issueUrlRe.test(fallback) ? fallback : "";
   }
 
   /** "Show all N covers": show every name now, fetch the missing images (chunks of 13). */
@@ -4344,7 +4401,8 @@
     if (!comicPicker.open || comicPicker.expanded) return;
     comicPicker.expanded = true;
     const token = comicPicker.token;
-    const missing = comicPicker.tiles.filter((t) => !t.url && t.sourceId).map((t) => t.sourceId);
+    // Names-only mode never asks for images.
+    const missing = comicCoverImagesOn() ? comicPicker.tiles.filter((t) => !t.url && t.sourceId).map((t) => t.sourceId) : [];
     if (!missing.length) {
       renderComicPicker();
       return;
@@ -4363,7 +4421,7 @@
     comicPicker.loading = false;
     // The picked tile may just have got its image.
     const p = comicPicker.tiles[comicPicker.picked];
-    if (comicPicker.choice === "cover" && p && p.url && !els.fieldCover.value.trim()) {
+    if (comicPicker.choice === "cover" && p && p.url && !els.fieldCover.value.trim() && comicCoverImagesOn()) {
       setComicCover(p.url, "comiclookup", { label: p.label, variant: p.variant });
     }
     if (res.busy) setLookupStatus(COMIC_BUSY_MESSAGE, "error");
@@ -4377,11 +4435,29 @@
     const all = comicPicker.tiles;
     const shown = comicPicker.expanded ? all : all.slice(0, COMIC_COVER_MAX);
     // NEW COPY (fact check): picker captions and the Show all button.
+    const images = comicCoverImagesOn();
     const tiles = shown.map((c, i) => {
       const on = comicPicker.choice === "cover" && comicPicker.picked === i;
       const label = c.label || `Cover ${i + 1}`;
+      if (!images) {
+        // Names only (Oholiab): one variant per row, ≥44px, the full name on up to two
+        // lines, the picker's outline + check when picked, the issue link at the row's end.
+        const href = comicIssuePageUrl(c.sourceId);
+        return (
+          `<div class="comic-name-row">` +
+          `<button type="button" class="comic-cover comic-name${on ? " is-selected" : ""}" data-comic-cover="${i}" aria-pressed="${on}" title="${escapeHtml(label)}">` +
+          `<span class="comic-cover-label">${escapeHtml(label)}</span>` +
+          (c.variant ? `<span class="comic-name-variant">Variant</span>` : "") +
+          `</button>` +
+          (href
+            ? `<a class="comic-cover-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(comicSourceFor(c.sourceId).issueLinkText)}</a>`
+            : "") +
+          `</div>`
+        );
+      }
+      // Thumbnails: 2:3 boxes; a name with no image yet gets a plain 2:3 tile.
       const art = c.url
-        ? `<img src="${escapeHtml(c.url)}" alt="" loading="lazy" decoding="async" />`
+        ? `<img src="${escapeHtml(c.url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`
         : `<span class="comic-cover-blank" aria-hidden="true"></span>`;
       return (
         `<button type="button" class="comic-cover${on ? " is-selected" : ""}${c.url ? "" : " is-blank"}" data-comic-cover="${i}" aria-pressed="${on}" title="${escapeHtml(label)}">` +
@@ -4396,6 +4472,7 @@
     }
     list.innerHTML = tiles.length ? tiles.join("") : `<p class="comic-picker-empty">No covers from this source.</p>`;
     list.setAttribute("aria-busy", String(comicPicker.loading));
+    list.classList.toggle("is-names", !images);
     const urlInput = $("#field-comic-cover-url");
     if (urlInput && document.activeElement !== urlInput) {
       urlInput.value = comicPicker.choice === "url" ? cur : "";
@@ -4414,6 +4491,7 @@
     if (!comicPicker.open) return;
     comicPicker.choice = value.trim() ? "url" : "";
     comicPicker.picked = -1;
+    setComicSourceRecord(null);
     els.fieldCoverLabel.value = "";
     els.fieldCoverVariant.value = "";
     renderComicPicker();
@@ -4517,6 +4595,8 @@
         );
         // Covers: one is preselected but still shown; none = paste a URL or No cover; several
         // are never auto-picked.
+        // Fill the match first so the picker knows the match's own record (base).
+        applyComicMatch(res.match);
         const coverCount = Math.max(res.total, res.covers.length, res.variants.length);
         openComicPicker(res.covers, {
           required: true,
@@ -4531,7 +4611,6 @@
                 ? "Check the cover, paste a photo URL, or choose No cover."
                 : "No cover came with this match. Paste a photo URL, or choose No cover.",
         });
-        applyComicMatch(res.match);
         updateComicCredit();
       } else {
         els.fieldSourceId.value = "";
@@ -5154,6 +5233,7 @@
       setComicCover("", "", { label: "", variant: false });
       comicPicker.choice = "none";
       comicPicker.picked = -1;
+      setComicSourceRecord(null);
       renderComicPicker();
     });
     if (els.coverChoices) {
@@ -5393,20 +5473,57 @@
   }
 
   /**
-   * Comics (Nathan risk 3): the same comic means the same series + issue + picked cover.
-   * Never title (optional, "Untitled") and never barcode: one UPC is shared by every
-   * variant cover, so a barcode hit opens the cover picker instead (see the comic Lookup).
+   * The source's own id for this exact issue record ("gcd-issue-911609"), lower-cased, or
+   * "". At GCD every variant/printing is its own issue record, so this names one cover.
+   */
+  function comicSourceIssueId(it) {
+    const id = String((it && it.sourceId) || "").trim().toLowerCase();
+    return comicSourceFor(id) && /-issue-[^-]+$/.test(id) ? id : "";
+  }
+
+  /**
+   * Comic duplicates (Nathan risk 3; rule from Nathan + Berean, Oct 5 2026), in order:
+   *  1. Both sides carry a source issue id from the same source: the same id is a
+   *     duplicate, a different id is a different comic — whatever the covers say.
+   *  2. Otherwise, both covers non-blank: series + issue + cover.
+   *  3. Otherwise: series + issue. Several such matches name the count and are flagged
+   *     ambiguous, so nothing updates one of them automatically.
+   * Never title (optional) and never barcode (one UPC is shared by every variant; a
+   * barcode hit opens the cover picker instead, see the comic Lookup).
+   * @returns {{ item, reason: "comic", count: number, ambiguous: boolean } | null}
    */
   function findComicDuplicate(candidate, excludeId) {
     if (!comicKeyPart(candidate.series)) return null;
-    const key = comicDupKey(candidate);
-    const hits = items.filter((i) => i.id !== excludeId && i.type === "comic" && comicDupKey(i) === key);
+    const pool = items.filter((i) => i.id !== excludeId && i.type === "comic");
+    const sid = comicSourceIssueId(candidate);
+    const prefixOf = (id) => (comicSourceFor(id) || {}).prefix || "";
+    const newest = (list) => {
+      const same = list.filter((i) => !looksLikeDifferentCopy(i, candidate));
+      return (same.length ? same : list).slice().sort((x, y) => String(y.dateUpdated).localeCompare(String(x.dateUpdated)))[0];
+    };
+    const rest = [];
+    const byId = [];
+    pool.forEach((i) => {
+      const other = comicSourceIssueId(i);
+      if (sid && other && prefixOf(sid) === prefixOf(other)) {
+        if (other === sid) byId.push(i); // rule 1: same record
+        return; // rule 1: different record = different comic
+      }
+      rest.push(i);
+    });
+    if (byId.length) return { item: newest(byId), reason: "comic", count: byId.length, ambiguous: false };
+    const si = `${comicKeyPart(candidate.series)}|${comicIssueKey(candidate.issue)}`;
+    const cover = comicCoverKey(candidate.coverUrl);
+    let fallback = false;
+    const hits = rest.filter((i) => {
+      if (`${comicKeyPart(i.series)}|${comicIssueKey(i.issue)}` !== si) return false;
+      const theirs = comicCoverKey(i.coverUrl);
+      if (cover && theirs) return theirs === cover; // rule 2
+      fallback = true; // rule 3: a blank cover on either side
+      return true;
+    });
     if (!hits.length) return null;
-    const same = hits.filter((i) => !looksLikeDifferentCopy(i, candidate));
-    const best = (same.length ? same : hits)
-      .slice()
-      .sort((a, b) => String(b.dateUpdated).localeCompare(String(a.dateUpdated)))[0];
-    return { item: best, reason: "comic", count: hits.length };
+    return { item: newest(hits), reason: "comic", count: hits.length, ambiguous: fallback && hits.length > 1 };
   }
 
   /** Steam vs Switch, digital vs physical, CD vs vinyl: two rows is the right answer. */
@@ -5541,12 +5658,15 @@
   function openDuplicatePrompt(incomingRaw, dup, context) {
     const existing = dup.item;
     const incoming = normalizeItem({ ...incomingRaw, id: incomingRaw.id || "incoming" });
-    const separateFirst = looksLikeDifferentCopy(existing, incoming);
+    // Several comics matching on series + issue alone: never lead with Update (Nathan).
+    const separateFirst = dup.ambiguous === true || looksLikeDifferentCopy(existing, incoming);
     const detailHtml =
       `<dt>Existing</dt><dd>${dupSummaryHtml(existing)}</dd>` +
       `<dt>Incoming</dt><dd>${dupSummaryHtml(incoming)}</dd>`;
     // PLACEHOLDER copy (Berean): description, option label, toasts and status lines.
-    const desc = separateFirst
+    const desc = dup.ambiguous
+      ? `${dup.count} comics you have match on series and issue. Update changes the newest one, or add this as a separate copy.` // NEW COPY (fact check)
+      : separateFirst
       ? "These look like different copies (another format, disc or platform), so adding a separate copy is suggested."
       : "Update the item you have with the new details, or add this as a separate copy.";
     const optionLabel = incomingWouldReplace(existing, incoming)
@@ -6533,7 +6653,7 @@
   }
 
   function clzRepeatKey(it) {
-    if (it.type === "comic") return `comic|${comicDupKey(it)}`;
+    if (it.type === "comic") return `comic|${comicSourceIssueId(it) || comicDupKey(it)}`;
     return [it.type, normalizeTitle(it.title), it.year ?? "", canonicalPlatform(it.platform).toLowerCase(), it.format, it.disc || ""].join("|");
   }
 
@@ -6547,7 +6667,7 @@
       }
       const item = normalizeItem({ ...res.cand, id: "incoming" });
       const dup = findDuplicate(item, null);
-      if (dup) return { kind: "dup", dup: dup.item, count: dup.count || 1, item, rowNo };
+      if (dup) return { kind: "dup", dup: dup.item, count: dup.count || 1, ambiguous: dup.ambiguous === true, item, rowNo };
       const key = clzRepeatKey(item);
       if (seen.has(key)) return { kind: "dup", repeatOf: seen.get(key), item, rowNo };
       seen.set(key, rowNo);
@@ -6559,7 +6679,9 @@
     const ev = clz.evals[i];
     if (ev.kind === "new") return "add";
     if (ev.kind !== "dup") return "skip";
-    const c = clz.choices.get(i) || $("#clz-dup-mode").value || "update";
+    // Several comics match on series + issue alone: never updated automatically — Skip
+    // until the row's own choice says otherwise (Nathan).
+    const c = clz.choices.get(i) || (ev.ambiguous ? "skip" : $("#clz-dup-mode").value || "update");
     // A repeat inside the file has nothing on the shelf to update: it's another copy.
     return c === "update" && !ev.dup ? "add" : c;
   }
@@ -6609,8 +6731,10 @@
       // NEW COPY (fact check): status + count line, and the per-row choice buttons.
       const what = ev.repeatOf
         ? `Also on row ${ev.repeatOf}`
-        : ev.count > 1
-          ? `You already have ${ev.count} copies of “${displayTitle(ev.dup)}”. Update changes the newest.`
+        : ev.ambiguous
+          ? `${ev.count} comics match “${displayTitle(ev.dup)}” on series and issue. Nothing is updated unless you choose.`
+          : ev.count > 1
+            ? `You already have ${ev.count} copies of “${displayTitle(ev.dup)}”. Update changes the newest.`
           : `You already have “${displayTitle(ev.dup)}”`;
       // The status line sits on its own line, above the buttons (Oholiab).
       note = `<p class="import-dup clz-dup-status">Duplicate · ${escapeHtml(what)}</p>`;

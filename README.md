@@ -69,9 +69,11 @@ Reference links (no keys): **RAWG** (`https://rawg.io/search?query=…`), **IGDB
 - Barcode first, then series + issue. A barcode that doesn't match is kept on the comic, and series + issue still match.
 - **Cover picker:** one barcode is shared by every variant cover, so after a match you pick the cover of your copy (variants are marked), paste a photo URL, or choose No cover. Save stays off, with the reason shown, until you do. A single cover is preselected but still shown; several are never picked for you.
 - If the relay is busy (503 or any other error) the status says “Lookup busy, try later.” and nothing in the form changes.
-- Credits: the relay answer's `sourceId` prefix picks the credit link (`gcd-` → Grand Comics Database, `cv-` → Comic Vine), shown in the picker, on the comic's card and form, and in the footer. Credit texts are placeholders: “PLACEHOLDER: Grand Comics Database credit” (https://www.comics.org) and “PLACEHOLDER: Comic Vine credit” (https://comicvine.gamespot.com). Sources are named only in `COMIC_SOURCES` in `app.js`.
+- Credits: a comic's `sourceId` prefix picks its credit (`gcd-` → Grand Comics Database, `cv-` → Comic Vine), shown as plain text in the cover picker, on the comic's form, in Settings and in the footer. GCD (wording cleared): “Comic details from the Grand Comics Database™, licensed under CC BY-SA 4.0. Cover images are © their respective copyright holders and shown for identification only.”, plus a link to the issue's comics.org page. The Comic Vine text is still “PLACEHOLDER: Comic Vine credit”. Sources are named only in `COMIC_SOURCES` in `app.js`.
+- Covers: only the cover URL the relay returns is stored and shown, unchanged (no size rewrite). Image bytes are never copied into storage or backups (no data:/blob: URLs; a comic's data: cover is dropped). The service worker never handles comics.org or files1.comics.org requests and caches same-origin files only. `COMIC_COVER_IMAGES` (default `true`) switches the picker to names only: one variant per row with a link to its comics.org issue page and no images.
+- “Show all N covers” appears when an issue has more than 5 covers; it loads the rest from `…/comic-covers` (13 per request). Busy, partial answers and relay errors all say “Comic lookup is busy right now. Try again later. What you typed is kept.” — never “no match”.
 - Prices are never requested, stored or shown.
-- Duplicates: comics match on series + issue + cover, never on title or barcode.
+- Duplicates: if both comics carry a source issue id (at GCD each variant/printing is its own record), the same id is a duplicate and a different id is a different comic. Otherwise series + issue + cover when both covers are set; otherwise series + issue, and several matches are named with their count and never updated automatically. Never title or barcode.
 
 ### Import from CLZ
 **Settings → Import CLZ** reads a CSV exported from CLZ (Books, Comics, Games, Movies or Music). Pick the type and the file, and FreeRangeMedia shows a preview: how many items will be added, the first 5 rows, rows skipped and why, and possible duplicates (update the one you have or add a separate copy, all at once or per row). If the columns aren't recognised, a mapping screen asks which column is which; the mapping is remembered (`freerangemedia-clz-mapping`). Price, value, cost and paid columns are always ignored. After importing there's Undo, and **Remove last import** stays available in Settings. The CLZ column names in `CLZ_HEADER_ALIASES` (`app.js`) are unconfirmed until checked against a real CLZ export.
@@ -92,7 +94,7 @@ Reference links (no keys): **RAWG** (`https://rawg.io/search?query=…`), **IGDB
 - Reference links: IMDb, ISFDB, RAWG, IGDB (by type)
 - Stats strip by type and status
 - Sample items on first load only (`media-shelf-seeded`); once cleared — or once every item is deleted — they don’t come back
-- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v24`)
+- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v25`; only same-origin files are cached, never cover images, and comics.org / files1.comics.org requests bypass the worker)
 - Relative paths only — works from the GitHub Pages project path
 
 ## Add to Home Screen

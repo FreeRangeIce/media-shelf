@@ -1,5 +1,13 @@
-/* FreeRangeMedia service worker — cache version v24 */
-const CACHE = "media-shelf-v24";
+/* FreeRangeMedia service worker — cache version v25 */
+const CACHE = "media-shelf-v25";
+/*
+ * Cross-origin responses (cover images, APIs, CDNs) are never written to the cache: only
+ * same-origin responses are (see the fetch handler). Comic data and covers from the Grand
+ * Comics Database (comics.org, files1.comics.org) are not even routed through this worker,
+ * so the browser loads them directly and nothing from those hosts can land in a cache
+ * (Berean's condition for GCD covers).
+ */
+const NEVER_HANDLE_HOSTS = /(^|\.)comics\.org$/i;
 const ASSETS = [
   "./",
   "./index.html",
@@ -37,6 +45,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
+  if (NEVER_HANDLE_HOSTS.test(new URL(req.url).hostname)) return; // straight to the network
   event.respondWith(
     caches.match(req).then((cached) => {
       const fetched = fetch(req)
