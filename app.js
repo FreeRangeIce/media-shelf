@@ -4117,6 +4117,8 @@
   const COMIC_BUSY_MESSAGE = "Comic lookup is busy right now. Try again later. What you typed is kept.";
   // Every other relay error, a non-JSON answer, a timeout or a network failure.
   const COMIC_FAIL_MESSAGE = "Comic lookup isn't working right now. What you typed is kept.";
+  /** No relay URL in this build: nothing was looked up, so never "No match" (Berean, 12:05am). */
+  const COMIC_NOT_SET_UP_MESSAGE = "Comic lookup isn't set up yet. What you typed is kept."; // cleared (Berean, 12:05am)
   /** After a busy answer, Lookup waits out Retry-After (capped) before asking the relay again. */
   let comicBusyUntil = 0;
 
@@ -4145,8 +4147,8 @@
     }
     if (!routes.length) return empty;
     const useFixture = devComicFixtureMode() !== null;
-    // TODO: source pending. Stub: no relay yet, so never a match (the form keeps what was typed).
-    if (!useFixture && !COMIC_RELAY_URL) return empty;
+    // No relay URL yet: nothing is asked, and the form says so instead of "No match".
+    if (!useFixture && !COMIC_RELAY_URL) return { ...empty, notSetUp: true };
     let last = null;
     for (const route of routes) {
       let got;
@@ -4724,6 +4726,10 @@
     try {
       const res = await comicLookup({ series, issue, barcode, publisher: els.fieldPublisher.value.trim() });
       const code = normalizeBarcode(barcode);
+      if (res.notSetUp) {
+        setLookupStatus(COMIC_NOT_SET_UP_MESSAGE, "error"); // same line style as the fail message
+        return;
+      }
       if (res.busy || res.failed) {
         // Busy (429, 503 with Retry-After, or a partial answer) or any other failure: never
         // "no match", and nothing in the form changes.
