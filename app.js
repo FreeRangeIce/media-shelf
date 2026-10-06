@@ -317,8 +317,129 @@
       items,
     };
     const raw = JSON.stringify(payload);
-    localStorage.setItem(STORAGE_KEY, raw);
+    // Comics shadow first (Nathan risk 1). If either write throws (storage full), the
+    // shadow is put back, so the two keys never disagree; commitItems rolls back memory.
+    const prevShadow = readComicShadow();
+    const shadowRaw = buildComicShadowRaw(items, prevShadow);
+    if (shadowRaw !== null) localStorage.setItem(COMIC_SHADOW_STORAGE, shadowRaw);
+    try {
+      localStorage.setItem(STORAGE_KEY, raw);
+    } catch (err) {
+      if (shadowRaw !== null) {
+        try {
+          if (prevShadow) localStorage.setItem(COMIC_SHADOW_STORAGE, prevShadow.raw);
+          else localStorage.removeItem(COMIC_SHADOW_STORAGE);
+        } catch {
+          /* best effort */
+        }
+      }
+      throw err;
+    }
     lastSyncedRaw = raw;
+  }
+
+  /* ---------- Comics shadow copy (Nathan risk 1) ----------
+   * An app.js from before comics (v23 and older, e.g. a PWA tab left open in the
+   * background) runs every item through its normalizeItem on save: an unknown type becomes
+   * "book" and unknown fields (series, issue, writer, …) are dropped. So every save from
+   * this version also writes the comics alone to their own key, which old code never
+   * reads or writes. On load and on every `storage` event, a comic id that shows up in the
+   * main store as another type, or is missing from it, is put back from the shadow.
+   * Comics this version deletes (or turns into another type) leave the shadow and are
+   * listed in `deleted`, so a repair never brings them back.
+   * Shape: { v: 1, savedAt, items: [comic, …], deleted: [id, …] }.
+   * STORAGE_KEY itself and its envelope are unchanged.
+   */
+  const COMIC_SHADOW_STORAGE = `${STORAGE_KEY}:comics`;
+  const COMIC_SHADOW_MAX_DELETED = 2000;
+  /** If the old app edited the stripped copy after our last save, keep these edits. */
+  const COMIC_REPAIR_CARRY_KEYS = ["status", "rating", "notes", "tags", "progress"];
+
+  function readComicShadow() {
+    try {
+      const raw = localStorage.getItem(COMIC_SHADOW_STORAGE);
+      if (!raw) return null;
+      const s = JSON.parse(raw);
+      if (!s || s.v !== 1 || !Array.isArray(s.items)) return null;
+      return {
+        raw,
+        items: s.items.filter((o) => o && typeof o === "object" && !Array.isArray(o) && o.id),
+        deleted: Array.isArray(s.deleted) ? s.deleted.map(String) : [],
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** The shadow to write for `list`, or null when there are no comics and never were. */
+  function buildComicShadowRaw(list, prev) {
+    const comics = list.filter((i) => i.type === "comic");
+    if (!comics.length && !prev) return null;
+    const ids = new Set(comics.map((i) => String(i.id)));
+    const deleted = new Set(prev ? prev.deleted : []);
+    if (prev) {
+      prev.items.forEach((it) => {
+        if (!ids.has(String(it.id))) deleted.add(String(it.id));
+      });
+    }
+    ids.forEach((id) => deleted.delete(id)); // a comic restored or re-added is live again
+    return JSON.stringify({
+      v: 1,
+      savedAt: nowIso(),
+      items: comics,
+      deleted: [...deleted].slice(-COMIC_SHADOW_MAX_DELETED),
+    });
+  }
+
+  /** @returns {{ items: object[], repaired: number } | null} null when nothing needs fixing */
+  function repairComicsFromShadow(list) {
+    const shadow = readComicShadow();
+    if (!shadow || !shadow.items.length) return null;
+    const deleted = new Set(shadow.deleted);
+    const index = new Map(list.map((it, i) => [String(it.id), i]));
+    const out = list.slice();
+    const missing = [];
+    let repaired = 0;
+    for (const s of shadow.items) {
+      const id = String(s.id);
+      if (deleted.has(id)) continue;
+      const i = index.get(id);
+      if (i === undefined) {
+        // Gone without a recorded deletion: an old app dropped it (e.g. a Replace restore).
+        missing.push(normalizeItem({ ...s, type: "comic" }));
+        repaired += 1;
+        continue;
+      }
+      const cur = out[i];
+      if (cur.type === "comic") continue;
+      const fixed = { ...s, type: "comic" };
+      if (parseTime(cur.dateUpdated) > parseTime(s.dateUpdated)) {
+        COMIC_REPAIR_CARRY_KEYS.forEach((k) => {
+          fixed[k] = cur[k];
+        });
+        fixed.dateUpdated = cur.dateUpdated;
+      }
+      out[i] = normalizeItem(fixed);
+      repaired += 1;
+    }
+    return repaired ? { items: [...missing, ...out], repaired } : null;
+  }
+
+  /**
+   * Repair `items` from the shadow and save. This is the one case where opening the app
+   * writes storage: the store was already rewritten by an older app, so the stored string
+   * is no longer what this version saved.
+   */
+  function applyComicRepair() {
+    const fix = repairComicsFromShadow(items);
+    if (!fix) return false;
+    items = fix.items;
+    try {
+      saveStore();
+    } catch {
+      /* storage full: repaired in memory; the next successful save writes it */
+    }
+    return true;
   }
 
   /** Re-read items from storage if another tab changed them. Returns true if reloaded. */
@@ -334,6 +455,7 @@
     if (!store) return false; // missing or unreadable: keep what this tab has
     items = store.items.map(normalizeItem);
     lastSyncedRaw = raw;
+    applyComicRepair(); // an older app may have just turned comics into books
     return true;
   }
 
@@ -738,12 +860,14 @@
     const store = loadStore();
     if (store && Array.isArray(store.items) && store.items.length > 0) {
       items = store.items.map(normalizeItem);
+      applyComicRepair();
       return;
     }
     // Samples are offered once. A saved (even empty) library means this browser has
     // already been set up — e.g. samples cleared or every item deleted — so don't re-seed.
     if (readLs(SEEDED_STORAGE) || store) {
       items = store ? store.items.map(normalizeItem) : [];
+      if (store) applyComicRepair();
       return;
     }
     // First visit only (nothing stored yet): save the samples, as before.
