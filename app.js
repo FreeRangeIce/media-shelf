@@ -5651,8 +5651,10 @@
    *  1. Both sides carry a source issue id from the same source: the same id is a
    *     duplicate, a different id is a different comic — whatever the covers say.
    *  2. Otherwise, both covers non-blank: series + issue + cover.
-   *  3. Otherwise: series + issue. Several such matches name the count and are flagged
-   *     ambiguous, so nothing updates one of them automatically.
+   *  3. Otherwise: series + issue.
+   * Whatever matched, more than one matching copy is ambiguous (Nathan, 11:48pm): the
+   * count is named, CLZ rows start on Skip (the default dropdown can't change that) and
+   * the prompt leads with Separate copy, so nothing updates one of them automatically.
    * Never title (optional) and never barcode (variants can share a UPC; a
    * barcode hit opens the cover picker instead, see the comic Lookup).
    * @returns {{ item, reason: "comic", count: number, ambiguous: boolean } | null}
@@ -5676,19 +5678,17 @@
       }
       rest.push(i);
     });
-    if (byId.length) return { item: newest(byId), reason: "comic", count: byId.length, ambiguous: false };
+    if (byId.length) return { item: newest(byId), reason: "comic", count: byId.length, ambiguous: byId.length > 1 };
     const si = `${comicKeyPart(candidate.series)}|${comicIssueKey(candidate.issue)}`;
     const cover = comicCoverKey(candidate.coverUrl);
-    let fallback = false;
     const hits = rest.filter((i) => {
       if (`${comicKeyPart(i.series)}|${comicIssueKey(i.issue)}` !== si) return false;
       const theirs = comicCoverKey(i.coverUrl);
       if (cover && theirs) return theirs === cover; // rule 2
-      fallback = true; // rule 3: a blank cover on either side
-      return true;
+      return true; // rule 3: a blank cover on either side
     });
     if (!hits.length) return null;
-    return { item: newest(hits), reason: "comic", count: hits.length, ambiguous: fallback && hits.length > 1 };
+    return { item: newest(hits), reason: "comic", count: hits.length, ambiguous: hits.length > 1 };
   }
 
   /** Steam vs Switch, digital vs physical, CD vs vinyl: two rows is the right answer. */
@@ -5841,7 +5841,7 @@
   function openDuplicatePrompt(incomingRaw, dup, context) {
     const existing = dup.item;
     const incoming = normalizeItem({ ...incomingRaw, id: incomingRaw.id || "incoming" });
-    // Several comics matching on series + issue alone: never lead with Update (Nathan).
+    // More than one matching comic (any rule): never lead with Update (Nathan).
     const separateFirst = dup.ambiguous === true || looksLikeDifferentCopy(existing, incoming);
     const detailHtml =
       `<dt>Existing</dt><dd>${dupSummaryHtml(existing)}</dd>` +
@@ -6871,7 +6871,7 @@
     const ev = clz.evals[i];
     if (ev.kind === "new") return "add";
     if (ev.kind !== "dup") return "skip";
-    // Several comics match on series + issue alone: never updated automatically — Skip
+    // More than one matching comic (any rule): never updated automatically — Skip
     // until the row's own choice says otherwise (Nathan).
     const c = clz.choices.get(i) || (ev.ambiguous ? "skip" : $("#clz-dup-mode").value || "update");
     // A repeat inside the file has nothing on the shelf to update: it's another copy.
@@ -6923,9 +6923,7 @@
       // NEW COPY (fact check): status + count line, and the per-row choice buttons.
       const what = ev.repeatOf
         ? `Also on row ${ev.repeatOf}`
-        : ev.ambiguous
-          ? `${ev.count} comics match “${displayTitle(ev.dup)}” on series and issue. Nothing is updated unless you choose.`
-          : ev.count > 1
+        : ev.count > 1 // several copies (comics: starts on Skip, see clzChoice); names the copy Update changes
             ? `You already have ${ev.count} copies of “${displayTitle(ev.dup)}”. Update changes ${namedCopy(ev.dup)}${lastEditedClause(ev.dup)}.` // cleared (Berean, 11:44pm)
           : `You already have “${displayTitle(ev.dup)}”`;
       // The status line sits on its own line, above the buttons (Oholiab).
