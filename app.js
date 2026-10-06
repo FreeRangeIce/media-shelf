@@ -5848,7 +5848,7 @@
       `<dt>Incoming</dt><dd>${dupSummaryHtml(incoming)}</dd>`;
     // PLACEHOLDER copy (Berean): description, option label, toasts and status lines.
     const desc = dup.ambiguous
-      ? `${dup.count} comics you have match on series and issue. Update changes ${namedCopy(existing)}${lastEditedClause(existing)}. Or add this as a separate copy.` // cleared (Berean, 11:44pm)
+      ? `${dup.count} comics you have match this one. Update changes ${namedCopy(existing)}${lastEditedClause(existing)}. Or add this as a separate copy.` // cleared (Berean, 11:53pm)
       : separateFirst
       ? "These look like different copies (another format, disc or platform), so adding a separate copy is suggested."
       : "Update the item you have with the new details, or add this as a separate copy.";
