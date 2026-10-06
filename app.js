@@ -5848,7 +5848,7 @@
       `<dt>Incoming</dt><dd>${dupSummaryHtml(incoming)}</dd>`;
     // PLACEHOLDER copy (Berean): description, option label, toasts and status lines.
     const desc = dup.ambiguous
-      ? `${dup.count} comics you have match on series and issue. Update changes ${namedCopy(existing)}, the one you edited most recently. Or add this as a separate copy.` // cleared (Berean)
+      ? `${dup.count} comics you have match on series and issue. Update changes ${namedCopy(existing)}${lastEditedClause(existing)}. Or add this as a separate copy.` // cleared (Berean, 11:44pm)
       : separateFirst
       ? "These look like different copies (another format, disc or platform), so adding a separate copy is suggested."
       : "Update the item you have with the new details, or add this as a separate copy.";
@@ -6425,6 +6425,15 @@
     updateLastImportUi();
   }
 
+  /**
+   * ", last edited today at 10:02" for the copy Update would change (Berean), from its own
+   * dateUpdated. Empty when the copy has no valid edit date, so the line never shows a blank.
+   */
+  function lastEditedClause(item) {
+    const when = relativeDayTime(item && item.dateUpdated);
+    return when ? `, last edited ${when}` : "";
+  }
+
   /** "today at 10:02", "yesterday at 9:15", "on Sep 25 at 10:02" (PLACEHOLDER). */
   function relativeDayTime(iso) {
     const d = new Date(iso);
@@ -6917,7 +6926,7 @@
         : ev.ambiguous
           ? `${ev.count} comics match “${displayTitle(ev.dup)}” on series and issue. Nothing is updated unless you choose.`
           : ev.count > 1
-            ? `You already have ${ev.count} copies of “${displayTitle(ev.dup)}”. Update changes ${namedCopy(ev.dup)}, the one you edited most recently.` // cleared (Berean)
+            ? `You already have ${ev.count} copies of “${displayTitle(ev.dup)}”. Update changes ${namedCopy(ev.dup)}${lastEditedClause(ev.dup)}.` // cleared (Berean, 11:44pm)
           : `You already have “${displayTitle(ev.dup)}”`;
       // The status line sits on its own line, above the buttons (Oholiab).
       note = `<p class="import-dup clz-dup-status">Duplicate · ${escapeHtml(what)}</p>`;
@@ -6926,7 +6935,7 @@
         const opts = [...(ev.dup ? [["update", "Update"]] : []), ["add", "Separate copy"], ["skip", "Skip"]];
         side =
           `<div class="clz-choice-group" role="group" aria-label="Row ${ev.rowNo}: ${escapeHtml(name)}">` +
-          // PLACEHOLDER (Berean): the row's buttons override the default above for this row.
+          // cleared (Berean, 11:44pm): the row's buttons override the default above for this row.
           `<span class="clz-row-label" aria-hidden="true">This row:</span>` +
           opts
             .map(
