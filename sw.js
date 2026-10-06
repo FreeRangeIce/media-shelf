@@ -1,5 +1,5 @@
-/* FreeRangeMedia service worker — cache version v25 */
-const CACHE = "media-shelf-v25";
+/* FreeRangeMedia service worker — cache version v26 */
+const CACHE = "media-shelf-v26";
 /*
  * Cross-origin responses (cover images, APIs, CDNs) are never written to the cache: only
  * same-origin responses are (see the fetch handler). Comic data and covers from the Grand
@@ -8,6 +8,11 @@ const CACHE = "media-shelf-v25";
  * (Berean's condition for GCD covers).
  */
 const NEVER_HANDLE_HOSTS = /(^|\.)comics\.org$/i;
+/*
+ * The comic Lookup relay (Cloudflare Worker frm-gcd) is never routed through this worker
+ * either: its answers go straight to the page and are never cached here.
+ */
+const RELAY_HOSTS = /^frm-gcd\.freerangeice\.workers\.dev$/i;
 const ASSETS = [
   "./",
   "./index.html",
@@ -45,7 +50,8 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
-  if (NEVER_HANDLE_HOSTS.test(new URL(req.url).hostname)) return; // straight to the network
+  const host = new URL(req.url).hostname;
+  if (NEVER_HANDLE_HOSTS.test(host) || RELAY_HOSTS.test(host)) return; // straight to the network
   event.respondWith(
     caches.match(req).then((cached) => {
       const fetched = fetch(req)

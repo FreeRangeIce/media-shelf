@@ -726,6 +726,7 @@
       key: "gcd",
       prefix: "gcd-",
       name: "Grand Comics Database",
+      shortName: "GCD", // in the picker's "still loading" note (PLACEHOLDER copy)
       barcodeRoute: false, // GCD has no barcode search: a barcode alone is a miss
       // Credit wording cleared by Berean (Oct 5, 2026). Use exactly.
       creditHtml: () =>
@@ -742,6 +743,7 @@
       key: "cv", // kept in case the relay switches back
       prefix: "cv-",
       name: "Comic Vine",
+      shortName: "Comic Vine",
       barcodeRoute: false,
       creditHtml: () => '<a href="https://comicvine.gamespot.com" target="_blank" rel="noopener noreferrer">PLACEHOLDER: Comic Vine credit</a>',
       issueUrlRe: /^https:\/\/comicvine\.gamespot\.com\/[^?#]*4000-\d+\/?$/i,
@@ -4054,13 +4056,14 @@
   }
 
 
-  /* ---------- Comic Lookup adapter (relay contract final; relay not deployed yet) ----------
+  /* ---------- Comic Lookup adapter (relay contract final; relay deployed as frm-gcd) ----------
    * The whole comic UI talks only to comicLookup(). Data comes through our Cloudflare Worker
    * relay; the browser never calls the data source itself. Which source the relay uses is
    * the relay's business: the app reads sourceId/sourceName/sourceUrl from the answer and
    * picks the credit with comicSourceFor() (see COMIC_SOURCES).
    * Relay contract:
-   *   GET {COMIC_RELAY_URL}/comic?series=&issue=[&publisher=]
+   *   GET {COMIC_RELAY_URL}/comic?series=&issue=[&year=][&publisher=]
+   *     (year only when the form's Year holds a 4-digit year; publisher is ignored by GCD)
    *     -> { match: { series, issue, title, publisher, year, writer: [], artist: [],
    *                   sourceId: "<prefix>issue-<id>", sourceName, sourceUrl } | null,
    *          candidates: [{ series, year, publisher, sourceId: "<prefix>…-<id>" }],
@@ -4070,7 +4073,11 @@
    *                                                  may be long variant names)
    *   GET {COMIC_RELAY_URL}/comic-covers?ids=<comma list, max 13>
    *     -> { covers: [{ sourceId, url, label, variant }] }   ("Show all N covers")
-   *   Any answer may carry partial: true -> treated as busy.
+   *     A miss may carry reason: "add-year" (too many series with that name): asked
+   *     without a year, the form asks for the year (COMIC_ADD_YEAR_MESSAGE).
+   *   partial: true (the relay's GCD budget ran out mid-answer): WITH a match the picker
+   *   opens with the covers that arrived and every named variant, plus a muted note; "Show
+   *   all" fetches the rest later. Without a match -> busy. On /comic-covers -> busy.
    *   GET {COMIC_RELAY_URL}/comic-barcode?upc=
    *     -> same shape (base + variants as covers), or { match: null, reason } on a miss
    *        such as "barcode-unsupported".
@@ -4084,8 +4091,22 @@
    * network failure or timeout still rejects; callers show the "isn't working" line). sanitizeComicLookup() rebuilds every answer from the allowed
    * keys only, so a price or any other extra field never reaches the form or storage.
    */
-  // TODO: source pending — the relay's https base URL. Empty = Lookup is inert (no match).
-  const COMIC_RELAY_URL = "";
+  // The frm-gcd Cloudflare Worker (Grand Comics Database relay). Empty = Lookup is inert
+  // and says it isn't set up yet.
+  const COMIC_RELAY_URL = "https://frm-gcd.freerangeice.workers.dev";
+  /**
+   * DEV ONLY: localStorage["frm:devComicRelay"] = "off" acts as if COMIC_RELAY_URL were
+   * empty (tests use it to keep checking the not-set-up path). Nothing in the app sets it.
+   */
+  const COMIC_DEV_RELAY_STORAGE = "frm:devComicRelay";
+  function comicRelaySetUp() {
+    if (!COMIC_RELAY_URL) return false;
+    try {
+      return localStorage.getItem(COMIC_DEV_RELAY_STORAGE) !== "off";
+    } catch {
+      return true;
+    }
+  }
   /** DEV ONLY: set this localStorage key to get fixture results (see devComicFixture). */
   const COMIC_DEV_FIXTURE_STORAGE = "frm:devComicFixture";
   /**
@@ -4113,12 +4134,19 @@
   /** Upper bound on cover names kept from one answer (defensive). */
   const COMIC_VARIANTS_MAX = 200;
   // Copy cleared (Berean). Busy only for 429, a 503 with Retry-After, or a partial answer
-  // (the relay's budget ran out). Never "no match" for either.
+  // without a match (the relay's budget ran out). Never "no match" for either.
   const COMIC_BUSY_MESSAGE = "Comic lookup is busy right now. Try again later. What you typed is kept.";
   // Every other relay error, a non-JSON answer, a timeout or a network failure.
   const COMIC_FAIL_MESSAGE = "Comic lookup isn't working right now. What you typed is kept.";
   /** No relay URL in this build: nothing was looked up, so never "No match" (Berean, 12:05am). */
   const COMIC_NOT_SET_UP_MESSAGE = "Comic lookup isn't set up yet. What you typed is kept."; // cleared (Berean, 12:05am)
+  /** PLACEHOLDER copy (Berean must clear): a miss with reason "add-year" when no year was sent. */
+  const COMIC_ADD_YEAR_MESSAGE = "Lots of series share that name. Add the year it came out, then look up again. What you typed is kept.";
+  /**
+   * PLACEHOLDER copy (Berean must clear): muted note under the covers when a partial answer
+   * (the relay ran out of GCD calls) left some covers without an image. {source} = shortName.
+   */
+  const COMIC_PARTIAL_NOTE = (source) => `Some covers are still loading from ${source}. Tap Show all to get the rest.`;
   /** After a busy answer, Lookup waits out Retry-After (capped) before asking the relay again. */
   let comicBusyUntil = 0;
 
@@ -4127,28 +4155,33 @@
     return v !== null && typeof v === "object" && !Array.isArray(v);
   }
 
-  async function comicLookup({ series, issue, barcode, publisher } = {}) {
+  async function comicLookup({ series, issue, barcode, publisher, year } = {}) {
+    const yr = String(year == null ? "" : year).trim();
     const q = {
       series: cleanText(series),
       issue: cleanIssue(issue),
       publisher: cleanText(publisher),
       barcode: String(barcode || "").replace(/\D/g, ""),
+      // Only a plain 4-digit year the relay accepts (1800–2099); anything else isn't sent.
+      year: /^(18|19|20)\d{2}$/.test(yr) ? yr : "",
     };
     const barcodeOnly = !(q.series && q.issue);
-    const empty = { match: null, covers: [], variants: [], total: 0, candidates: [], barcodeOnly, busy: false, failed: false, reason: "", matchedBy: "" };
+    // yearSent: the series route carried a year (so "add-year" can't be asked again).
+    const empty = { match: null, covers: [], variants: [], total: 0, candidates: [], barcodeOnly, busy: false, failed: false, partial: false, yearSent: Boolean(!barcodeOnly && q.year), reason: "", matchedBy: "" };
     const routes = [];
     // The barcode route is only asked when the active source can search barcodes (GCD
     // can't), so a barcode alone is a miss; the code stays and series + issue still match.
     if (q.barcode && COMIC_ACTIVE_SOURCE.barcodeRoute) routes.push({ by: "barcode", path: "/comic-barcode", query: { upc: q.barcode } });
     if (!barcodeOnly) {
       const query = { series: q.series, issue: q.issue };
+      if (q.year) query.year = q.year;
       if (q.publisher) query.publisher = q.publisher;
       routes.push({ by: "series", path: "/comic", query });
     }
     if (!routes.length) return empty;
     const useFixture = devComicFixtureMode() !== null;
     // No relay URL yet: nothing is asked, and the form says so instead of "No match".
-    if (!useFixture && !COMIC_RELAY_URL) return { ...empty, notSetUp: true };
+    if (!useFixture && !comicRelaySetUp()) return { ...empty, notSetUp: true };
     let last = null;
     for (const route of routes) {
       let got;
@@ -4157,11 +4190,15 @@
         if (Date.now() < comicBusyUntil) return { ...empty, busy: true };
         got = await comicRelayGet(route.path, route.query);
       }
-      if (got.busy || (got.body && got.body.partial === true)) return { ...empty, busy: true };
+      if (got.busy) return { ...empty, busy: true };
       // A 200 that isn't a JSON object is a broken answer, not a miss.
       if (got.failed || !isPlainObject(got.body)) return { ...empty, failed: true };
+      const partial = got.body.partial === true;
       const res = sanitizeComicLookup(got.body, { fixture: useFixture });
-      if (res.match) return { ...empty, ...res, matchedBy: route.by };
+      // A partial answer WITH a match opens the picker (covers that arrived + every named
+      // variant); a partial answer without one is busy, never "no match".
+      if (partial && !res.match) return { ...empty, busy: true };
+      if (res.match) return { ...empty, ...res, partial, matchedBy: route.by };
       last = res;
     }
     return { ...empty, ...(last || {}), matchedBy: "" };
@@ -4280,7 +4317,7 @@
       let got;
       try {
         if (useFixture) got = devComicFixtureCovers(chunk);
-        else if (!COMIC_RELAY_URL) got = { busy: false, failed: true, body: null };
+        else if (!comicRelaySetUp()) got = { busy: false, failed: true, body: null };
         else if (Date.now() < comicBusyUntil) got = { busy: true, body: null };
         else got = await comicRelayGet("/comic-covers", { ids: chunk.join(",") });
       } catch {
@@ -4346,7 +4383,7 @@
    * covers (5 sent, the rest via "Show all"; two have no image yet) · "18busy" / "18partial"
    * the same, but fetching the rest is busy / partial · "miss" no match (with a candidate) ·
    * "busy" a 503 with Retry-After · "error" any other relay error (e.g. 502) · "badjson"
-   * a 200 that isn't JSON · "partial" a partial answer. The barcode route (only asked when the
+   * a 200 that isn't JSON · "partial" a partial answer without a match. The barcode route (only asked when the
    * active source has one) answers like a match in "upc" mode, otherwise reason
    * "barcode-unsupported".
    */
@@ -4412,7 +4449,8 @@
   // choice: "" | "cover" | "url" | "none"; picked: index into tiles of the chosen cover;
   // credit: the source to credit (COMIC_SOURCES entry) or null; tiles: every cover name
   // with its image once known; total: covers the issue has; expanded: "Show all" tapped.
-  let comicPicker = { open: false, required: false, tiles: [], total: 0, expanded: false, loading: false, picked: -1, choice: "", credit: null, token: 0 };
+  // partial: the match came from a partial answer, so some images may still be missing.
+  let comicPicker = { open: false, required: false, tiles: [], total: 0, expanded: false, loading: false, picked: -1, choice: "", credit: null, partial: false, token: 0 };
 
   function comicSaveBlocked() {
     return (
@@ -4435,7 +4473,7 @@
   }
 
   function resetComicPicker() {
-    comicPicker = { open: false, required: false, tiles: [], total: 0, expanded: false, loading: false, picked: -1, choice: "", credit: null, token: comicPicker.token + 1 };
+    comicPicker = { open: false, required: false, tiles: [], total: 0, expanded: false, loading: false, picked: -1, choice: "", credit: null, partial: false, token: comicPicker.token + 1 };
     const box = $("#comic-picker");
     if (box) box.hidden = true;
     const list = $("#comic-cover-list");
@@ -4455,20 +4493,29 @@
     if (row) row.hidden = Boolean(comicPicker.open);
   }
 
-  /** Show all's busy / isn't-working line, directly under the covers (Oholiab fix 5). */
-  function setComicShowAllStatus(msg) {
+  /**
+   * Show all's busy / isn't-working line, directly under the covers (Oholiab fix 5). muted:
+   * the partial answer's "still loading" note uses the same spot in the muted status color.
+   */
+  function setComicShowAllStatus(msg, { muted = false } = {}) {
     const el = $("#comic-show-all-status");
     if (!el) return;
     el.textContent = msg || "";
-    el.classList.toggle("is-error", Boolean(msg));
+    el.classList.toggle("is-error", Boolean(msg) && !muted);
+    el.classList.toggle("is-note", Boolean(msg) && muted);
     el.hidden = !msg;
+  }
+
+  /** A partial answer left tiles without an image that "Show all" can still fetch. */
+  function comicPickerMissingImages() {
+    return comicPicker.partial && comicCoverImagesOn() && comicPicker.tiles.some((t) => !t.url && t.sourceId);
   }
 
   /**
    * covers: the covers sent with the match (base + up to 4); variants: every cover name
    * (base first) when the source lists them; total: how many covers the issue has.
    */
-  function openComicPicker(covers, { required = true, hint = "", credit = null, variants = [], total = 0 } = {}) {
+  function openComicPicker(covers, { required = true, hint = "", credit = null, variants = [], total = 0, partial = false } = {}) {
     const cur = els.fieldCover.value.trim();
     // A cover from an earlier pick is cleared so this lookup needs its own choice; a URL
     // the user pasted stays and counts as the choice.
@@ -4493,16 +4540,23 @@
       picked: -1,
       choice,
       credit,
+      partial: Boolean(partial),
       token: comicPicker.token + 1,
       // The match's own record; picking a variant swaps in that variant's record.
       base: { id: els.fieldSourceId.value, url: els.fieldSourceUrl.value },
     };
-    if (!choice && tiles.length === 1) {
-      pickComicCover(0, { render: false }); // exactly one: preselected, still shown
+    // Exactly one cover in every count (tiles, covers sent, covers the issue has):
+    // preselected, still shown. More than one cover or variant is never picked for you.
+    if (!choice && tiles.length === 1 && covers.length <= 1 && comicPicker.total <= 1) {
+      pickComicCover(0, { render: false });
     }
     $("#comic-picker-hint").textContent = hint;
     $("#comic-picker").hidden = false;
     setComicShowAllStatus("");
+    if (comicPickerMissingImages()) {
+      const src = credit || COMIC_ACTIVE_SOURCE;
+      setComicShowAllStatus(COMIC_PARTIAL_NOTE(src.shortName || src.name), { muted: true });
+    }
     renderComicPicker();
   }
 
@@ -4622,7 +4676,9 @@
         `</button>`
       );
     });
-    if (!comicPicker.expanded && comicPicker.total > COMIC_COVER_MAX) {
+    // Also after a partial answer that left images missing (even with 5 covers or fewer):
+    // the button is how the rest are fetched later.
+    if (!comicPicker.expanded && (comicPicker.total > COMIC_COVER_MAX || comicPickerMissingImages())) {
       tiles.push(`<button type="button" class="btn btn-ghost comic-show-all" id="btn-comic-show-all">Show all ${comicPicker.total} covers</button>`);
     }
     list.innerHTML = tiles.length ? tiles.join("") : `<p class="comic-picker-empty">No covers from this source.</p>`;
@@ -4724,14 +4780,14 @@
     els.btnLookup.disabled = true;
     setLookupStatus("Looking up…");
     try {
-      const res = await comicLookup({ series, issue, barcode, publisher: els.fieldPublisher.value.trim() });
+      const res = await comicLookup({ series, issue, barcode, publisher: els.fieldPublisher.value.trim(), year: els.fieldYear.value });
       const code = normalizeBarcode(barcode);
       if (res.notSetUp) {
         setLookupStatus(COMIC_NOT_SET_UP_MESSAGE, "error"); // same line style as the fail message
         return;
       }
       if (res.busy || res.failed) {
-        // Busy (429, 503 with Retry-After, or a partial answer) or any other failure: never
+        // Busy (429, 503 with Retry-After, or a partial answer without a match) or any other failure: never
         // "no match", and nothing in the form changes.
         setLookupStatus(res.busy ? COMIC_BUSY_MESSAGE : COMIC_FAIL_MESSAGE, "error");
         return;
@@ -4763,6 +4819,7 @@
           credit: comicSourceFor(res.match.sourceId),
           variants: res.variants,
           total: res.total,
+          partial: res.partial,
           hint: sameUpc
             ? SAME_UPC_HINT
             : coverCount > 1
@@ -4781,13 +4838,18 @@
         // don't claim a search happened, and point at series + issue. "No match" is only
         // for a real empty result.
         const barcodeMiss = res.barcodeOnly && code;
+        // Too many series share the name and no year went with it: ask for the year.
+        const addYear = !barcodeMiss && res.reason === "add-year" && !res.yearSent;
         setLookupStatus(
           barcodeMiss
             ? "Comic lookup can’t search by barcode alone. Your barcode is kept. Add the series and issue number, then look up again."
-            : "No match. What you typed is kept.", // cleared (Berean): comics only
+            : addYear
+              ? COMIC_ADD_YEAR_MESSAGE
+              : "No match. What you typed is kept.", // cleared (Berean): comics only
           "error"
         );
         if (barcodeMiss) (els.fieldSeries.value.trim() ? els.fieldIssue : els.fieldSeries).focus();
+        else if (addYear) els.fieldYear.focus();
         if (res.covers.length || sameUpc) {
           openComicPicker(res.covers, {
             required: true,
