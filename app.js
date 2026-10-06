@@ -11,14 +11,20 @@
   const SEEDED_STORAGE = "media-shelf-seeded";
   /**
    * Backup guard (v1.2): every file we write is an object with app "freerangemedia" and
-   * version 2. Live Media Shelf (f8427ef) only accepts app names matching
+   * a version number (2 until comics; 3 since, so a v2 app shows its "newer version"
+   * message instead of turning comics into books). Live Media Shelf (f8427ef) only accepts app names matching
    * /^media[\s-]?shelf$/i, plain arrays, or objects with no app field — so it refuses
    * these files with its clear "isn’t a Media Shelf backup" error instead of silently
    * stripping music / component / signed data. Never write a bare array or omit app.
    */
   const BACKUP_APP_ID = "freerangemedia";
-  const BACKUP_VERSION = 2;
-  /** Restore still accepts the old name (v1) and the new one (v2). */
+  /**
+   * 3: items may be comics (type "comic", Nathan risk 2). Live v2 apps refuse a version 3
+   * file with their existing "made by a newer version" message. Restore here still reads
+   * v1, v2 and v3 files, older Exports and plain arrays (see parseBackupText).
+   */
+  const BACKUP_VERSION = 3;
+  /** Restore still accepts the old name (v1) and the new one (v2, v3). */
   const LEGACY_BACKUP_APP_RE = /^media[\s-]?shelf$/i;
   const BACKUP_APP_RE = /^free[\s-]?range[\s-]?media$/i;
   const BACKUP_STALE_DAYS = 14;
@@ -317,11 +323,53 @@
    * items (it may return a new array), save.
    * @param {(list: object[]) => (object[] | void)} mutate
    */
-  function commitItems(mutate) {
+  function commitItems(mutate, failMsg) {
     syncFromStorage();
-    const next = mutate(items);
-    if (Array.isArray(next)) items = next;
-    saveStore();
+    // Nathan risk 4: `mutate` changes the in-memory list before anything is written. Keep
+    // the list as it was, so a failed write (storage full) can put it back: memory then
+    // matches what is still stored, and nothing half-saved is shown or later re-saved.
+    const before = items.slice();
+    try {
+      const next = mutate(items);
+      if (Array.isArray(next)) items = next;
+    } catch (err) {
+      items = before;
+      throw err;
+    }
+    try {
+      saveStore();
+      return true;
+    } catch (err) {
+      items = before;
+      showStorageFailure(err, failMsg);
+      return false;
+    }
+  }
+
+  /** True for the "storage is full" errors browsers throw from localStorage.setItem. */
+  function isQuotaError(err) {
+    if (!err) return false;
+    return (
+      err.name === "QuotaExceededError" ||
+      err.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+      err.code === 22 ||
+      err.code === 1014
+    );
+  }
+
+  // NEW COPY (fact check): storage-failure messages. Listed in frm-comics-strings.md.
+  const STORAGE_FAIL_MESSAGES = {
+    change: "This change didn’t fit in this browser’s storage, so it wasn’t saved.",
+    import: "This import didn’t fit in this browser’s storage, so nothing was imported.",
+    restore: "This backup didn’t fit in this browser’s storage, so nothing was restored.",
+    other: "Couldn’t save to this browser’s storage, so the change wasn’t saved.",
+  };
+
+  function showStorageFailure(err, kind) {
+    const msg = isQuotaError(err)
+      ? STORAGE_FAIL_MESSAGES[kind] || STORAGE_FAIL_MESSAGES.change
+      : STORAGE_FAIL_MESSAGES.other;
+    showToast(msg, { duration: 8000 });
   }
 
   /* ---------- v1.2 schema (additive; old items and backups lack these keys) ---------- */
@@ -576,7 +624,11 @@
       return;
     }
     writeLs(SEEDED_STORAGE, nowIso());
-    saveStore();
+    try {
+      saveStore();
+    } catch {
+      /* storage full / blocked: samples stay in memory only, a later visit can retry */
+    }
   }
 
   function stars(n) {
@@ -1185,13 +1237,14 @@
     if (editingId) {
       const id = editingId;
       const snapshot = editingSnapshot;
-      commitItems((list) => {
+      const ok = commitItems((list) => {
         const idx = list.findIndex((i) => i.id === id);
         list.splice(idx >= 0 ? idx : 0, idx >= 0 ? 1 : 0, mergeEditOntoFresh(snapshot, list[idx], data, ts));
       });
+      if (!ok) return; // storage full: the form stays open with what was typed
       showToast("Updated");
     } else {
-      commitItems((list) => {
+      const ok = commitItems((list) => {
         list.unshift(
           normalizeItem({
             ...data,
@@ -1200,6 +1253,7 @@
           })
         );
       });
+      if (!ok) return;
       showToast("Added");
     }
     closeModal();
@@ -1243,8 +1297,9 @@
       "Delete item?",
       "This cannot be undone.",
       () => {
-        commitItems((list) => list.filter((i) => i.id !== id));
+        const ok = commitItems((list) => list.filter((i) => i.id !== id));
         closeConfirm();
+        if (!ok) return;
         closeModal();
         showToast("Deleted");
         render();
@@ -1258,8 +1313,9 @@
       "Clear sample items?",
       "Removes seeded examples. Your own items stay.",
       () => {
-        commitItems((list) => list.filter((i) => !i.seed));
+        const ok = commitItems((list) => list.filter((i) => !i.seed));
         closeConfirm();
+        if (!ok) return;
         showToast("Samples cleared");
         render();
       },
@@ -1714,6 +1770,7 @@
 
   /**
    * Parse + validate an Export / Backup file. Accepts:
+   *  - comics backup/export: { app: "freerangemedia", version: 3, exportedAt, items: [...] }
    *  - v1.2 backup/export: { app: "freerangemedia", version: 2, exportedAt, items: [...] }
    *  - Media Shelf backup: { app: "media-shelf", version: 1, exportedAt, items: [...] }
    *  - older Export: { version: 1, exportedAt, app: "Media Shelf", items: [...] }
@@ -1811,18 +1868,20 @@
         ? `${fromLine} Merge keeps your current ${countLabel(items.length, "item")} and adds anything new (the newer copy wins when both have the same item). Replace swaps your whole library for the backup.`
         : `${fromLine} Restore it to this browser?`;
       const doReplace = () => {
-        commitItems(() => incoming.slice());
+        const ok = commitItems(() => incoming.slice(), "restore");
         closeConfirm();
+        if (!ok) return;
         render();
         showToast(`Restored ${countLabel(items.length, "item")}`);
       };
       const doMerge = () => {
         let res = { added: 0, updated: 0 };
-        commitItems((list) => {
+        const ok = commitItems((list) => {
           res = mergeItems(list, incoming);
           return res.items;
-        });
+        }, "restore");
         closeConfirm();
+        if (!ok) return;
         render();
         showToast(
           res.added || res.updated
@@ -4343,7 +4402,7 @@
       const alsoReplace = Boolean(els.confirmOption && els.confirmOption.checked && optionLabel);
       if (context === "save") {
         const ts = nowIso();
-        commitItems((list) => {
+        const ok = commitItems((list) => {
           const idx = list.findIndex((i) => i.id === existing.id);
           const base = idx >= 0 ? list[idx] : existing;
           const merged = normalizeItem({ ...mergeIncomingIntoExisting(base, incoming, alsoReplace), dateUpdated: ts, seed: false });
@@ -4351,6 +4410,7 @@
           else list.unshift(merged);
         });
         closeConfirm();
+        if (!ok) return;
         closeModal();
         showToast("Updated your existing item");
         render();
@@ -4366,10 +4426,11 @@
     const doSeparate = () => {
       if (context === "save") {
         const ts = nowIso();
-        commitItems((list) => {
+        const ok = commitItems((list) => {
           list.unshift(normalizeItem({ ...incomingRaw, id: uid(), dateAdded: ts, dateUpdated: ts }));
         });
         closeConfirm();
+        if (!ok) return;
         closeModal();
         showToast("Added as a separate copy");
         render();
@@ -4805,7 +4866,7 @@
     });
     if (!toAdd.length && !toUpdate.size) return;
     const previous = new Map();
-    commitItems((list) => {
+    const ok = commitItems((list) => {
       const next = list.map((it) => {
         const inc = toUpdate.get(it.id);
         if (!inc) return it;
@@ -4813,7 +4874,12 @@
         return normalizeItem({ ...mergeIncomingIntoExisting(it, inc, false), dateUpdated: now });
       });
       return [...toAdd, ...next];
-    });
+    }, "import");
+    if (!ok) {
+      // Nothing was written; the preview stays so the user can try again after freeing space.
+      setImportMessage(STORAGE_FAIL_MESSAGES.import);
+      return;
+    }
     importUndo = {
       addedIds: new Set(toAdd.map((i) => i.id)),
       previous,
@@ -4858,9 +4924,10 @@
       showToast("Undo isn’t available anymore. Something changed since the import.");
       return;
     }
-    commitItems((list) =>
+    const ok = commitItems((list) =>
       list.filter((it) => !u.addedIds.has(it.id)).map((it) => u.previous.get(it.id) || it)
     );
+    if (!ok) return;
     writeLastImport(null); // the import is gone, so there's nothing left to remove
     render();
     showToast("Import undone");
@@ -4969,7 +5036,7 @@
       // Two-tab rule: re-read and re-check right before writing; never touch a game another
       // tab changed after the import.
       let done = { removed: 0, reverted: 0, kept: 0 };
-      commitItems((list) => {
+      const ok = commitItems((list) => {
         const fresh = readLastImport();
         if (!fresh) return list;
         items = list;
@@ -4979,6 +5046,7 @@
         const back = new Map(p.revert.map((u) => [u.id, normalizeItem(u.before)]));
         return list.filter((it) => !drop.has(it.id)).map((it) => back.get(it.id) || it);
       });
+      if (!ok) return;
       writeLastImport(null);
       render();
       const msg = [];
