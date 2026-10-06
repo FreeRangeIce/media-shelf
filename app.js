@@ -3949,8 +3949,13 @@
    *     -> { match: { series, issue, title, publisher, year, writer: [], artist: [],
    *                   sourceId: "<prefix>issue-<id>", sourceName, sourceUrl } | null,
    *          candidates: [{ series, year, publisher, sourceId: "<prefix>…-<id>" }],
-   *          covers: [{ url, label, variant }] }   (≤ 5 covers, base cover first; labels
+   *          variants: [{ sourceId, label, variant }],  (ALL cover names, base first)
+   *          total,                                   (number of covers the issue has)
+   *          covers: [{ sourceId, url, label, variant }] }  (base + up to 4 more; labels
    *                                                  may be long variant names)
+   *   GET {COMIC_RELAY_URL}/comic-covers?ids=<comma list, max 13>
+   *     -> { covers: [{ sourceId, url, label, variant }] }   ("Show all N covers")
+   *   Any answer may carry partial: true -> treated as busy.
    *   GET {COMIC_RELAY_URL}/comic-barcode?upc=
    *     -> same shape (base + variants as covers), or { match: null, reason } on a miss
    *        such as "barcode-unsupported".
@@ -3966,8 +3971,14 @@
   const COMIC_RELAY_URL = "";
   /** DEV ONLY: set this localStorage key to get fixture results (see devComicFixture). */
   const COMIC_DEV_FIXTURE_STORAGE = "frm:devComicFixture";
-  /** The relay sends at most 5 covers; the picker never shows more. */
+  /** The picker shows the main cover plus 4 more until "Show all N covers" is tapped. */
   const COMIC_COVER_MAX = 5;
+  /** /comic-covers takes at most this many ids per request. */
+  const COMIC_COVERS_CHUNK = 13;
+  /** Upper bound on cover names kept from one answer (defensive). */
+  const COMIC_VARIANTS_MAX = 200;
+  // Copy cleared for busy, partial answers and relay errors; never "no match" for these.
+  const COMIC_BUSY_MESSAGE = "Comic lookup is busy right now. Try again later. What you typed is kept.";
   /** After a busy answer, Lookup waits out Retry-After (capped) before asking the relay again. */
   let comicBusyUntil = 0;
 
@@ -3979,7 +3990,7 @@
       barcode: String(barcode || "").replace(/\D/g, ""),
     };
     const barcodeOnly = !(q.series && q.issue);
-    const empty = { match: null, covers: [], candidates: [], barcodeOnly, busy: false, reason: "", matchedBy: "" };
+    const empty = { match: null, covers: [], variants: [], total: 0, candidates: [], barcodeOnly, busy: false, reason: "", matchedBy: "" };
     const routes = [];
     // The barcode route is only asked when the active source can search barcodes (GCD
     // can't), so a barcode alone is a miss; the code stays and series + issue still match.
@@ -4001,7 +4012,7 @@
         if (Date.now() < comicBusyUntil) return { ...empty, busy: true };
         got = await comicRelayGet(route.path, route.query);
       }
-      if (got.busy) return { ...empty, busy: true };
+      if (got.busy || (got.body && got.body.partial === true)) return { ...empty, busy: true };
       const res = sanitizeComicLookup(got.body, { allowData: useFixture });
       if (res.match) return { ...empty, ...res, matchedBy: route.by };
       last = res;
@@ -4056,14 +4067,15 @@
             sourceUrl: safeHttpsUrl(m.sourceUrl),
           }
         : null;
-    const seen = new Set();
-    const covers = [];
-    (res && Array.isArray(res.covers) ? res.covers : []).forEach((c) => {
-      const url = c && okUrl(c.url);
-      if (!url || seen.has(url)) return;
-      seen.add(url);
-      covers.push({ url, label: cleanText(c.label, 120), variant: c.variant === true });
-    });
+    const covers = sanitizeComicCovers(res && res.covers, okUrl).slice(0, COMIC_COVER_MAX);
+    const seenIds = new Set();
+    const variants = (res && Array.isArray(res.variants) ? res.variants : [])
+      .filter((v) => v && typeof v === "object")
+      .map((v) => ({ sourceId: cleanText(v.sourceId, 80), label: cleanText(v.label, 160), variant: v.variant === true }))
+      .filter((v) => (v.sourceId || v.label) && !(v.sourceId && seenIds.has(v.sourceId)) && (v.sourceId ? seenIds.add(v.sourceId) : true))
+      .slice(0, COMIC_VARIANTS_MAX);
+    const totalRaw = Math.floor(Number(res && res.total));
+    const total = Number.isFinite(totalRaw) && totalRaw > 0 ? Math.min(totalRaw, COMIC_VARIANTS_MAX) : Math.max(variants.length, covers.length);
     // Candidates (other volumes with that name) are kept for a future "which series?" step;
     // nothing shows them yet.
     const candidates = (res && Array.isArray(res.candidates) ? res.candidates : [])
@@ -4071,7 +4083,51 @@
       .slice(0, 10)
       .map((c) => ({ series: cleanText(c.series), year: year(c.year), publisher: cleanText(c.publisher), sourceId: cleanText(c.sourceId, 80) }));
     const reason = res && typeof res.reason === "string" ? cleanText(res.reason, 40) : "";
-    return { match, covers: covers.slice(0, COMIC_COVER_MAX), candidates, reason };
+    return { match, covers, variants, total, candidates, reason };
+  }
+
+  /** Covers from any relay answer: https only (data: for the dev fixture), no repeats. */
+  function sanitizeComicCovers(list, okUrl) {
+    const seen = new Set();
+    const out = [];
+    (Array.isArray(list) ? list : []).forEach((c) => {
+      const url = c && okUrl(c.url);
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      out.push({ sourceId: cleanText(c.sourceId, 80), url, label: cleanText(c.label, 160), variant: c.variant === true });
+    });
+    return out;
+  }
+
+  /**
+   * "Show all N covers": fetch the covers for these variant ids from /comic-covers in
+   * chunks of 13. Resolves { covers, busy }; busy = a chunk was busy, partial or failed
+   * (covers fetched before that are still returned).
+   */
+  async function comicFetchCovers(ids) {
+    const want = [...new Set(ids.filter(Boolean))];
+    const useFixture = devComicFixtureMode() !== null;
+    const okUrl = (u) => {
+      const s = String(u || "").trim();
+      if (useFixture && /^data:image\/(svg\+xml|png|jpeg|webp)[;,]/i.test(s)) return s; // dev fixture only
+      return safeHttpsUrl(s);
+    };
+    const covers = [];
+    for (let i = 0; i < want.length; i += COMIC_COVERS_CHUNK) {
+      const chunk = want.slice(i, i + COMIC_COVERS_CHUNK);
+      let got;
+      try {
+        if (useFixture) got = devComicFixtureCovers(chunk);
+        else if (!COMIC_RELAY_URL || Date.now() < comicBusyUntil) got = { busy: true, body: null };
+        else got = await comicRelayGet("/comic-covers", { ids: chunk.join(",") });
+      } catch {
+        got = { busy: true, body: null };
+      }
+      if (got.busy || !got.body) return { covers, busy: true };
+      covers.push(...sanitizeComicCovers(got.body.covers, okUrl));
+      if (got.body.partial === true) return { covers, busy: true };
+    }
+    return { covers, busy: false };
   }
 
   /** DEV ONLY: the fixture mode from localStorage, or null when it isn't set. */
@@ -4083,20 +4139,62 @@
     }
   }
 
+  /** DEV ONLY: made-up placeholder cover names (never real source data). */
+  const DEV_FIXTURE_LABELS = [
+    "Cover A",
+    "Cover B Placeholder Artist",
+    "Cover C 1:25 Incentive Placeholder Artist Virgin Variant",
+    "Cover D Blank Sketch",
+    "Cover E Foil",
+    "Cover F Placeholder Store Exclusive",
+    "Cover G Convention Exclusive",
+    "Cover H 1:50 Incentive",
+    "Cover I Homage Variant",
+    "Cover J Second Printing",
+    "Cover K Glow in the Dark",
+    "Cover L Black and White Sketch",
+    "Cover M Connecting Cover Part 1",
+    "Cover N Connecting Cover Part 2",
+    "Cover O 1:100 Incentive Virgin",
+    "Cover P Anniversary Logo",
+    "Cover Q Trade Dress Variant",
+    "Cover R Newsstand Edition",
+  ];
+  /** DEV ONLY: in the 18-cover fixture these have a name but no cover image yet. */
+  const DEV_FIXTURE_NO_IMAGE = new Set([9, 14]);
+
+  /** DEV ONLY: a generated placeholder cover (a coloured card with a letter). */
+  function devFixtureCoverUrl(i) {
+    return (
+      "data:image/svg+xml," +
+      encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="${["#1d5486", "#9a3b3b", "#146354", "#8f4e12", "#4c468f"][i % 5]}"/><text x="16" y="270" fill="#fff" font-family="sans-serif" font-size="22">${String.fromCharCode(65 + i)}</text></svg>`
+      )
+    );
+  }
+
+  function devFixtureVariant(i) {
+    return { sourceId: `${COMIC_ACTIVE_SOURCE.prefix}cover-${900100 + i}`, label: DEV_FIXTURE_LABELS[i], variant: i > 0 };
+  }
+
   /**
    * DEV ONLY fixture, inert unless localStorage["frm:devComicFixture"] is set (tests set it
    * by hand; nothing in the app does). Answers one relay route ("barcode" | "series") in
    * the relay's shape, as { busy, body }, labelled as COMIC_ACTIVE_SOURCE. The body carries
    * a stray price that must be dropped.
    * Placeholder data only (generated SVG covers, made-up names) — never real source data.
-   * Modes: "5" five covers · "2" · "1" · "0" match without covers · "miss" no match (with a
-   * candidate) · "busy" a 503. The barcode route (only asked when the active source has
-   * one) answers like a match in "upc" mode, otherwise reason "barcode-unsupported".
+   * Modes: "5" five covers · "2" · "1" · "0" match without covers · "18" eighteen named
+   * covers (5 sent, the rest via "Show all"; two have no image yet) · "18busy" / "18partial"
+   * the same, but fetching the rest is busy / partial · "miss" no match (with a candidate) ·
+   * "busy" a 503 · "partial" a partial answer. The barcode route (only asked when the
+   * active source has one) answers like a match in "upc" mode, otherwise reason
+   * "barcode-unsupported".
    */
   function devComicFixture(q, by) {
     const mode = devComicFixtureMode();
     const src = COMIC_ACTIVE_SOURCE;
     if (mode === "busy") return { busy: true, body: null };
+    if (mode === "partial") return { busy: false, body: { partial: true, match: null, covers: [] } };
     if (by === "barcode" && mode !== "upc") return { busy: false, body: { match: null, reason: "barcode-unsupported" } };
     if (mode === "miss") {
       return {
@@ -4104,14 +4202,8 @@
         body: { match: null, candidates: [{ series: q.series, year: 2001, publisher: "Fixture Press", sourceId: `${src.prefix}series-4050002` }], covers: [] },
       };
     }
-    const n = /^[0-5]$/.test(mode) ? Number(mode) : 5;
-    const svg = (i, label) =>
-      "data:image/svg+xml," +
-      encodeURIComponent(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="${["#1d5486", "#9a3b3b", "#146354", "#8f4e12", "#4c468f"][i % 5]}"/><text x="16" y="270" fill="#fff" font-family="sans-serif" font-size="22">${String.fromCharCode(65 + i)}</text></svg>`
-      );
-    // Made-up variant names as long as real ones get; they must wrap at 320px.
-    const labels = ["Cover A", "Cover B Placeholder Artist", "Cover C 1:25 Incentive Placeholder Artist Virgin Variant", "Cover D Blank Sketch", "Cover E Foil"];
+    const n = /^18/.test(mode) ? 18 : /^[0-5]$/.test(mode) ? Number(mode) : 5;
+    const variants = Array.from({ length: n }, (_, i) => devFixtureVariant(i));
     return {
       busy: false,
       body: {
@@ -4129,9 +4221,23 @@
           price: "3.99", // not in the contract; must never reach the app
         },
         candidates: [],
-        covers: labels.slice(0, n).map((label, i) => ({ url: svg(i, label), label, variant: i > 0, price: "9.99" })),
+        variants,
+        total: n,
+        covers: variants.slice(0, COMIC_COVER_MAX).map((v, i) => ({ ...v, url: devFixtureCoverUrl(i), price: "9.99" })),
       },
     };
+  }
+
+  /** DEV ONLY: /comic-covers for the fixture (honours the "18busy" / "18partial" modes). */
+  function devComicFixtureCovers(ids) {
+    const mode = devComicFixtureMode();
+    if (mode === "18busy") return { busy: true, body: null };
+    const covers = ids
+      .map((id) => DEV_FIXTURE_LABELS.findIndex((_, i) => devFixtureVariant(i).sourceId === id))
+      .filter((i) => i >= 0 && !DEV_FIXTURE_NO_IMAGE.has(i))
+      .map((i) => ({ ...devFixtureVariant(i), url: devFixtureCoverUrl(i) }));
+    if (mode === "18partial") return { busy: false, body: { partial: true, covers: covers.slice(0, 3) } };
+    return { busy: false, body: { covers } };
   }
 
   /* ---------- Comic cover picker + Save gate ----------
@@ -4140,8 +4246,10 @@
    * disabled, with the reason shown, until a cover is picked, a photo URL is pasted or
    * "No cover" is chosen. A single cover is preselected but still shown.
    */
-  // choice: "" | "cover" | "url" | "none"; credit: the source to credit (COMIC_SOURCES entry) or null.
-  let comicPicker = { open: false, required: false, covers: [], choice: "", credit: null };
+  // choice: "" | "cover" | "url" | "none"; picked: index into tiles of the chosen cover;
+  // credit: the source to credit (COMIC_SOURCES entry) or null; tiles: every cover name
+  // with its image once known; total: covers the issue has; expanded: "Show all" tapped.
+  let comicPicker = { open: false, required: false, tiles: [], total: 0, expanded: false, loading: false, picked: -1, choice: "", credit: null, token: 0 };
 
   function comicSaveBlocked() {
     return (
@@ -4164,7 +4272,7 @@
   }
 
   function resetComicPicker() {
-    comicPicker = { open: false, required: false, covers: [], choice: "", credit: null };
+    comicPicker = { open: false, required: false, tiles: [], total: 0, expanded: false, loading: false, picked: -1, choice: "", credit: null, token: comicPicker.token + 1 };
     const box = $("#comic-picker");
     if (box) box.hidden = true;
     const list = $("#comic-cover-list");
@@ -4172,15 +4280,38 @@
     updateSaveGate();
   }
 
-  function openComicPicker(covers, { required = true, hint = "", credit = null } = {}) {
+  /**
+   * covers: the covers sent with the match (base + up to 4); variants: every cover name
+   * (base first) when the source lists them; total: how many covers the issue has.
+   */
+  function openComicPicker(covers, { required = true, hint = "", credit = null, variants = [], total = 0 } = {}) {
     const cur = els.fieldCover.value.trim();
     // A cover from an earlier pick is cleared so this lookup needs its own choice; a URL
     // the user pasted stays and counts as the choice.
     let choice = "";
     if (cur && els.fieldCoverSource.value === "manual") choice = "url";
     else if (cur) setComicCover("", "", { label: "", variant: false });
-    comicPicker = { open: true, required, covers: covers.slice(0, COMIC_COVER_MAX), choice, credit };
-    if (!choice && comicPicker.covers.length === 1) {
+    // One tile per cover name; images matched by sourceId (or by position without ids).
+    const byId = new Map(covers.filter((c) => c.sourceId).map((c) => [c.sourceId, c]));
+    const tiles = variants.length
+      ? variants.map((v, i) => {
+          const c = (v.sourceId && byId.get(v.sourceId)) || (!v.sourceId && covers[i]) || null;
+          return { sourceId: v.sourceId, label: v.label || (c && c.label) || "", variant: v.variant, url: c ? c.url : "" };
+        })
+      : covers.map((c) => ({ ...c }));
+    comicPicker = {
+      open: true,
+      required,
+      tiles,
+      total: Math.max(total, tiles.length),
+      expanded: false,
+      loading: false,
+      picked: -1,
+      choice,
+      credit,
+      token: comicPicker.token + 1,
+    };
+    if (!choice && tiles.length === 1) {
       pickComicCover(0, { render: false }); // exactly one: preselected, still shown
     }
     $("#comic-picker-hint").textContent = hint;
@@ -4193,40 +4324,78 @@
     els.fieldCoverSource.value = url ? source : "";
     if (els.fieldCoverSourceId) els.fieldCoverSourceId.value = "";
     if (els.fieldCoverPlatform) els.fieldCoverPlatform.value = "";
-    els.fieldCoverLabel.value = url ? label || "" : "";
-    els.fieldCoverVariant.value = url && variant ? "1" : "";
+    // A cover name is kept even without an image (a variant with no cover yet).
+    els.fieldCoverLabel.value = label || "";
+    els.fieldCoverVariant.value = variant ? "1" : "";
     updateCoverPreview();
   }
 
   function pickComicCover(i, { render = true } = {}) {
-    const c = comicPicker.covers[i];
+    const c = comicPicker.tiles[i];
     if (!c) return;
-    setComicCover(c.url, "comiclookup", { label: c.label, variant: c.variant });
+    setComicCover(c.url || "", "comiclookup", { label: c.label, variant: c.variant });
     comicPicker.choice = "cover";
+    comicPicker.picked = i;
     if (render) renderComicPicker();
+  }
+
+  /** "Show all N covers": show every name now, fetch the missing images (chunks of 13). */
+  async function showAllComicCovers() {
+    if (!comicPicker.open || comicPicker.expanded) return;
+    comicPicker.expanded = true;
+    const token = comicPicker.token;
+    const missing = comicPicker.tiles.filter((t) => !t.url && t.sourceId).map((t) => t.sourceId);
+    if (!missing.length) {
+      renderComicPicker();
+      return;
+    }
+    comicPicker.loading = true;
+    renderComicPicker();
+    let res;
+    try {
+      res = await comicFetchCovers(missing);
+    } catch {
+      res = { covers: [], busy: true };
+    }
+    if (token !== comicPicker.token) return; // a new Lookup or a closed form replaced this picker
+    const byId = new Map(res.covers.map((c) => [c.sourceId, c]));
+    comicPicker.tiles = comicPicker.tiles.map((t) => (!t.url && byId.has(t.sourceId) ? { ...t, url: byId.get(t.sourceId).url } : t));
+    comicPicker.loading = false;
+    // The picked tile may just have got its image.
+    const p = comicPicker.tiles[comicPicker.picked];
+    if (comicPicker.choice === "cover" && p && p.url && !els.fieldCover.value.trim()) {
+      setComicCover(p.url, "comiclookup", { label: p.label, variant: p.variant });
+    }
+    if (res.busy) setLookupStatus(COMIC_BUSY_MESSAGE, "error");
+    renderComicPicker();
   }
 
   function renderComicPicker() {
     const list = $("#comic-cover-list");
     if (!list) return;
     const cur = els.fieldCover.value.trim();
-    const covers = comicPicker.covers;
-    // NEW COPY (fact check): picker captions.
-    list.innerHTML = covers.length
-      ? covers
-          .map((c, i) => {
-            const on = comicPicker.choice === "cover" && c.url === cur;
-            const label = c.label || `Cover ${i + 1}`;
-            return (
-              `<button type="button" class="comic-cover${on ? " is-selected" : ""}" data-comic-cover="${i}" aria-pressed="${on}">` +
-              `<img src="${escapeHtml(c.url)}" alt="" loading="lazy" decoding="async" />` +
-              `<span class="comic-cover-label">${escapeHtml(label)}</span>` +
-              (c.variant ? `<span class="comic-cover-variant">Variant</span>` : "") +
-              `</button>`
-            );
-          })
-          .join("")
-      : `<p class="comic-picker-empty">No covers from this source.</p>`;
+    const all = comicPicker.tiles;
+    const shown = comicPicker.expanded ? all : all.slice(0, COMIC_COVER_MAX);
+    // NEW COPY (fact check): picker captions and the Show all button.
+    const tiles = shown.map((c, i) => {
+      const on = comicPicker.choice === "cover" && comicPicker.picked === i;
+      const label = c.label || `Cover ${i + 1}`;
+      const art = c.url
+        ? `<img src="${escapeHtml(c.url)}" alt="" loading="lazy" decoding="async" />`
+        : `<span class="comic-cover-blank" aria-hidden="true"></span>`;
+      return (
+        `<button type="button" class="comic-cover${on ? " is-selected" : ""}${c.url ? "" : " is-blank"}" data-comic-cover="${i}" aria-pressed="${on}" title="${escapeHtml(label)}">` +
+        art +
+        `<span class="comic-cover-label">${escapeHtml(label)}</span>` +
+        (c.variant ? `<span class="comic-cover-variant">Variant</span>` : "") +
+        `</button>`
+      );
+    });
+    if (!comicPicker.expanded && comicPicker.total > COMIC_COVER_MAX) {
+      tiles.push(`<button type="button" class="comic-show-all" id="btn-comic-show-all">Show all ${comicPicker.total} covers</button>`);
+    }
+    list.innerHTML = tiles.length ? tiles.join("") : `<p class="comic-picker-empty">No covers from this source.</p>`;
+    list.setAttribute("aria-busy", String(comicPicker.loading));
     const urlInput = $("#field-comic-cover-url");
     if (urlInput && document.activeElement !== urlInput) {
       urlInput.value = comicPicker.choice === "url" ? cur : "";
@@ -4244,6 +4413,7 @@
   function onComicCoverTyped(value) {
     if (!comicPicker.open) return;
     comicPicker.choice = value.trim() ? "url" : "";
+    comicPicker.picked = -1;
     els.fieldCoverLabel.value = "";
     els.fieldCoverVariant.value = "";
     renderComicPicker();
@@ -4323,9 +4493,9 @@
       const res = await comicLookup({ series, issue, barcode, publisher: els.fieldPublisher.value.trim() });
       const code = normalizeBarcode(barcode);
       if (res.busy) {
-        // PLACEHOLDER copy: relay busy (503 / Retry-After) or any other 4xx/5xx. Nothing in
-        // the form changes.
-        setLookupStatus("Lookup busy, try later. Everything you entered is kept.", "error");
+        // Busy (503 / Retry-After), a partial answer or any other relay error: never "no
+        // match", and nothing in the form changes.
+        setLookupStatus(COMIC_BUSY_MESSAGE, "error");
         return;
       }
       // A barcode you already have never offers Update: one UPC is shared by variants, so
@@ -4347,14 +4517,17 @@
         );
         // Covers: one is preselected but still shown; none = paste a URL or No cover; several
         // are never auto-picked.
+        const coverCount = Math.max(res.total, res.covers.length, res.variants.length);
         openComicPicker(res.covers, {
           required: true,
           credit: comicSourceFor(res.match.sourceId),
+          variants: res.variants,
+          total: res.total,
           hint: sameUpc
             ? SAME_UPC_HINT
-            : res.covers.length > 1
+            : coverCount > 1
               ? "Pick the cover that matches your copy, paste a photo URL, or choose No cover."
-              : res.covers.length === 1
+              : coverCount === 1
                 ? "Check the cover, paste a photo URL, or choose No cover."
                 : "No cover came with this match. Paste a photo URL, or choose No cover.",
         });
@@ -4365,12 +4538,13 @@
         els.fieldSourceName.value = "";
         els.fieldSourceUrl.value = "";
         updateComicCredit();
-        // A barcode can't be looked up yet (relay: reason "barcode-unsupported"): keep the
-        // code and point at series + issue.
+        // A barcode alone can't find the issue (GCD has no barcode search): keep the code,
+        // don't claim a search happened, and point at series + issue. "No match" is only
+        // for a real empty result.
         const barcodeMiss = res.barcodeOnly && code;
         setLookupStatus(
           barcodeMiss
-            ? "No match for the barcode alone. Your barcode is kept. Add the series and issue number, then look up again."
+            ? "Comics can’t be looked up by barcode yet. Your barcode is kept. Add the series and issue number, then look up again."
             : "No match. Everything you entered is kept.",
           "error"
         );
@@ -4386,7 +4560,7 @@
         }
       }
     } catch {
-      setLookupStatus("Lookup failed — check your connection and try again.", "error");
+      setLookupStatus(COMIC_BUSY_MESSAGE, "error"); // relay unreachable: same as busy
     } finally {
       lookupBusy = false;
       els.btnLookup.disabled = false;
@@ -4960,6 +5134,10 @@
     const comicCoverList = $("#comic-cover-list");
     if (comicCoverList) {
       comicCoverList.addEventListener("click", (e) => {
+        if (e.target.closest("#btn-comic-show-all")) {
+          showAllComicCovers();
+          return;
+        }
         const btn = e.target.closest("[data-comic-cover]");
         if (btn) pickComicCover(Number(btn.dataset.comicCover));
       });
@@ -4975,6 +5153,7 @@
     bindClick("#btn-comic-no-cover", () => {
       setComicCover("", "", { label: "", variant: false });
       comicPicker.choice = "none";
+      comicPicker.picked = -1;
       renderComicPicker();
     });
     if (els.coverChoices) {
@@ -5139,7 +5318,7 @@
     const code = normalizeBarcode(candidate.barcode);
     if (code) {
       const hits = pool.filter((i) => i.type === candidate.type && normalizeBarcode(i.barcode) === code);
-      if (hits.length) return { item: newest(hits), reason: "barcode" };
+      if (hits.length) return { item: newest(hits), reason: "barcode", count: hits.length };
     }
     if (candidate.platform && candidate.externalId) {
       const hit = pool.find(
@@ -5168,7 +5347,7 @@
         .sort(
           (x, y) => rank(y) - rank(x) || String(y.dateUpdated).localeCompare(String(x.dateUpdated))
         )[0];
-      return { item: best, reason: "title" };
+      return { item: best, reason: "title", count: compatible.length };
     }
     const fuzzy = sameType.filter(
       (i) =>
@@ -5227,7 +5406,7 @@
     const best = (same.length ? same : hits)
       .slice()
       .sort((a, b) => String(b.dateUpdated).localeCompare(String(a.dateUpdated)))[0];
-    return { item: best, reason: "comic" };
+    return { item: best, reason: "comic", count: hits.length };
   }
 
   /** Steam vs Switch, digital vs physical, CD vs vinyl: two rows is the right answer. */
@@ -6368,7 +6547,7 @@
       }
       const item = normalizeItem({ ...res.cand, id: "incoming" });
       const dup = findDuplicate(item, null);
-      if (dup) return { kind: "dup", dup: dup.item, item, rowNo };
+      if (dup) return { kind: "dup", dup: dup.item, count: dup.count || 1, item, rowNo };
       const key = clzRepeatKey(item);
       if (seen.has(key)) return { kind: "dup", repeatOf: seen.get(key), item, rowNo };
       seen.set(key, rowNo);
@@ -6427,21 +6606,30 @@
     if (ev.kind === "new") note = `<p class="import-dup">New</p>`;
     else if (ev.kind === "skip") note = `<p class="import-reason">Skipped · ${escapeHtml(ev.reason)}</p>`;
     else {
-      const what = ev.repeatOf ? `Also on row ${ev.repeatOf}` : `You already have “${displayTitle(ev.dup)}”`;
-      note = `<p class="import-dup">Duplicate · ${escapeHtml(what)}</p>`;
+      // NEW COPY (fact check): status + count line, and the per-row choice buttons.
+      const what = ev.repeatOf
+        ? `Also on row ${ev.repeatOf}`
+        : ev.count > 1
+          ? `You already have ${ev.count} copies of “${displayTitle(ev.dup)}”. Update changes the newest.`
+          : `You already have “${displayTitle(ev.dup)}”`;
+      // The status line sits on its own line, above the buttons (Oholiab).
+      note = `<p class="import-dup clz-dup-status">Duplicate · ${escapeHtml(what)}</p>`;
       if (withChoice) {
         const choice = clzChoice(i);
-        const opts = [...(ev.dup ? [["update", "Update existing"]] : []), ["add", "Add as separate copy"], ["skip", "Skip"]];
-        const id = `clz-choice-${i}`;
+        const opts = [...(ev.dup ? [["update", "Update"]] : []), ["add", "Separate copy"], ["skip", "Skip"]];
         side =
-          `<label class="sr-only" for="${id}">Row ${ev.rowNo}: ${escapeHtml(name)}</label>` +
-          `<select class="select import-choice clz-choice" id="${id}" data-row="${i}">` +
-          opts.map(([v, l]) => `<option value="${v}"${v === choice ? " selected" : ""}>${l}</option>`).join("") +
-          `</select>`;
+          `<div class="clz-choice-group" role="group" aria-label="Row ${ev.rowNo}: ${escapeHtml(name)}">` +
+          opts
+            .map(
+              ([v, l]) =>
+                `<button type="button" class="btn btn-sm clz-choice-btn${v === choice ? " is-selected" : ""}" data-row="${i}" data-choice="${v}" aria-pressed="${v === choice}">${l}</button>`
+            )
+            .join("") +
+          `</div>`;
       }
     }
     return (
-      `<li class="import-row is-${ev.kind === "skip" ? "error" : ev.kind}">` +
+      `<li class="import-row is-${ev.kind === "skip" ? "error" : ev.kind}${side ? " has-choice" : ""}">` +
       `<div class="import-row-text"><span class="import-line">Row ${ev.rowNo}</span> ` +
       `<span class="import-title">${escapeHtml(name)}</span>` +
       (meta ? `<span class="import-meta"> · ${escapeHtml(meta)}</span>` : "") +
@@ -6700,13 +6888,14 @@
       clz.choices = new Map(); // the import-wide choice resets per-row overrides
       renderClzPreview();
     });
-    $("#clz-dup-rows").addEventListener("change", (e) => {
-      const sel = e.target.closest(".clz-choice");
-      if (!sel || !clz) return;
-      const i = Number(sel.dataset.row);
-      clz.choices.set(i, sel.value);
+    $("#clz-dup-rows").addEventListener("click", (e) => {
+      const btn = e.target.closest(".clz-choice-btn");
+      if (!btn || !clz) return;
+      const i = Number(btn.dataset.row);
+      const v = btn.dataset.choice;
+      clz.choices.set(i, v);
       renderClzPreview();
-      const again = document.getElementById(`clz-choice-${i}`);
+      const again = document.querySelector(`.clz-choice-btn[data-row="${i}"][data-choice="${v}"]`);
       if (again) again.focus();
     });
   }
