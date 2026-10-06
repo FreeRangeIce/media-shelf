@@ -107,7 +107,7 @@
 
   <footer class="site-footer">
     <p>Your library is saved in this browser (<code>localStorage</code>). Back up, or Export in Settings, to keep a copy. Hosted on GitHub Pages.</p>
-    <p class="footer-credits"><span class="footer-credit">Game data from <a href="https://rawg.io" target="_blank" rel="noopener noreferrer">RAWG</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Movie data from <a href="https://www.omdbapi.com" target="_blank" rel="noopener noreferrer">OMDb</a> (<a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>)</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Music data from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Covers from the <a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer">Cover Art Archive</a></span></p>
+    <p class="footer-credits"><span class="footer-credit">Game data from <a href="https://rawg.io" target="_blank" rel="noopener noreferrer">RAWG</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Movie data from <a href="https://www.omdbapi.com" target="_blank" rel="noopener noreferrer">OMDb</a> (<a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>)</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Music data from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Covers from the <a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer">Cover Art Archive</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit" id="footer-comic-credit">Comic data: PLACEHOLDER: Metron credit</span></p>
   </footer>
 
   <!-- Modal -->
@@ -141,6 +141,20 @@
           </div>
           <p class="field-hint" id="camera-hint">Allow camera when Safari asks.</p>
           <p id="lookup-status" class="lookup-status" role="status" aria-live="polite" hidden></p>
+          <!-- Comic source credit (PLACEHOLDER until the source's terms are confirmed). -->
+          <div id="comic-credit" class="comic-credit" hidden></div>
+          <!-- Comic cover picker: required after any comic match (one UPC fits every variant).
+               NEW COPY (fact check). -->
+          <div id="comic-picker" class="comic-picker" role="group" aria-labelledby="comic-picker-title" hidden>
+            <p class="comic-picker-title" id="comic-picker-title">Choose the cover</p>
+            <p class="comic-picker-hint" id="comic-picker-hint"></p>
+            <div id="comic-cover-list" class="comic-cover-list"></div>
+            <div class="comic-picker-url">
+              <label for="field-comic-cover-url">Or paste a photo URL</label>
+              <input type="url" id="field-comic-cover-url" maxlength="500" placeholder="https://…" autocomplete="off" />
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm comic-no-cover" id="btn-comic-no-cover" aria-pressed="false">No cover</button>
+          </div>
           <!-- Google Books attribution (developers.google.com/books/branding): the unmodified
                "powered by Google" mark beside Google Books results, plus a link to the book's
                Google Books page. PLACEHOLDER copy (Berean). -->
@@ -351,6 +365,7 @@
             <button type="button" class="btn btn-ghost" data-close="true">Cancel</button>
             <button type="submit" class="btn btn-primary" id="btn-save">Save</button>
           </div>
+          <p id="save-blocked" class="save-blocked" hidden>Choose a cover above, paste a photo URL, or choose No cover to save.</p>
         </div>
       </form>
     </div>

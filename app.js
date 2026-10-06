@@ -1315,6 +1315,8 @@
     els.fieldGbUrl.value = item ? item.googleBooksUrl || "" : "";
     lookupYearLoose = false;
     setLookupStatus("");
+    resetComicPicker();
+    updateComicCredit();
     updateCoverPreview();
     updateReferenceLinks();
     if (els.apiKeyHint) els.apiKeyHint.hidden = true;
@@ -1550,6 +1552,12 @@
   function saveItem(e) {
     e.preventDefault();
     const data = collectFormWithCoverIds();
+    if (comicSaveBlocked()) {
+      const first = $("#comic-picker .comic-cover, #field-comic-cover-url");
+      if (first) first.focus();
+      showToast("Pick a cover, paste a photo URL, or choose No cover first."); // NEW COPY (fact check)
+      return;
+    }
     if (data.type === "comic") {
       if (!data.series) {
         els.fieldSeries.focus();
@@ -3882,8 +3890,401 @@
     renderCoverChoices();
   }
 
+
+  /* ---------- Comic Lookup adapter (source pending) ----------
+   * The whole comic UI talks only to comicLookup(), so a real source drops in here later.
+   *   comicLookup({ series, issue, barcode }) -> Promise<{
+   *     match: { series, issue, title, publisher, year, writer: [], artist: [],
+   *              sourceId, sourceName, sourceUrl } | null,
+   *     covers: [{ url, label, variant: boolean }] }>
+   * Planned source: Metron (metron.cloud) through a Cloudflare Worker relay that doesn't
+   * exist yet. The browser must never call metron.cloud directly; only the relay.
+   * Query order (Metron filters): upc; then upc_starts_with = first 12 digits (some
+   * scanners drop the 5-digit add-on); then series_name + number. Each Metron variant
+   * (name, upc, image) becomes a cover with variant: true. Metron variants and issues carry
+   * a price: it is never read, stored or shown — the mapper builds new objects from the
+   * allowed keys only.
+   */
+  // TODO: source pending — the relay's https base URL. Empty = Lookup is inert (no match).
+  const COMIC_RELAY_URL = "";
+  /** DEV ONLY: set this localStorage key to get fixture results (see devComicFixtureIssue). */
+  const COMIC_DEV_FIXTURE_STORAGE = "frm:devComicFixture";
+  /** The picker shows 2–5 covers for one issue (spec); extra variants are left out. */
+  const COMIC_COVER_MAX = 5;
+
+  async function comicLookup({ series, issue, barcode } = {}) {
+    const q = {
+      series: cleanText(series),
+      issue: cleanIssue(issue),
+      barcode: String(barcode || "").replace(/\D/g, ""),
+    };
+    const fixture = devComicFixtureIssue(q);
+    if (fixture !== undefined) return sanitizeComicLookup(fixture ? mapMetronIssue(fixture) : null, { allowData: true });
+    // TODO: source pending. Stub: no source yet, so never a match (the form keeps what was typed).
+    if (!COMIC_RELAY_URL) return { match: null, covers: [] };
+    return sanitizeComicLookup(await fetchComicViaRelay(q));
+  }
+
+  /** Metron-shaped queries through the relay (not live until COMIC_RELAY_URL is set). */
+  async function fetchComicViaRelay(q) {
+    const base = COMIC_RELAY_URL.replace(/\/+$/, "");
+    if (!/^https:\/\//i.test(base)) return null;
+    const tries = [];
+    if (q.barcode) {
+      tries.push({ upc: q.barcode });
+      if (q.barcode.length >= 12) tries.push({ upc_starts_with: q.barcode.slice(0, 12) });
+    }
+    if (q.series && q.issue) tries.push({ series_name: q.series, number: q.issue });
+    for (const params of tries) {
+      const list = await fetchJsonQuiet(`${base}/issue/?${new URLSearchParams(params)}`, 8000);
+      const first = list && Array.isArray(list.results) ? list.results[0] : null;
+      if (!first || first.id == null) continue;
+      const detail = await fetchJsonQuiet(`${base}/issue/${encodeURIComponent(first.id)}/`, 8000);
+      const mapped = mapMetronIssue(detail || first);
+      if (mapped) return mapped;
+    }
+    return null;
+  }
+
+  /**
+   * One Metron issue (detail shape) -> { match, covers }. Reads only the fields listed
+   * here; `price` (issue or variant) is never touched.
+   */
+  function mapMetronIssue(issue) {
+    if (!issue || typeof issue !== "object") return null;
+    const credits = Array.isArray(issue.credits) ? issue.credits : [];
+    const byRole = (re) =>
+      credits
+        .filter((c) => c && Array.isArray(c.role) && c.role.some((r) => re.test(String((r && r.name) || ""))))
+        .map((c) => String(c.creator || "").trim())
+        .filter(Boolean);
+    const series = issue.series && typeof issue.series === "object" ? issue.series.name : issue.series;
+    const publisher = issue.publisher && typeof issue.publisher === "object" ? issue.publisher.name : issue.publisher;
+    const story = Array.isArray(issue.name) ? issue.name.find(Boolean) : "";
+    const yearMatch = String(issue.cover_date || issue.store_date || "").match(/^(\d{4})/);
+    const covers = [];
+    // NEW COPY (fact check): label of the issue's own cover in the picker.
+    if (issue.image) covers.push({ url: issue.image, label: "Main cover", variant: false });
+    (Array.isArray(issue.variants) ? issue.variants : []).forEach((v) => {
+      if (v && v.image) covers.push({ url: v.image, label: String(v.name || ""), variant: true });
+    });
+    return {
+      match: {
+        series: series || "",
+        issue: issue.number != null ? String(issue.number) : "",
+        title: issue.title || story || "",
+        publisher: publisher || "",
+        year: yearMatch ? Number(yearMatch[1]) : null,
+        writer: byRole(/^(writer|script|plot|story)/i),
+        artist: byRole(/^(artist|penciller|pencils|illustrator)/i),
+        sourceId: issue.id != null ? String(issue.id) : "",
+        sourceName: issue.__sourceName || "Metron",
+        sourceUrl: issue.resource_url || "",
+      },
+      covers,
+    };
+  }
+
+  /** Whatever a source returns, the UI only ever sees this shape (and no price). */
+  function sanitizeComicLookup(res, { allowData = false } = {}) {
+    const okUrl = (u) => {
+      const s = String(u || "").trim();
+      if (allowData && /^data:image\/(svg\+xml|png|jpeg|webp)[;,]/i.test(s)) return s; // dev fixture only
+      return safeHttpsUrl(s);
+    };
+    const names = (v) =>
+      (Array.isArray(v) ? v : String(v || "").split(","))
+        .map((n) => cleanText(n, 120))
+        .filter(Boolean);
+    const m = res && res.match;
+    const match =
+      m && typeof m === "object" && (cleanText(m.series) || cleanText(m.title))
+        ? {
+            series: cleanText(m.series),
+            issue: cleanIssue(m.issue),
+            title: cleanText(m.title),
+            publisher: cleanText(m.publisher),
+            year: /^\d{4}$/.test(String(m.year)) ? Number(m.year) : null,
+            writer: names(m.writer),
+            artist: names(m.artist),
+            sourceId: cleanText(m.sourceId, 80),
+            sourceName: cleanText(m.sourceName, 80),
+            sourceUrl: safeHttpsUrl(m.sourceUrl),
+          }
+        : null;
+    const seen = new Set();
+    const covers = [];
+    (res && Array.isArray(res.covers) ? res.covers : []).forEach((c) => {
+      const url = c && okUrl(c.url);
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      covers.push({ url, label: cleanText(c.label, 120), variant: c.variant === true });
+    });
+    return { match, covers: covers.slice(0, COMIC_COVER_MAX) };
+  }
+
+  /**
+   * DEV ONLY fixture, inert unless localStorage["frm:devComicFixture"] is set (tests set it
+   * by hand; nothing in the app does). Returns a Metron-shaped issue (with a price that the
+   * mapper must drop), null for a miss, or undefined when the key isn't set.
+   * Values: "5" five covers (main + 4 variants) · "2" · "1" · "0" match without covers ·
+   * "miss" no match.
+   */
+  function devComicFixtureIssue(q) {
+    let mode = null;
+    try {
+      mode = localStorage.getItem(COMIC_DEV_FIXTURE_STORAGE);
+    } catch {
+      return undefined;
+    }
+    if (!mode) return undefined;
+    if (mode === "miss") return null;
+    const n = Math.max(0, Math.min(5, Number(mode) || 5));
+    const svg = (i, label) =>
+      "data:image/svg+xml," +
+      encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="${["#1d5486", "#9a3b3b", "#146354", "#8f4e12", "#4c468f"][i % 5]}"/><text x="16" y="270" fill="#fff" font-family="sans-serif" font-size="22">${label}</text></svg>`
+      );
+    const labels = ["Cover A", "Cover B", "1:25 Variant", "Blank Sketch", "Foil"];
+    return {
+      id: 900001,
+      __sourceName: "Dev fixture",
+      series: { name: q.series || "Fixture Comics" },
+      publisher: { name: "Fixture Press" },
+      number: q.issue || "1",
+      name: ["Dev fixture story"],
+      cover_date: "2020-01-01",
+      price: "3.99", // must never reach the app
+      upc: q.barcode || "",
+      credits: [
+        { creator: "Dev Writer", role: [{ name: "Writer" }] },
+        { creator: "Dev Artist", role: [{ name: "Artist" }] },
+      ],
+      image: n >= 1 ? svg(0, labels[0]) : "",
+      variants: labels.slice(1, n).map((name, i) => ({ name, upc: "", price: "9.99", image: svg(i + 1, name) })),
+      resource_url: "",
+    };
+  }
+
+  /* ---------- Comic cover picker + Save gate ----------
+   * After any comic match a cover must be chosen: one shared UPC covers every variant, so
+   * the first cover is never attached by itself when there are several. Save stays
+   * disabled, with the reason shown, until a cover is picked, a photo URL is pasted or
+   * "No cover" is chosen. A single cover is preselected but still shown.
+   */
+  let comicPicker = { open: false, required: false, covers: [], choice: "" }; // choice: "" | "cover" | "url" | "none"
+
+  function comicSaveBlocked() {
+    return (
+      els.fieldType.value === "comic" &&
+      comicPicker.open &&
+      comicPicker.required &&
+      !comicPicker.choice
+    );
+  }
+
+  function updateSaveGate() {
+    const blocked = comicSaveBlocked();
+    if (els.btnSave) {
+      els.btnSave.disabled = blocked;
+      if (blocked) els.btnSave.setAttribute("aria-describedby", "save-blocked");
+      else els.btnSave.removeAttribute("aria-describedby");
+    }
+    const why = $("#save-blocked");
+    if (why) why.hidden = !blocked;
+  }
+
+  function resetComicPicker() {
+    comicPicker = { open: false, required: false, covers: [], choice: "" };
+    const box = $("#comic-picker");
+    if (box) box.hidden = true;
+    const list = $("#comic-cover-list");
+    if (list) list.innerHTML = "";
+    updateSaveGate();
+  }
+
+  function openComicPicker(covers, { required = true, hint = "" } = {}) {
+    const cur = els.fieldCover.value.trim();
+    // A cover from an earlier pick is cleared so this lookup needs its own choice; a URL
+    // the user pasted stays and counts as the choice.
+    let choice = "";
+    if (cur && els.fieldCoverSource.value === "manual") choice = "url";
+    else if (cur) setComicCover("", "", { label: "", variant: false });
+    comicPicker = { open: true, required, covers: covers.slice(0, COMIC_COVER_MAX), choice };
+    if (!choice && comicPicker.covers.length === 1) {
+      pickComicCover(0, { render: false }); // exactly one: preselected, still shown
+    }
+    $("#comic-picker-hint").textContent = hint;
+    $("#comic-picker").hidden = false;
+    renderComicPicker();
+  }
+
+  function setComicCover(url, source, { label, variant }) {
+    els.fieldCover.value = url;
+    els.fieldCoverSource.value = url ? source : "";
+    if (els.fieldCoverSourceId) els.fieldCoverSourceId.value = "";
+    if (els.fieldCoverPlatform) els.fieldCoverPlatform.value = "";
+    els.fieldCoverLabel.value = url ? label || "" : "";
+    els.fieldCoverVariant.value = url && variant ? "1" : "";
+    updateCoverPreview();
+  }
+
+  function pickComicCover(i, { render = true } = {}) {
+    const c = comicPicker.covers[i];
+    if (!c) return;
+    setComicCover(c.url, "comiclookup", { label: c.label, variant: c.variant });
+    comicPicker.choice = "cover";
+    if (render) renderComicPicker();
+  }
+
+  function renderComicPicker() {
+    const list = $("#comic-cover-list");
+    if (!list) return;
+    const cur = els.fieldCover.value.trim();
+    const covers = comicPicker.covers;
+    // NEW COPY (fact check): picker captions.
+    list.innerHTML = covers.length
+      ? covers
+          .map((c, i) => {
+            const on = comicPicker.choice === "cover" && c.url === cur;
+            const label = c.label || `Cover ${i + 1}`;
+            return (
+              `<button type="button" class="comic-cover${on ? " is-selected" : ""}" data-comic-cover="${i}" aria-pressed="${on}">` +
+              `<img src="${escapeHtml(c.url)}" alt="" loading="lazy" decoding="async" />` +
+              `<span class="comic-cover-label">${escapeHtml(label)}</span>` +
+              (c.variant ? `<span class="comic-cover-variant">Variant</span>` : "") +
+              `</button>`
+            );
+          })
+          .join("")
+      : `<p class="comic-picker-empty">No covers from this source.</p>`;
+    const urlInput = $("#field-comic-cover-url");
+    if (urlInput && document.activeElement !== urlInput) {
+      urlInput.value = comicPicker.choice === "url" ? cur : "";
+    }
+    const none = $("#btn-comic-no-cover");
+    if (none) {
+      none.setAttribute("aria-pressed", String(comicPicker.choice === "none"));
+      none.classList.toggle("is-selected", comicPicker.choice === "none");
+    }
+    updateSaveGate();
+  }
+
+  /** Cover URL typed (picker field or the form's Cover URL): that's the user's choice. */
+  function onComicCoverTyped(value) {
+    if (!comicPicker.open) return;
+    comicPicker.choice = value.trim() ? "url" : "";
+    els.fieldCoverLabel.value = "";
+    els.fieldCoverVariant.value = "";
+    renderComicPicker();
+  }
+
+  function updateComicCredit() {
+    const box = $("#comic-credit");
+    if (!box) return;
+    const show = els.fieldType.value === "comic" && Boolean(els.fieldSourceName.value.trim());
+    box.hidden = !show;
+    box.innerHTML = show ? comicCreditHtml(els.fieldSourceUrl.value) : "";
+  }
+
+  /** Fill empty fields from a match; ask before overwriting different filled ones. */
+  function applyComicMatch(m) {
+    const fields = [
+      [els.fieldSeries, m.series],
+      [els.fieldIssue, m.issue],
+      [els.fieldTitle, m.title],
+      [els.fieldPublisher, m.publisher],
+      [els.fieldYear, m.year == null ? "" : String(m.year)],
+      [els.fieldWriter, m.writer.join(", ")],
+      [els.fieldArtist, m.artist.join(", ")],
+    ];
+    const differs = [];
+    fields.forEach(([el, v]) => {
+      if (!v) return;
+      const cur = el.value.trim();
+      if (!cur) el.value = v;
+      else if (cur.toLowerCase() !== String(v).toLowerCase()) differs.push([el, v]);
+    });
+    els.fieldSourceId.value = m.sourceId;
+    els.fieldSourceName.value = m.sourceName;
+    els.fieldSourceUrl.value = m.sourceUrl;
+    syncAuthorsFromCreator();
+    updateComicCredit();
+    if (!differs.length) return;
+    // NEW COPY (fact check)
+    openConfirm(
+      "Overwrite filled fields?",
+      "Lookup found details that differ from what’s already in the form. Overwrite them with the Lookup details?",
+      () => {
+        differs.forEach(([el, v]) => {
+          el.value = v;
+        });
+        syncAuthorsFromCreator();
+        closeConfirm();
+      },
+      "Overwrite"
+    );
+  }
+
+  async function runComicLookup() {
+    if (lookupBusy) return;
+    const series = els.fieldSeries.value.trim();
+    const issue = els.fieldIssue.value.trim();
+    const barcode = els.fieldBarcode.value.trim();
+    if (!barcode && !series) {
+      // NEW COPY (fact check)
+      setLookupStatus("Enter a barcode, or a series and issue number, to look up a comic.", "error");
+      return;
+    }
+    lookupBusy = true;
+    els.btnLookup.disabled = true;
+    setLookupStatus("Looking up…");
+    try {
+      const res = await comicLookup({ series, issue, barcode });
+      const code = normalizeBarcode(barcode);
+      // A barcode you already have never offers Update: one UPC is shared by variants, so
+      // the picker opens and the cover tells the copies apart (Nathan risk 3).
+      const sameUpc =
+        code && items.some((i) => i.type === "comic" && i.id !== editingId && normalizeBarcode(i.barcode) === code);
+      // NEW COPY (fact check): picker hints and status lines.
+      const SAME_UPC_HINT = "You already have a comic with this barcode. Variant covers share one barcode, so pick the cover of this copy.";
+      if (res.match) {
+        setLookupStatus(`Matched via ${res.match.sourceName || "Lookup"}`, "ok");
+        openComicPicker(res.covers, {
+          required: true,
+          hint: sameUpc
+            ? SAME_UPC_HINT
+            : res.covers.length > 1
+              ? "Pick the cover that matches your copy, paste a photo URL, or choose No cover."
+              : "Check the cover, paste a photo URL, or choose No cover.",
+        });
+        applyComicMatch(res.match);
+      } else {
+        els.fieldSourceId.value = "";
+        els.fieldSourceName.value = "";
+        els.fieldSourceUrl.value = "";
+        updateComicCredit();
+        setLookupStatus("No match. Everything you entered is kept.", "error");
+        if (res.covers.length || sameUpc) {
+          openComicPicker(res.covers, {
+            required: true,
+            hint: sameUpc ? SAME_UPC_HINT : "Pick the cover that matches your copy, paste a photo URL, or choose No cover.",
+          });
+        } else {
+          resetComicPicker();
+        }
+      }
+    } catch {
+      setLookupStatus("Lookup failed — check your connection and try again.", "error");
+    } finally {
+      lookupBusy = false;
+      els.btnLookup.disabled = false;
+    }
+  }
+
   async function runLookup() {
     if (lookupBusy) return;
+    if (els.fieldType.value === "comic") return runComicLookup();
     const type = els.fieldType.value;
     const barcode = els.fieldBarcode.value.trim();
     const title = els.fieldTitle.value.trim();
@@ -4372,6 +4773,9 @@
       }
       if (SIGNED_TYPES.has(els.fieldType.value)) syncAuthorsFromCreator();
       else renderSignedUi();
+      if (els.fieldType.value !== "comic") resetComicPicker();
+      updateComicCredit();
+      updateSaveGate();
       updateReferenceLinks();
       updateApiKeyHint();
     });
@@ -4436,8 +4840,31 @@
       els.fieldCoverSource.value = els.fieldCover.value.trim() ? "manual" : "";
       if (els.fieldCoverSourceId) els.fieldCoverSourceId.value = "";
       if (els.fieldCoverPlatform) els.fieldCoverPlatform.value = "";
+      if (els.fieldCoverLabel) els.fieldCoverLabel.value = "";
+      if (els.fieldCoverVariant) els.fieldCoverVariant.value = "";
       updateCoverPreview();
       renderCoverChoices();
+      onComicCoverTyped(els.fieldCover.value);
+    });
+    const comicCoverList = $("#comic-cover-list");
+    if (comicCoverList) {
+      comicCoverList.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-comic-cover]");
+        if (btn) pickComicCover(Number(btn.dataset.comicCover));
+      });
+    }
+    const comicUrl = $("#field-comic-cover-url");
+    if (comicUrl) {
+      comicUrl.addEventListener("input", () => {
+        const v = comicUrl.value.trim();
+        setComicCover(v, "manual", { label: "", variant: false });
+        onComicCoverTyped(v);
+      });
+    }
+    bindClick("#btn-comic-no-cover", () => {
+      setComicCover("", "", { label: "", variant: false });
+      comicPicker.choice = "none";
+      renderComicPicker();
     });
     if (els.coverChoices) {
       els.coverChoices.addEventListener("click", (e) => {
@@ -4893,8 +5320,9 @@
   function checkDuplicateFromForm() {
     if (editingId || els.modal.hidden || !els.confirm.hidden) return;
     if (syncFromStorage()) render();
+    if (comicSaveBlocked()) return; // a comic's cover isn't chosen yet: check on Save
     const data = collectForm();
-    if (!data.title && !data.barcode) return;
+    if (!data.title && !data.barcode && !data.series) return;
     const dup = findDuplicate(withLookupYearRule(data), null);
     if (dup && dup.item.id !== dupAcceptedSeparateId) openDuplicatePrompt(data, dup, "lookup");
   }

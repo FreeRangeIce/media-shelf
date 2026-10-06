@@ -2152,6 +2152,151 @@ body.modal-open {
   display: none !important;
 }
 
+/* Comic cover picker (after a comic Lookup). Grid that wraps at any width; each cover is a
+   tall tap target with its label under it and a "Variant" tag when the source says so. */
+.comic-credit .card-credit {
+  margin-top: var(--space-1);
+}
+
+.comic-picker {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  min-width: 0;
+}
+
+.comic-picker-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+.comic-picker-hint {
+  margin: var(--space-1) 0 var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  line-height: var(--lh-tight);
+}
+
+.comic-cover-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: var(--space-2);
+}
+
+.comic-cover {
+  appearance: none;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-1);
+  min-width: 0;
+  min-height: var(--tap);
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.comic-cover img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--bg-card-hover);
+}
+
+.comic-cover-label {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+}
+
+.comic-cover-variant {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  padding: 1px var(--space-1);
+  border-radius: 4px;
+  background: var(--text);
+  color: #fffdf8;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+
+.comic-cover:hover {
+  border-color: var(--border-strong);
+}
+
+.comic-cover:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.comic-cover.is-selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.comic-cover.is-selected::after {
+  content: "✓";
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: var(--fs-sm);
+  line-height: 22px;
+  text-align: center;
+}
+
+.comic-picker-empty {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.comic-picker-url {
+  margin-top: var(--space-3);
+}
+
+.comic-no-cover {
+  margin-top: var(--space-2);
+}
+
+.comic-no-cover.is-selected {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Save blocked until a comic cover is chosen: the disabled button plus the reason */
+#btn-save:disabled,
+#btn-save:disabled:hover {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.save-blocked {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--danger);
+  text-align: right;
+}
+
 /* Cover choices after Lookup. Wrap rather than overflow; each choice is a 44px tap. */
 .cover-choices {
   display: flex;
