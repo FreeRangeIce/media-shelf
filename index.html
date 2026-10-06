@@ -141,7 +141,7 @@
           </div>
           <p class="field-hint" id="camera-hint">Allow camera when Safari asks.</p>
           <p id="lookup-status" class="lookup-status" role="status" aria-live="polite" hidden></p>
-          <!-- Comic source credit (PLACEHOLDER until the source's terms are confirmed). -->
+          <!-- Comic source credit, filled from COMIC_SOURCES (app.js) by the comic's sourceId. -->
           <div id="comic-credit" class="comic-credit" hidden></div>
           <!-- Comic cover picker: required after any comic match (one UPC fits every variant).
                NEW COPY (fact check). -->
@@ -658,6 +658,8 @@
         Music Lookup needs no key. Music data from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a>.
         Covers from the <a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer">Cover Art Archive</a>.
       </p>
+      <!-- Comic data credit, filled from the active source in COMIC_SOURCES (app.js). -->
+      <p class="settings-intro settings-credit" id="comic-lookup-credit"></p>
       <div class="form-actions-right settings-done-row">
         <button type="button" class="btn btn-primary" data-settings-close="true" id="btn-settings-done">Done</button>
       </div>

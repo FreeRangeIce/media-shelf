@@ -2222,8 +2222,35 @@ body.modal-open {
 
 /* Comic cover picker (after a comic Lookup). Grid that wraps at any width; each cover is a
    tall tap target with its label under it and a "Variant" tag when the source says so. */
-.comic-credit .card-credit {
+/* Comic source credit: plain small text with ordinary links (not a button). */
+.comic-credit {
+  margin-top: var(--space-2);
+  min-width: 0;
+}
+
+.source-credit,
+.source-credit-issue {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--text-muted);
+  overflow-wrap: break-word;
+}
+
+.source-credit-issue {
   margin-top: var(--space-1);
+}
+
+.source-credit a,
+.source-credit-issue a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.source-credit a:hover,
+.source-credit-issue a:hover {
+  color: var(--text);
 }
 
 .comic-picker {

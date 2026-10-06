@@ -703,28 +703,36 @@
   /**
    * Comic data sources: the ONLY place a source is named. A stored comic's sourceId prefix
    * ("gcd-issue-123", "cv-issue-456") picks its credit, so comics keep the right credit if
-   * the relay switches source. Credit texts are PLACEHOLDER until each source's attribution
-   * terms are confirmed — fact check before release.
+   * the relay switches source. creditHtml() returns trusted, pre-escaped HTML.
    */
   const COMIC_SOURCES = [
     {
       key: "gcd",
       prefix: "gcd-",
       name: "Grand Comics Database",
-      creditText: "PLACEHOLDER: Grand Comics Database credit",
-      creditUrl: "https://www.comics.org",
+      barcodeRoute: false, // GCD has no barcode search: a barcode alone is a miss
+      // Credit wording cleared by Berean (Oct 5, 2026). Use exactly.
+      creditHtml: () =>
+        'Comic details from the <a href="https://www.comics.org/" target="_blank" rel="noopener noreferrer">Grand Comics Database</a>™, ' +
+        'licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>. ' +
+        "Cover images are © their respective copyright holders and shown for identification only.",
+      issueUrlRe: /^https:\/\/www\.comics\.org\/issue\/\d+\/?$/i,
+      // NEW COPY (fact check): link to the comic's own page at the source.
+      issueLinkText: "This issue on comics.org",
       issueUrl: (id) => `https://www.comics.org/issue/${encodeURIComponent(id)}/`,
     },
     {
       key: "cv", // kept in case the relay switches back
       prefix: "cv-",
       name: "Comic Vine",
-      creditText: "PLACEHOLDER: Comic Vine credit",
-      creditUrl: "https://comicvine.gamespot.com",
+      barcodeRoute: false,
+      creditHtml: () => '<a href="https://comicvine.gamespot.com" target="_blank" rel="noopener noreferrer">PLACEHOLDER: Comic Vine credit</a>',
+      issueUrlRe: /^https:\/\/comicvine\.gamespot\.com\/[^?#]*4000-\d+\/?$/i,
+      issueLinkText: "PLACEHOLDER: This issue on Comic Vine",
       issueUrl: (id) => `https://comicvine.gamespot.com/issue/4000-${encodeURIComponent(id)}/`,
     },
   ];
-  /** The source the relay currently serves (footer credit, dev fixture). */
+  /** The source the relay currently serves (Settings credit, footer, dev fixture). */
   const COMIC_ACTIVE_SOURCE = COMIC_SOURCES[0];
 
   /** The source a sourceId came from, or null (typed by hand, CLZ import, unknown). */
@@ -733,19 +741,27 @@
     return (id && COMIC_SOURCES.find((s) => id.startsWith(s.prefix))) || null;
   }
 
-  /** Footer: "Comic data: <credit link>" for the source the relay serves now. */
+  /** Settings + footer: the credit of the source the relay serves now. */
   function renderComicFooterCredit() {
-    const el = document.getElementById("footer-comic-credit");
-    if (!el) return;
     const s = COMIC_ACTIVE_SOURCE;
-    // NEW COPY (fact check): footer prefix.
-    el.innerHTML = `Comic data: <a href="${escapeHtml(s.creditUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.creditText)}</a>`;
+    const settings = document.getElementById("comic-lookup-credit");
+    if (settings) settings.innerHTML = s.creditHtml();
+    const el = document.getElementById("footer-comic-credit");
+    if (el) el.innerHTML = s.creditHtml();
   }
 
-  /** Credit line: a plain link to the source's site (card, form and cover picker). */
-  function comicCreditHtml(source) {
+  /**
+   * Plain-text credit (no button) for the comic form and the cover picker, plus a small
+   * link to the issue's own page when sourceUrl is one of that source's issue pages.
+   */
+  function comicCreditHtml(source, sourceUrl) {
     if (!source) return "";
-    return `<p class="card-credit"><a class="card-credit-link" href="${escapeHtml(source.creditUrl)}" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">${escapeHtml(source.creditText)}</span></a></p>`;
+    const url = safeHttpsUrl(sourceUrl);
+    const issue =
+      url && source.issueUrlRe.test(url)
+        ? `<p class="source-credit-issue"><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.issueLinkText)}</a></p>`
+        : "";
+    return `<p class="source-credit">${source.creditHtml()}</p>${issue}`;
   }
 
   /** What a card, list or prompt calls the item. Comics: "Saga #1: Chapter One". */
@@ -1877,7 +1893,6 @@
         let creditHtml = gbUrl
           ? `<p class="card-credit"><a class="card-credit-link" href="${escapeHtml(gbUrl)}" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">Cover from Google Books</span></a></p>`
           : "";
-        if (item.type === "comic" && comicSourceFor(item.sourceId)) creditHtml = comicCreditHtml(comicSourceFor(item.sourceId));
         return `
 <li>
   <article class="item-card" tabindex="0" data-id="${escapeHtml(item.id)}" role="button" aria-label="Edit ${escapeHtml(name)}">
@@ -3966,7 +3981,9 @@
     const barcodeOnly = !(q.series && q.issue);
     const empty = { match: null, covers: [], candidates: [], barcodeOnly, busy: false, reason: "", matchedBy: "" };
     const routes = [];
-    if (q.barcode) routes.push({ by: "barcode", path: "/comic-barcode", query: { upc: q.barcode } });
+    // The barcode route is only asked when the active source can search barcodes (GCD
+    // can't), so a barcode alone is a miss; the code stays and series + issue still match.
+    if (q.barcode && COMIC_ACTIVE_SOURCE.barcodeRoute) routes.push({ by: "barcode", path: "/comic-barcode", query: { upc: q.barcode } });
     if (!barcodeOnly) {
       const query = { series: q.series, issue: q.issue };
       if (q.publisher) query.publisher = q.publisher;
@@ -4071,9 +4088,10 @@
    * by hand; nothing in the app does). Answers one relay route ("barcode" | "series") in
    * the relay's shape, as { busy, body }, labelled as COMIC_ACTIVE_SOURCE. The body carries
    * a stray price that must be dropped.
+   * Placeholder data only (generated SVG covers, made-up names) — never real source data.
    * Modes: "5" five covers · "2" · "1" · "0" match without covers · "miss" no match (with a
-   * candidate) · "busy" a 503 · "upc" the barcode route matches too (base + 4 variants).
-   * Except in "upc" mode the barcode route answers reason "barcode-unsupported".
+   * candidate) · "busy" a 503. The barcode route (only asked when the active source has
+   * one) answers like a match in "upc" mode, otherwise reason "barcode-unsupported".
    */
   function devComicFixture(q, by) {
     const mode = devComicFixtureMode();
@@ -4092,8 +4110,8 @@
       encodeURIComponent(
         `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="${["#1d5486", "#9a3b3b", "#146354", "#8f4e12", "#4c468f"][i % 5]}"/><text x="16" y="270" fill="#fff" font-family="sans-serif" font-size="22">${String.fromCharCode(65 + i)}</text></svg>`
       );
-    // Variant names as a source like GCD gives them: some are long and must wrap.
-    const labels = ["Cover A", "Cover B Jim Lee", "Cover C 1:25 Incentive Fiona Staples Virgin Variant", "Cover D Blank Sketch", "Cover E Foil"];
+    // Made-up variant names as long as real ones get; they must wrap at 320px.
+    const labels = ["Cover A", "Cover B Placeholder Artist", "Cover C 1:25 Incentive Placeholder Artist Virgin Variant", "Cover D Blank Sketch", "Cover E Foil"];
     return {
       busy: false,
       body: {
@@ -4213,11 +4231,6 @@
     if (urlInput && document.activeElement !== urlInput) {
       urlInput.value = comicPicker.choice === "url" ? cur : "";
     }
-    const credit = $("#comic-picker-credit");
-    if (credit) {
-      credit.hidden = !comicPicker.credit;
-      credit.innerHTML = comicCreditHtml(comicPicker.credit);
-    }
     updateComicCredit();
     const none = $("#btn-comic-no-cover");
     if (none) {
@@ -4244,7 +4257,14 @@
     const source = els.fieldType.value === "comic" ? comicSourceFor(els.fieldSourceId.value) : null;
     const show = Boolean(source) && !(comicPicker.open && comicPicker.credit);
     box.hidden = !show;
-    box.innerHTML = show ? comicCreditHtml(source) : "";
+    box.innerHTML = show ? comicCreditHtml(source, els.fieldSourceUrl.value) : "";
+    // Cover picker: the same plain-text credit under the covers (above Save).
+    const pick = $("#comic-picker-credit");
+    if (pick) {
+      const on = comicPicker.open && Boolean(comicPicker.credit);
+      pick.hidden = !on;
+      pick.innerHTML = on ? comicCreditHtml(comicPicker.credit, els.fieldSourceUrl.value) : "";
+    }
   }
 
   /** Fill empty fields from a match; ask before overwriting different filled ones. */
