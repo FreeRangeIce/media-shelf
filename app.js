@@ -3976,12 +3976,14 @@
    *   GET {COMIC_RELAY_URL}/comic-barcode?upc=
    *     -> same shape (base + variants as covers), or { match: null, reason } on a miss
    *        such as "barcode-unsupported".
-   *   503 { error: "busy" } + Retry-After, and any other 4xx/5xx -> "busy".
+   *   429, or 503 with Retry-After (the relay sends { error: "busy" }) -> "busy".
+   *   Any other 4xx/5xx (e.g. the relay's 502 when GCD's answer changed shape), a 200
+   *   that isn't a JSON object, a timeout or a network failure -> "failed".
    * Order: barcode first (if any), then series + issue (if both). A barcode miss keeps the
    * code and series + issue still match and open the picker.
    * comicLookup() resolves to { match, covers, candidates, barcodeOnly, busy, reason,
-   * matchedBy: "barcode" | "series" | "" } and never throws for HTTP errors (a network
-   * failure still rejects). sanitizeComicLookup() rebuilds every answer from the allowed
+   * failed, matchedBy: "barcode" | "series" | "" } and never throws for HTTP errors (a
+   * network failure or timeout still rejects; callers show the "isn't working" line). sanitizeComicLookup() rebuilds every answer from the allowed
    * keys only, so a price or any other extra field never reaches the form or storage.
    */
   // TODO: source pending — the relay's https base URL. Empty = Lookup is inert (no match).
@@ -4012,10 +4014,18 @@
   const COMIC_COVERS_CHUNK = 13;
   /** Upper bound on cover names kept from one answer (defensive). */
   const COMIC_VARIANTS_MAX = 200;
-  // Copy cleared for busy, partial answers and relay errors; never "no match" for these.
+  // Copy cleared (Berean). Busy only for 429, a 503 with Retry-After, or a partial answer
+  // (the relay's budget ran out). Never "no match" for either.
   const COMIC_BUSY_MESSAGE = "Comic lookup is busy right now. Try again later. What you typed is kept.";
+  // Every other relay error, a non-JSON answer, a timeout or a network failure.
+  const COMIC_FAIL_MESSAGE = "Comic lookup isn't working right now. What you typed is kept.";
   /** After a busy answer, Lookup waits out Retry-After (capped) before asking the relay again. */
   let comicBusyUntil = 0;
+
+  /** A JSON object (not null, not an array): the only body shape the relay sends. */
+  function isPlainObject(v) {
+    return v !== null && typeof v === "object" && !Array.isArray(v);
+  }
 
   async function comicLookup({ series, issue, barcode, publisher } = {}) {
     const q = {
@@ -4025,7 +4035,7 @@
       barcode: String(barcode || "").replace(/\D/g, ""),
     };
     const barcodeOnly = !(q.series && q.issue);
-    const empty = { match: null, covers: [], variants: [], total: 0, candidates: [], barcodeOnly, busy: false, reason: "", matchedBy: "" };
+    const empty = { match: null, covers: [], variants: [], total: 0, candidates: [], barcodeOnly, busy: false, failed: false, reason: "", matchedBy: "" };
     const routes = [];
     // The barcode route is only asked when the active source can search barcodes (GCD
     // can't), so a barcode alone is a miss; the code stays and series + issue still match.
@@ -4048,6 +4058,8 @@
         got = await comicRelayGet(route.path, route.query);
       }
       if (got.busy || (got.body && got.body.partial === true)) return { ...empty, busy: true };
+      // A 200 that isn't a JSON object is a broken answer, not a miss.
+      if (got.failed || !isPlainObject(got.body)) return { ...empty, failed: true };
       const res = sanitizeComicLookup(got.body, { fixture: useFixture });
       if (res.match) return { ...empty, ...res, matchedBy: route.by };
       last = res;
@@ -4055,20 +4067,30 @@
     return { ...empty, ...(last || {}), matchedBy: "" };
   }
 
-  /** One relay GET. 4xx/5xx -> { busy: true } (Retry-After honoured); network errors throw. */
+  /**
+   * One relay GET -> { busy, failed, body }. busy only for 429 or a 503 with Retry-After
+   * (honoured, capped at 5 min). Any other 4xx/5xx, or a body that isn't JSON -> failed.
+   * Network errors and the 10 s timeout throw.
+   */
   async function comicRelayGet(path, query) {
     const base = COMIC_RELAY_URL.replace(/\/+$/, "");
-    if (!/^https:\/\//i.test(base)) return { busy: false, body: null };
+    if (!/^https:\/\//i.test(base)) return { busy: false, failed: true, body: null };
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 10000);
     try {
       const res = await fetch(`${base}${path}?${new URLSearchParams(query)}`, { signal: ctrl.signal });
       if (!res.ok) {
-        const secs = Number(res.headers.get("Retry-After"));
-        comicBusyUntil = Date.now() + (Number.isFinite(secs) && secs > 0 ? Math.min(secs, 300) : 10) * 1000;
-        return { busy: true, body: null };
+        const retry = res.headers.get("Retry-After");
+        if (res.status === 429 || (res.status === 503 && retry !== null)) {
+          const secs = Number(retry);
+          comicBusyUntil = Date.now() + (Number.isFinite(secs) && secs > 0 ? Math.min(secs, 300) : 10) * 1000;
+          return { busy: true, failed: false, body: null };
+        }
+        return { busy: false, failed: true, body: null };
       }
-      return { busy: false, body: await res.json().catch(() => null) };
+      const body = await res.json().catch(() => undefined);
+      if (!isPlainObject(body)) return { busy: false, failed: true, body: null };
+      return { busy: false, failed: false, body };
     } finally {
       clearTimeout(timer);
     }
@@ -4145,8 +4167,8 @@
 
   /**
    * "Show all N covers": fetch the covers for these variant ids from /comic-covers in
-   * chunks of 13. Resolves { covers, busy }; busy = a chunk was busy, partial or failed
-   * (covers fetched before that are still returned).
+   * chunks of 13. Resolves { covers, busy, failed }; busy = a chunk was busy or partial,
+   * failed = any other error (covers fetched before that are still returned).
    */
   async function comicFetchCovers(ids) {
     const want = [...new Set(ids.filter(Boolean))];
@@ -4158,16 +4180,18 @@
       let got;
       try {
         if (useFixture) got = devComicFixtureCovers(chunk);
-        else if (!COMIC_RELAY_URL || Date.now() < comicBusyUntil) got = { busy: true, body: null };
+        else if (!COMIC_RELAY_URL) got = { busy: false, failed: true, body: null };
+        else if (Date.now() < comicBusyUntil) got = { busy: true, body: null };
         else got = await comicRelayGet("/comic-covers", { ids: chunk.join(",") });
       } catch {
-        got = { busy: true, body: null };
+        got = { busy: false, failed: true, body: null };
       }
-      if (got.busy || !got.body) return { covers, busy: true };
+      if (got.busy) return { covers, busy: true, failed: false };
+      if (got.failed || !isPlainObject(got.body)) return { covers, busy: false, failed: true };
       covers.push(...sanitizeComicCovers(got.body.covers, okUrl));
-      if (got.body.partial === true) return { covers, busy: true };
+      if (got.body.partial === true) return { covers, busy: true, failed: false };
     }
-    return { covers, busy: false };
+    return { covers, busy: false, failed: false };
   }
 
   /** DEV ONLY: the fixture mode from localStorage, or null when it isn't set. */
@@ -4221,7 +4245,8 @@
    * Modes: "5" five covers · "2" · "1" · "0" match without covers · "18" eighteen named
    * covers (5 sent, the rest via "Show all"; two have no image yet) · "18busy" / "18partial"
    * the same, but fetching the rest is busy / partial · "miss" no match (with a candidate) ·
-   * "busy" a 503 · "partial" a partial answer. The barcode route (only asked when the
+   * "busy" a 503 with Retry-After · "error" any other relay error (e.g. 502) · "badjson"
+   * a 200 that isn't JSON · "partial" a partial answer. The barcode route (only asked when the
    * active source has one) answers like a match in "upc" mode, otherwise reason
    * "barcode-unsupported".
    */
@@ -4229,6 +4254,8 @@
     const mode = devComicFixtureMode();
     const src = COMIC_ACTIVE_SOURCE;
     if (mode === "busy") return { busy: true, body: null };
+    if (mode === "error") return { busy: false, failed: true, body: null }; // e.g. the relay's 502
+    if (mode === "badjson") return { busy: false, failed: true, body: null }; // a 200 that isn't JSON
     if (mode === "partial") return { busy: false, body: { partial: true, match: null, covers: [] } };
     if (by === "barcode" && mode !== "upc") return { busy: false, body: { match: null, reason: "barcode-unsupported" } };
     if (mode === "miss") {
@@ -4263,10 +4290,11 @@
     };
   }
 
-  /** DEV ONLY: /comic-covers for the fixture (honours the "18busy" / "18partial" modes). */
+  /** DEV ONLY: /comic-covers for the fixture (honours the "18busy" / "18error" / "18partial" modes). */
   function devComicFixtureCovers(ids) {
     const mode = devComicFixtureMode();
     if (mode === "18busy") return { busy: true, body: null };
+    if (mode === "18error") return { busy: false, failed: true, body: null };
     const covers = ids
       .map((id) => DEV_FIXTURE_LABELS.findIndex((_, i) => devFixtureVariant(i).sourceId === id))
       .filter((i) => i >= 0 && !DEV_FIXTURE_NO_IMAGE.has(i))
@@ -4276,7 +4304,7 @@
   }
 
   /* ---------- Comic cover picker + Save gate ----------
-   * After any comic match a cover must be chosen: one shared UPC covers every variant, so
+   * After any comic match a cover must be chosen: variants can share a UPC, so
    * the first cover is never attached by itself when there are several. Save stays
    * disabled, with the reason shown, until a cover is picked, a photo URL is pasted or
    * "No cover" is chosen. A single cover is preselected but still shown.
@@ -4415,7 +4443,7 @@
     try {
       res = await comicFetchCovers(missing);
     } catch {
-      res = { covers: [], busy: true };
+      res = { covers: [], busy: false, failed: true };
     }
     if (token !== comicPicker.token) return; // a new Lookup or a closed form replaced this picker
     const byId = new Map(res.covers.map((c) => [c.sourceId, c]));
@@ -4427,6 +4455,7 @@
       setComicCover(p.url, "comiclookup", { label: p.label, variant: p.variant });
     }
     if (res.busy) setLookupStatus(COMIC_BUSY_MESSAGE, "error");
+    else if (res.failed) setLookupStatus(COMIC_FAIL_MESSAGE, "error");
     renderComicPicker();
   }
 
@@ -4572,18 +4601,18 @@
     try {
       const res = await comicLookup({ series, issue, barcode, publisher: els.fieldPublisher.value.trim() });
       const code = normalizeBarcode(barcode);
-      if (res.busy) {
-        // Busy (503 / Retry-After), a partial answer or any other relay error: never "no
-        // match", and nothing in the form changes.
-        setLookupStatus(COMIC_BUSY_MESSAGE, "error");
+      if (res.busy || res.failed) {
+        // Busy (429, 503 with Retry-After, or a partial answer) or any other failure: never
+        // "no match", and nothing in the form changes.
+        setLookupStatus(res.busy ? COMIC_BUSY_MESSAGE : COMIC_FAIL_MESSAGE, "error");
         return;
       }
-      // A barcode you already have never offers Update: one UPC is shared by variants, so
+      // A barcode you already have never offers Update: variants can share a UPC, so
       // the picker opens and the cover tells the copies apart (Nathan risk 3).
       const sameUpc =
         code && items.some((i) => i.type === "comic" && i.id !== editingId && normalizeBarcode(i.barcode) === code);
       // NEW COPY (fact check): picker hints and status lines.
-      const SAME_UPC_HINT = "You already have a comic with this barcode. Variant covers share one barcode, so pick the cover of this copy.";
+      const SAME_UPC_HINT = "You already have a comic with this barcode. Variant covers can share a barcode, so pick the cover of this copy.";
       if (res.match) {
         // NEW COPY (fact check): say what matched; a barcode that didn't match is kept.
         const via = res.match.sourceName || "Lookup";
@@ -4625,7 +4654,7 @@
         const barcodeMiss = res.barcodeOnly && code;
         setLookupStatus(
           barcodeMiss
-            ? "Comics can’t be looked up by barcode yet. Your barcode is kept. Add the series and issue number, then look up again."
+            ? "Comic lookup can’t search by barcode alone. Your barcode is kept. Add the series and issue number, then look up again."
             : "No match. Everything you entered is kept.",
           "error"
         );
@@ -4641,7 +4670,7 @@
         }
       }
     } catch {
-      setLookupStatus(COMIC_BUSY_MESSAGE, "error"); // relay unreachable: same as busy
+      setLookupStatus(COMIC_FAIL_MESSAGE, "error"); // relay unreachable or timed out: not busy
     } finally {
       lookupBusy = false;
       els.btnLookup.disabled = false;
@@ -5490,7 +5519,7 @@
    *  2. Otherwise, both covers non-blank: series + issue + cover.
    *  3. Otherwise: series + issue. Several such matches name the count and are flagged
    *     ambiguous, so nothing updates one of them automatically.
-   * Never title (optional) and never barcode (one UPC is shared by every variant; a
+   * Never title (optional) and never barcode (variants can share a UPC; a
    * barcode hit opens the cover picker instead, see the comic Lookup).
    * @returns {{ item, reason: "comic", count: number, ambiguous: boolean } | null}
    */
@@ -6588,7 +6617,7 @@
     const key = raw.toLowerCase();
     if (Object.prototype.hasOwnProperty.call(CLZ_STATUS_MAP, key)) return { status: CLZ_STATUS_MAP[key] };
     if (!CLZ_SKIP_OTHER_STATUS) return { status: "owned" };
-    return { skip: `Status “${raw}” isn’t imported yet` };
+    return { skip: `Status “${raw}” isn’t imported` };
   }
 
   /** One CSV row -> { cand } (an item to normalize) or { skip: reason }. */
@@ -6812,7 +6841,7 @@
     const unmatched = usable.filter(({ i }) => !used.has(i)).map(({ h }) => h);
     const label = CLZ_TYPES[clz.typeKey].label;
     $("#clz-mapping-hint").textContent = missing.length
-      ? `No column was recognised for ${missing.map((f) => CLZ_FIELD_LABELS[f]).join(", ")}. Pick the matching column once; the choice is remembered for ${label} files.`
+      ? `No column was recognized for ${missing.map((f) => CLZ_FIELD_LABELS[f]).join(", ")}. Pick the matching column once; the choice is remembered for ${label} files.`
       : `Pick the column for each field. The choice is remembered for ${label} files.`;
     $("#clz-unmatched").textContent = unmatched.length ? `Columns not matched yet: ${unmatched.join(", ")}` : "";
     $("#clz-mapping-fields").innerHTML = Object.keys(aliases)
@@ -6899,7 +6928,7 @@
     if (other && other.s > mine && (mine === 0 || other.s >= mine + 2)) {
       return fail(`That file looks like a CLZ ${CLZ_TYPES[other.k].label} export, not ${label}. Pick the matching type and choose the file again.`);
     }
-    if (!known.length) return fail(`None of that file’s columns were recognised as a CLZ ${label} export.`);
+    if (!known.length) return fail(`None of that file’s columns were recognized as a CLZ ${label} export.`);
     clz = { typeKey, headers: parsed.headers, rows: parsed.rows, parsed, mapping, evals: [], choices: new Map() };
     setClzMessage("");
     const missing = CLZ_TYPES[typeKey].required.filter((f) => mapping[f] == null);
