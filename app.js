@@ -6971,7 +6971,7 @@
     $("#clz-dup-rows").innerHTML =
       dupIdx.slice(0, CLZ_LIST_MAX).map((i) => clzRowHtml(clz.evals[i], i, true)).join("") +
       (dupIdx.length > CLZ_LIST_MAX
-        ? `<li class="import-row import-more">…and ${plural(dupIdx.length - CLZ_LIST_MAX, "more duplicate", "more duplicates")}, which follow the choice above.</li>`
+        ? `<li class="import-row import-more">…and ${plural(dupIdx.length - CLZ_LIST_MAX, "more duplicate", "more duplicates")}. Those with one match follow the default above. Those matching more than one copy stay on Skip.</li>` /* cleared (Berean, 11:56pm) */
         : "");
     const skipIdx = clz.evals.map((ev, i) => (ev.kind === "skip" ? i : -1)).filter((i) => i >= 0);
     $("#clz-skipped").hidden = !skipIdx.length;
