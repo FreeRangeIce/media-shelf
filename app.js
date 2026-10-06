@@ -733,6 +733,7 @@
       issueUrlRe: /^https:\/\/www\.comics\.org\/issue\/\d+\/?$/i,
       // NEW COPY (fact check): link to the comic's own page at the source.
       issueLinkText: "This issue on comics.org",
+      issueLinkShort: "comics.org", // NEW COPY (fact check): end of a names-only picker row
       issueUrl: (id) => `https://www.comics.org/issue/${encodeURIComponent(id)}/`,
     },
     {
@@ -743,6 +744,7 @@
       creditHtml: () => '<a href="https://comicvine.gamespot.com" target="_blank" rel="noopener noreferrer">PLACEHOLDER: Comic Vine credit</a>',
       issueUrlRe: /^https:\/\/comicvine\.gamespot\.com\/[^?#]*4000-\d+\/?$/i,
       issueLinkText: "PLACEHOLDER: This issue on Comic Vine",
+      issueLinkShort: "Comic Vine",
       issueUrl: (id) => `https://comicvine.gamespot.com/issue/4000-${encodeURIComponent(id)}/`,
     },
   ];
@@ -4450,7 +4452,7 @@
           (c.variant ? `<span class="comic-name-variant">Variant</span>` : "") +
           `</button>` +
           (href
-            ? `<a class="comic-cover-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(comicSourceFor(c.sourceId).issueLinkText)}</a>`
+            ? `<a class="comic-cover-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(`${label}: ${comicSourceFor(c.sourceId).issueLinkText}`)}">${escapeHtml(comicSourceFor(c.sourceId).issueLinkShort)}</a>`
             : "") +
           `</div>`
         );
