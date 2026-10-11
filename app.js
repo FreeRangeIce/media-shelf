@@ -731,8 +731,9 @@
       // Credit wording cleared by Berean (Oct 5, 2026). Use exactly.
       creditHtml: () =>
         'Comic details from the <a href="https://www.comics.org/" target="_blank" rel="noopener noreferrer">Grand Comics Database</a>™, ' +
-        'licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>. ' +
-        "Cover images are © their respective copyright holders and shown for identification only.",
+        'licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>.' +
+        // Names only: no images on screen, so no cover sentence (Berean, Oct 10).
+        (comicCoverImagesOn() ? " Cover images are © their respective copyright holders and shown for identification only." : ""),
       issueUrlRe: /^https:\/\/www\.comics\.org\/issue\/\d+\/?$/i,
       // NEW COPY (fact check): link to the comic's own page at the source.
       issueLinkText: "This issue on comics.org",
@@ -4539,8 +4540,7 @@
     updateSaveGate();
     const first = $("#comic-picker .comic-cover, #field-comic-cover-url");
     if (first) first.focus();
-    // The cleared toast for a forced Save; it's role="status", so screen readers hear why.
-    showToast("Pick a cover, paste a photo URL, or choose No cover first."); // cleared (Berean, 11:56pm)
+    // No toast: the red line next to Save already says it, and focus moves to the covers (Berean, Oct 10).
   }
 
   function resetComicPicker() {
