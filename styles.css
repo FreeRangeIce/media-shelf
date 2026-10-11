@@ -95,9 +95,9 @@
   --tap-sm: 40px;    /* small banner / Settings buttons on mobile */
   --pin-h: 56px;     /* pinned brand + "+ Add" row on phones */
   /* Status bar height. env() is non-zero only with viewport-fit=cover (index.html), which
-     iOS needs so the pinned row sits below the status bar instead of under it (iOS 26
-     Safari's top blur, black-translucent in the Home Screen app). One variable so the
-     shots can simulate an inset; production always uses env(). */
+     iOS needs so the pinned row sits below the status bar instead of under it (Safari
+     blurs whatever sits under the status bar; black-translucent in the Home Screen app).
+     One variable so the shots can simulate an inset; production always uses env(). */
   --safe-top: env(safe-area-inset-top, 0px);
   /* Top offset for anything that must sit clear of the top edge (pinned brand row, sheet tops,
      the toast over a sheet). Same as --safe-top in Safari; the Home Screen app on phones adds
@@ -317,8 +317,8 @@ body {
   }
 }
 
-/* Home Screen app on phones (iOS 26): the same oak bar, but as a real element instead of
-   .site-header::before. This was an attempt to stop iOS 26 blurring the brand and "+ Add" at
+/* Home Screen app on phones (iOS 27.2 beta): the same oak bar, but as a real element instead of
+   .site-header::before. This was an attempt to stop iOS 27.2 beta blurring the brand and "+ Add" at
    the top of the Home Screen app, on the idea that a fixed element with a painted background at
    the very top edge makes WebKit extend that colour under the status bar instead. That idea came
    from reports about Safari's own top-bar tint (WebKit bug 301756), not Home Screen apps, and on
