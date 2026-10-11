@@ -2,6 +2,11 @@
 (() => {
   "use strict";
 
+  // Release label shown at the bottom of Settings ("Build <BUILD> · v<cache>"). Bump it each
+  // release to the short hash of the last code commit going out (a commit can't name its own
+  // hash, so the bump is the final one-line change before pushing). The cache number is read
+  // from sw.js's CACHE name at runtime, so it never needs a second edit.
+  const BUILD = "e30a908";
   const STORAGE_KEY = "media-tracker-v1";
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
   const RAWG_KEY_STORAGE = "media-shelf-rawg-key";
@@ -2756,6 +2761,49 @@
     });
   }
 
+  // "Build <hash> · v<n>" (PLACEHOLDER copy for Berean). The cache number comes from sw.js's
+  // CACHE name ("media-shelf-v31" -> 31): sw.js itself first, else the Cache Storage name the
+  // installed worker made (offline). Without either, just "Build <hash>".
+  let buildCacheNumber = null;
+  let buildCacheLookup = null;
+  function cacheNumberFrom(text) {
+    const m = /media-shelf-v(\d+)/.exec(String(text || ""));
+    return m ? Number(m[1]) : null;
+  }
+  function lookupBuildCacheNumber() {
+    if (buildCacheLookup) return buildCacheLookup;
+    buildCacheLookup = fetch("./sw.js", { cache: "no-store" })
+      .then((r) => (r.ok ? r.text() : ""))
+      .then(cacheNumberFrom)
+      .catch(() => null)
+      .then((n) => {
+        if (n != null || !window.caches || !caches.keys) return n;
+        return caches
+          .keys()
+          .then((keys) => keys.map(cacheNumberFrom).filter((x) => x != null).sort((a, b) => b - a)[0] ?? null)
+          .catch(() => null);
+      })
+      .then((n) => {
+        buildCacheNumber = n;
+        if (n == null) buildCacheLookup = null; // try again next time Settings opens
+        return n;
+      });
+    return buildCacheLookup;
+  }
+  function buildLineText(n) {
+    return n != null ? `Build ${BUILD} · v${n}` : `Build ${BUILD}`;
+  }
+  function fillBuildLine() {
+    const el = $("#settings-build");
+    if (!el) return;
+    el.textContent = buildLineText(buildCacheNumber);
+    if (buildCacheNumber == null) {
+      lookupBuildCacheNumber().then((n) => {
+        el.textContent = buildLineText(n);
+      });
+    }
+  }
+
   function openSettingsModal(focusProvider) {
     if (!els.settingsModal) return;
     dismissPlainToast();
@@ -2766,6 +2814,7 @@
     clearTestStatus("omdb");
     clearTestStatus("rawg");
     refreshApiKeyStatuses();
+    fillBuildLine();
     els.settingsModal.hidden = false;
     els.settingsModal.setAttribute("aria-hidden", "false");
     document.body.classList.add("modal-open");

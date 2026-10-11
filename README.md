@@ -99,7 +99,8 @@ Reference links (no keys): **RAWG** (`https://rawg.io/search?query=…`), **IGDB
 - Reference links: IMDb, ISFDB, RAWG, IGDB (by type)
 - Stats strip by type and status (all lowercase counts: “0 books”, “0 music”, “0 comics”)
 - Sample items on first load only (`media-shelf-seeded`); once cleared — or once every item is deleted — they don’t come back
-- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v30`; only same-origin files are cached, never cover images, and comics.org / files1.comics.org requests, Metron's image host `static.metron.cloud` and the comic relay `frm-gcd.freerangeice.workers.dev` bypass the worker)
+- Build line: the bottom of Settings shows “Build <BUILD> · v<cache number>” (PLACEHOLDER copy). `BUILD` in `app.js` is bumped each release to the short hash of the last code commit going out; the cache number is read from the `CACHE` name in `sw.js` (or, offline, from the installed worker's cache name).
+- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v31`; only same-origin files are cached, never cover images, and comics.org / files1.comics.org requests, Metron's image host `static.metron.cloud` and the comic relay `frm-gcd.freerangeice.workers.dev` bypass the worker)
 - Relative paths only — works from the GitHub Pages project path
 
 ## Add to Home Screen

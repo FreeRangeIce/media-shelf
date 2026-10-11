@@ -314,12 +314,13 @@ body {
 }
 
 /* Home Screen app on phones (iOS 26): the same oak bar, but as a real element instead of
-   .site-header::before. In a standalone web app iOS lays its wide top scroll-edge blur over the
-   web view (it reached the brand and "+ Add") unless a fixed element with a painted background
-   sits at the very top edge; WebKit then extends that solid colour under the status bar
-   instead. Pseudo-elements don't count, so the ::before bar alone left the blur on. Same size,
-   colour and border as the ::before; Safari tabs keep the ::before (they already looked right).
-   Inert and aria-hidden; it still takes taps on the bar like the ::before did. */
+   .site-header::before. This was an attempt to stop iOS 26 blurring the brand and "+ Add" at
+   the top of the Home Screen app, on the idea that a fixed element with a painted background at
+   the very top edge makes WebKit extend that colour under the status bar instead. That idea came
+   from reports about Safari's own top-bar tint (WebKit bug 301756), not Home Screen apps, and on
+   Micah's iPhone (Oct 11) the blur is still there; the cause is being investigated with the
+   frm-blur-test pages. Same size, colour and border as the ::before; Safari tabs keep the
+   ::before. Inert and aria-hidden; it still takes taps on the bar like the ::before did. */
 .pin-bar {
   display: none;
 }
@@ -1749,6 +1750,15 @@ body.modal-open {
   font-size: var(--fs-md);
   color: var(--text-muted);
   line-height: var(--lh-base);
+}
+
+/* Release line at the very bottom of Settings ("Build <hash> · v<n>"), quiet like the credits */
+.settings-build {
+  margin: var(--space-4) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  line-height: var(--lh-tight);
+  text-align: center;
 }
 
 /* Music Lookup credit under the key cards (links styled like the footer credits) */
