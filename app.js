@@ -4115,9 +4115,9 @@
    * a one-column list, one variant per row with a link to its issue page at the source, no
    * images and no /comic-covers calls ("Show all" just lists the names from the search);
    * picking a row stores the cover name only (no image URL), so no source image is shown
-   * anywhere. Default true until Micah decides.
+   * anywhere. Names only (false) since Micah chose it; set true for thumbnails.
    */
-  const COMIC_COVER_IMAGES = true; // the one line to flip for names only (false)
+  const COMIC_COVER_IMAGES = false; // names only (Micah, Oct 10); true = thumbnails
   /**
    * DEV ONLY: localStorage["frm:devComicCoverImages"] = "off" previews names-only mode and
    * "on" previews thumbnails, whichever way COMIC_COVER_IMAGES is set (tests use both).
