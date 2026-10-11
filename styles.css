@@ -94,6 +94,11 @@
   --tap: 44px;       /* mobile minimum tap target */
   --tap-sm: 40px;    /* small banner / Settings buttons on mobile */
   --pin-h: 56px;     /* pinned brand + "+ Add" row on phones */
+  /* Status bar height. env() is non-zero only with viewport-fit=cover (index.html), which
+     iOS needs so the pinned row sits below the status bar instead of under it (iOS 26
+     Safari's top blur, black-translucent in the Home Screen app). One variable so the
+     shots can simulate an inset; production always uses env(). */
+  --safe-top: env(safe-area-inset-top, 0px);
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%232c241c' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
 }
 
@@ -109,6 +114,9 @@ html {
 
 body {
   margin: 0;
+  /* viewport-fit=cover: keep content clear of the notch in landscape (0 elsewhere) */
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
   min-height: 100dvh;
   font-family: var(--font);
   background: var(--bg);
@@ -243,13 +251,13 @@ body {
    behind them are position: fixed. Button IDs, roles and DOM order are untouched. */
 @media (max-width: 559px) {
   html {
-    scroll-padding-top: calc(var(--pin-h) + env(safe-area-inset-top, 0px) + var(--space-2));
+    scroll-padding-top: calc(var(--pin-h) + var(--safe-top) + var(--space-2));
   }
 
   .site-header {
     position: static;
     backdrop-filter: none; /* would otherwise become the containing block of the fixed row */
-    padding-top: calc(var(--pin-h) + env(safe-area-inset-top, 0px));
+    padding-top: calc(var(--pin-h) + var(--safe-top));
   }
 
   .site-header::before {
@@ -259,11 +267,10 @@ body {
     left: 0;
     right: 0;
     z-index: 40;
-    height: calc(var(--pin-h) + env(safe-area-inset-top, 0px));
-    background: var(--bg); /* oak, same as the header */
+    height: calc(var(--pin-h) + var(--safe-top));
+    background: var(--bg); /* oak, same as the header; opaque, so no backdrop blur (it did
+       nothing visible and Safari 26 skips a blurred fixed bar when tinting the status bar) */
     color: #f3ead7;
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
   }
 
@@ -273,7 +280,7 @@ body {
 
   .brand {
     position: fixed;
-    top: env(safe-area-inset-top, 0px);
+    top: var(--safe-top);
     left: max(var(--space-5), env(safe-area-inset-left, 0px));
     z-index: 41;
     height: var(--pin-h);
@@ -281,7 +288,7 @@ body {
 
   #btn-add {
     position: fixed;
-    top: calc(env(safe-area-inset-top, 0px) + (var(--pin-h) - var(--tap)) / 2);
+    top: calc(var(--safe-top) + (var(--pin-h) - var(--tap)) / 2);
     right: max(var(--space-5), env(safe-area-inset-right, 0px));
     z-index: 41;
     min-height: var(--tap);
@@ -1226,7 +1233,7 @@ label.check input[type="checkbox"]:focus-visible {
   z-index: 1;
   margin-bottom: calc(-1 * var(--space-6));
   padding-top: calc(var(--space-4) + var(--space-4));
-  padding-bottom: var(--space-6);
+  padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px)); /* above the home indicator */
   background: var(--bg-elevated);
 }
 
@@ -1377,7 +1384,7 @@ label.check.confirm-option {
 /* Toast */
 .toast {
   position: fixed;
-  bottom: var(--space-5);
+  bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 200;
@@ -1396,7 +1403,7 @@ label.check.confirm-option {
 /* While a sheet is open the toast moves to the top so it never covers Save / Cancel */
 body.modal-open .toast {
   bottom: auto;
-  top: var(--space-5);
+  top: calc(var(--space-5) + var(--safe-top));
 }
 
 body.modal-open {
@@ -2652,17 +2659,24 @@ body.modal-open {
 
 /* Save blocked until a comic cover is chosen: the disabled button plus the reason */
 #btn-save:disabled,
-#btn-save:disabled:hover {
+#btn-save:disabled:hover,
+#btn-save[aria-disabled="true"],
+#btn-save[aria-disabled="true"]:hover {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
+/* Muted while the picker is open; red only after a tap on the blocked Save (.is-error) */
 .save-blocked {
   flex: 1 1 100%;
   margin: 0;
   font-size: var(--fs-sm);
-  color: var(--danger);
+  color: var(--text-muted);
   text-align: right;
+}
+
+.save-blocked.is-error {
+  color: var(--danger);
 }
 
 /* Cover choices after Lookup. Wrap rather than overflow; each choice is a 44px tap. */

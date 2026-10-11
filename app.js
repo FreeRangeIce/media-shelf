@@ -102,7 +102,7 @@
     book: ["book", "books"],
     game: ["game", "games"],
     movie: ["movie", "movies"],
-    music: ["Music", "Music"],
+    music: ["music", "music"], // stats strip: lowercase like "0 movies" (the tab and type label stay "Music")
     comic: ["comic", "comics"],
     item: ["item", "items"],
     want: ["want", "want"],
@@ -1085,7 +1085,8 @@
   function updateCoverPreview() {
     updateGoogleBooksAttr();
     updateCoverUrlError();
-    const url = els.fieldCover.value.trim();
+    // Names-only mode never requests a GCD image (the field keeps the stored URL).
+    const url = comicImageSuppressed(els.fieldType.value, els.fieldCover.value) ? "" : els.fieldCover.value.trim();
     if (url) {
       els.coverPreview.src = url;
       els.coverPreview.hidden = false;
@@ -1713,9 +1714,7 @@
     e.preventDefault();
     const data = collectFormWithCoverIds();
     if (comicSaveBlocked()) {
-      const first = $("#comic-picker .comic-cover, #field-comic-cover-url");
-      if (first) first.focus();
-      showToast("Pick a cover, paste a photo URL, or choose No cover first."); // NEW COPY (fact check)
+      onBlockedSave(); // the line under Save turns red
       return;
     }
     if (data.type === "comic") {
@@ -1915,7 +1914,9 @@
   function coverMarkup(item) {
     const label = escapeHtml(TYPE_LABELS[item.type] || item.type);
     const type = escapeHtml(item.type);
-    const url = (item.coverUrl || "").trim();
+    // Names-only mode: a stored GCD image URL is kept but never requested; the card shows the
+    // Comic placeholder and the cover-name line instead.
+    const url = comicImageSuppressed(item.type, item.coverUrl) ? "" : (item.coverUrl || "").trim();
     // The column keeps the 2:3 height for every type, so mixed lists line up; music
     // covers (square album art) sit top-aligned in it as a 1:1 frame.
     const col = (inner) => `<div class="item-cover-col" data-type="${type}">${inner}</div>`;
@@ -4116,15 +4117,37 @@
    * picking a row stores the cover name only (no image URL), so no source image is shown
    * anywhere. Default true until Micah decides.
    */
-  const COMIC_COVER_IMAGES = true;
-  /** DEV ONLY: localStorage["frm:devComicCoverImages"] = "off" previews names-only mode. */
+  const COMIC_COVER_IMAGES = true; // the one line to flip for names only (false)
+  /**
+   * DEV ONLY: localStorage["frm:devComicCoverImages"] = "off" previews names-only mode and
+   * "on" previews thumbnails, whichever way COMIC_COVER_IMAGES is set (tests use both).
+   */
   function comicCoverImagesOn() {
-    if (!COMIC_COVER_IMAGES) return false;
     try {
-      return localStorage.getItem("frm:devComicCoverImages") !== "off";
+      const o = localStorage.getItem("frm:devComicCoverImages");
+      if (o === "off") return false;
+      if (o === "on") return true;
     } catch {
-      return true;
+      /* storage blocked: the switch decides */
     }
+    return COMIC_COVER_IMAGES;
+  }
+
+  /** Hosts of the comic database's cover images (GCD serves them from files1.comics.org). */
+  const COMIC_IMAGE_HOST_RE = /^files\d*\.comics\.org$/i;
+  function isComicSourceImage(url) {
+    try {
+      return COMIC_IMAGE_HOST_RE.test(new URL(String(url || "").trim()).hostname);
+    } catch {
+      return false;
+    }
+  }
+  /**
+   * Names-only mode (switch off or the dev override): a comic's stored GCD image URL is
+   * never put in an <img> anywhere. Stored data is left as it is.
+   */
+  function comicImageSuppressed(type, url) {
+    return type === "comic" && !comicCoverImagesOn() && isComicSourceImage(url);
   }
 
   /** The picker shows the main cover plus 4 more until "Show all N covers" is tapped. */
@@ -4482,19 +4505,47 @@
     );
   }
 
+  /** Save was tapped (or the form submitted) while blocked: only then is the reason red. */
+  let saveBlockedTried = false;
+
+  /**
+   * Save is never natively disabled while blocked (a disabled button gets no taps, so the
+   * reason couldn't turn red): it's aria-disabled, looks the same, stays focusable and is
+   * described by the reason, and a tap or submit is stopped in onBlockedSave.
+   */
   function updateSaveGate() {
     const blocked = comicSaveBlocked();
+    if (!blocked) saveBlockedTried = false;
     if (els.btnSave) {
-      els.btnSave.disabled = blocked;
-      if (blocked) els.btnSave.setAttribute("aria-describedby", "save-blocked");
-      else els.btnSave.removeAttribute("aria-describedby");
+      els.btnSave.disabled = false;
+      if (blocked) {
+        els.btnSave.setAttribute("aria-disabled", "true");
+        els.btnSave.setAttribute("aria-describedby", "save-blocked");
+      } else {
+        els.btnSave.removeAttribute("aria-disabled");
+        els.btnSave.removeAttribute("aria-describedby");
+      }
     }
     const why = $("#save-blocked");
-    if (why) why.hidden = !blocked;
+    if (why) {
+      why.hidden = !blocked;
+      why.classList.toggle("is-error", blocked && saveBlockedTried); // muted until Save is tried
+    }
+  }
+
+  /** A tap on the blocked Save, or a submit while blocked: show the reason in red. */
+  function onBlockedSave() {
+    saveBlockedTried = true;
+    updateSaveGate();
+    const first = $("#comic-picker .comic-cover, #field-comic-cover-url");
+    if (first) first.focus();
+    // The cleared toast for a forced Save; it's role="status", so screen readers hear why.
+    showToast("Pick a cover, paste a photo URL, or choose No cover first."); // cleared (Berean, 11:56pm)
   }
 
   function resetComicPicker() {
     comicPicker = { open: false, required: false, tiles: [], total: 0, expanded: false, loading: false, picked: -1, choice: "", credit: null, partial: false, token: comicPicker.token + 1 };
+    saveBlockedTried = false;
     const box = $("#comic-picker");
     if (box) box.hidden = true;
     const list = $("#comic-cover-list");
@@ -4555,6 +4606,7 @@
           return { sourceId: v.sourceId, label: v.label || (c && c.label) || "", variant: v.variant, url: c ? c.url : "" };
         })
       : covers.map((c) => ({ ...c }));
+    saveBlockedTried = false; // a new picker starts muted
     comicPicker = {
       open: true,
       required,
@@ -4606,11 +4658,20 @@
     els.fieldSourceUrl.value = own ? comicIssuePageUrl(tile.sourceId) || base.url : base.url;
   }
 
+  /**
+   * A tile's image to store: none in names-only mode, and none once it failed to load (e.g.
+   * the image host answered 403), so a broken URL never becomes the comic's cover. The pick
+   * itself (name, variant, issue record) is kept.
+   */
+  function comicTileCoverUrl(c) {
+    return comicCoverImagesOn() && c && c.url && !c.imgFailed ? c.url : "";
+  }
+
   function pickComicCover(i, { render = true } = {}) {
     const c = comicPicker.tiles[i];
     if (!c) return;
     setComicSourceRecord(c);
-    setComicCover(comicCoverImagesOn() ? c.url || "" : "", "comiclookup", { label: c.label, variant: c.variant });
+    setComicCover(comicTileCoverUrl(c), "comiclookup", { label: c.label, variant: c.variant });
     comicPicker.choice = "cover";
     comicPicker.picked = i;
     if (render) renderComicPicker();
@@ -4667,7 +4728,7 @@
     comicPicker.loading = false;
     // The picked tile may just have got its image.
     const p = comicPicker.tiles[comicPicker.picked];
-    if (comicPicker.choice === "cover" && p && p.url && !els.fieldCover.value.trim() && comicCoverImagesOn()) {
+    if (comicPicker.choice === "cover" && comicTileCoverUrl(p) && !els.fieldCover.value.trim()) {
       setComicCover(p.url, "comiclookup", { label: p.label, variant: p.variant });
     }
     // Same texts as Lookup, but under the covers, not at the top of the form.
@@ -4675,6 +4736,36 @@
     else if (res.failed) setComicShowAllStatus(COMIC_FAIL_MESSAGE);
     else comicPicker.partial = false; // a complete reply: the busy note no longer applies
     renderComicPicker();
+  }
+
+  function comicBlankTileArt(c) {
+    return `<span class="comic-cover-blank" aria-hidden="true"><span class="comic-cover-blank-text">${escapeHtml(c.noScan ? COMIC_NO_SCAN_LABEL : COMIC_NOT_LOADED_LABEL)}</span></span>`;
+  }
+
+  /**
+   * A tile's <img> failed (e.g. files1.comics.org answering a Cloudflare 403 page): remember it
+   * on the tile (URL kept, imgFailed: true) so re-renders show the blank "Cover didn't load"
+   * tile instead of retrying, swap this tile in place, and if it's the picked cover, drop the
+   * broken URL from the form but keep the pick. A failed tile isn't "missing": the retry
+   * button only asks the relay for tiles without a URL.
+   */
+  function onComicCoverImgError(img) {
+    const btn = img.closest("[data-comic-cover]");
+    const i = btn ? Number(btn.dataset.comicCover) : -1;
+    const t = comicPicker.tiles[i];
+    if (!t || !t.url || img.getAttribute("src") !== t.url) return;
+    t.imgFailed = true;
+    img.insertAdjacentHTML("afterend", comicBlankTileArt(t));
+    img.remove();
+    btn.classList.add("is-blank");
+    if (
+      comicPicker.choice === "cover" &&
+      comicPicker.picked === i &&
+      els.fieldCoverSource.value === "comiclookup" &&
+      els.fieldCover.value.trim() === t.url
+    ) {
+      setComicCover("", "comiclookup", { label: t.label, variant: t.variant });
+    }
   }
 
   function renderComicPicker() {
@@ -4704,12 +4795,14 @@
           `</div>`
         );
       }
-      // Thumbnails: 2:3 boxes; a name with no image yet gets a plain 2:3 tile.
-      const art = c.url
+      // Thumbnails: 2:3 boxes; a name with no image yet, or whose image failed to load, gets
+      // a plain 2:3 tile (a failed one is never requested again in this picker).
+      const showImg = c.url && !c.imgFailed;
+      const art = showImg
         ? `<img src="${escapeHtml(c.url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`
-        : `<span class="comic-cover-blank" aria-hidden="true"><span class="comic-cover-blank-text">${escapeHtml(c.noScan ? COMIC_NO_SCAN_LABEL : COMIC_NOT_LOADED_LABEL)}</span></span>`;
+        : comicBlankTileArt(c);
       return (
-        `<button type="button" class="comic-cover${on ? " is-selected" : ""}${c.url ? "" : " is-blank"}" data-comic-cover="${i}" aria-pressed="${on}" title="${escapeHtml(label)}">` +
+        `<button type="button" class="comic-cover${on ? " is-selected" : ""}${showImg ? "" : " is-blank"}" data-comic-cover="${i}" aria-pressed="${on}" title="${escapeHtml(label)}">` +
         art +
         `<span class="comic-cover-label">${escapeHtml(label)}</span>` +
         (c.variant ? `<span class="comic-cover-variant">Variant</span>` : "") +
@@ -5394,6 +5487,13 @@
     });
 
     els.form.addEventListener("submit", saveItem);
+    // Blocked Save (aria-disabled): stop the tap before submit and constraint validation.
+    // Enter in a field clicks the default button too, so this covers implicit submission.
+    els.btnSave.addEventListener("click", (e) => {
+      if (!comicSaveBlocked()) return;
+      e.preventDefault();
+      onBlockedSave();
+    });
     els.btnDelete.addEventListener("click", deleteCurrent);
     els.fieldType.addEventListener("change", () => {
       lookupYearLoose = false;
@@ -5495,6 +5595,14 @@
     if (comicRetry) comicRetry.addEventListener("click", () => retryMissingComicCovers());
     const comicCoverList = $("#comic-cover-list");
     if (comicCoverList) {
+      // error doesn't bubble: listen in the capture phase for every tile's <img>.
+      comicCoverList.addEventListener(
+        "error",
+        (e) => {
+          if (e.target instanceof HTMLImageElement) onComicCoverImgError(e.target);
+        },
+        true
+      );
       comicCoverList.addEventListener("click", (e) => {
         if (e.target.closest("#btn-comic-show-all")) {
           showAllComicCovers();
