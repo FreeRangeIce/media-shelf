@@ -5692,6 +5692,7 @@
         // the X (Cancel and X still close it, as before).
         if (el.classList.contains("modal-backdrop") && itemFormChanged()) {
           $("#modal-close").focus();
+          showToast("You have unsaved changes. Tap Save to keep them, or X to discard them."); // cleared (Berean, Oct 10)
           return;
         }
         closeModal();
