@@ -726,7 +726,7 @@
       key: "gcd",
       prefix: "gcd-",
       name: "Grand Comics Database",
-      shortName: "GCD", // in the picker's "still loading" note (PLACEHOLDER copy)
+      shortName: "GCD", // short source name (not shown in copy)
       barcodeRoute: false, // GCD has no barcode search: a barcode alone is a miss
       // Credit wording cleared by Berean (Oct 5, 2026). Use exactly.
       creditHtml: () =>
@@ -4073,7 +4073,7 @@
    *                                                  may be long variant names)
    *   GET {COMIC_RELAY_URL}/comic-covers?ids=<comma list, max 13>
    *     -> { covers: [{ sourceId, url, label, variant }] }   ("Show all N covers")
-   *     A miss may carry reason: "add-year" (too many series with that name): asked
+   *     A miss may carry reason: "add-year" (too many comics match the name): asked
    *     without a year, the form asks for the year (COMIC_ADD_YEAR_MESSAGE).
    *   partial: true (the relay's GCD budget ran out mid-answer): WITH a match the picker
    *   opens with the covers that arrived and every named variant, plus a muted note; "Show
@@ -4141,12 +4141,12 @@
   /** No relay URL in this build: nothing was looked up, so never "No match" (Berean, 12:05am). */
   const COMIC_NOT_SET_UP_MESSAGE = "Comic lookup isn't set up yet. What you typed is kept."; // cleared (Berean, 12:05am)
   /** PLACEHOLDER copy (Berean must clear): a miss with reason "add-year" when no year was sent. */
-  const COMIC_ADD_YEAR_MESSAGE = "Lots of series share that name. Add the year it came out, then look up again. What you typed is kept.";
+  const COMIC_ADD_YEAR_MESSAGE = "Too many comics match that series name. Add the year it came out, then look up again. What you typed is kept."; // cleared (Berean, Oct 10)
   /**
    * PLACEHOLDER copy (Berean must clear): muted note under the covers when a partial answer
    * (the relay ran out of GCD calls) left some covers without an image. {source} = shortName.
    */
-  const COMIC_PARTIAL_NOTE = (source) => `Some covers are still loading from ${source}. Tap Show all to get the rest.`;
+  const COMIC_PARTIAL_NOTE = () => "Some covers didn't load because the comic database is busy. Tap Show all in a few minutes to try for the rest."; // cleared (Berean, Oct 10)
   /** After a busy answer, Lookup waits out Retry-After (capped) before asking the relay again. */
   let comicBusyUntil = 0;
 
@@ -4495,7 +4495,7 @@
 
   /**
    * Show all's busy / isn't-working line, directly under the covers (Oholiab fix 5). muted:
-   * the partial answer's "still loading" note uses the same spot in the muted status color.
+   * the partial answer's note uses the same spot in the muted status color.
    */
   function setComicShowAllStatus(msg, { muted = false } = {}) {
     const el = $("#comic-show-all-status");
