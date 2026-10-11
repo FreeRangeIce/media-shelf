@@ -770,11 +770,13 @@
       key: "metron",
       name: "Metron",
       hostRe: /^static\.metron\.cloud$/i,
-      // Credit wording cleared by Berean (Oct 10, 2026). Use exactly.
+      // Credit wording cleared by Berean (Oct 10, 2026). Use exactly. Shown as its own line
+      // after GCD's, then the cover sentence on a third line.
       creditHtml: () =>
-        'Comic details from <a href="https://metron.cloud/" target="_blank" rel="noopener noreferrer">Metron</a>, ' +
-        'licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>. ' +
-        "Cover images are © their respective copyright holders and shown for identification only.",
+        'Cover pictures found through <a href="https://metron.cloud/" target="_blank" rel="noopener noreferrer">Metron</a>, ' +
+        'licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>.',
+      // Cleared (Berean, Oct 5 / Oct 10): the cover sentence, shown whenever a picture is.
+      coverSentence: "Cover images are © their respective copyright holders and shown for identification only.",
     },
   ];
   const COMIC_ACTIVE_IMAGE_SOURCE = COMIC_IMAGE_SOURCES[0];
@@ -805,8 +807,19 @@
    * Settings + footer: the credit of the source the relay serves now, plus the picture
    * source's credit while cover pictures are on (Lookup may show them).
    */
+  /**
+   * The credit as separate lines (Berean, Oct 10): GCD's line; then, when a picture source
+   * contributed, its line and the cover sentence. Each line is a block span (gap --space-1);
+   * the spaces between them keep the text readable when copied or read aloud.
+   */
+  function comicCreditLines(source, imageSource = null) {
+    const lines = [source.creditHtml()];
+    if (imageSource) lines.push(imageSource.creditHtml(), escapeHtml(imageSource.coverSentence));
+    return lines.map((l) => `<span class="credit-line">${l}</span>`).join(" ");
+  }
+
   function renderComicFooterCredit() {
-    const html = COMIC_ACTIVE_SOURCE.creditHtml() + (comicCoverImagesOn() ? " " + COMIC_ACTIVE_IMAGE_SOURCE.creditHtml() : "");
+    const html = comicCreditLines(COMIC_ACTIVE_SOURCE, comicCoverImagesOn() ? COMIC_ACTIVE_IMAGE_SOURCE : null);
     const settings = document.getElementById("comic-lookup-credit");
     if (settings) settings.innerHTML = html;
     const el = document.getElementById("footer-comic-credit");
@@ -824,9 +837,9 @@
       url && source.issueUrlRe.test(url)
         ? `<p class="source-credit-issue"><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.issueLinkText)}</a></p>`
         : "";
-    // Both sources contributed (GCD's details, a Metron picture): GCD's sentence, then Metron's credit.
-    const both = imageSource ? " " + imageSource.creditHtml() : "";
-    return `<p class="source-credit">${source.creditHtml()}${both}</p>${issue}`;
+    // Both sources contributed (GCD's details, a Metron picture): GCD's line, Metron's line,
+    // the cover sentence.
+    return `<p class="source-credit">${comicCreditLines(source, imageSource)}</p>${issue}`;
   }
 
   /** What a card, list or prompt calls the item. Comics: "Saga #1: Chapter One". */
@@ -4236,7 +4249,8 @@
    * (imagesPending: Metron busy or down), so no row could get a picture. A new Lookup asks
    * again (the relay doesn't store such an answer).
    */
-  const COMIC_PARTIAL_NOTE = () => "Some covers didn't load because the comic database is busy. Try again later."; // cleared (Berean, Oct 10); only after imagesPending
+  // Cleared (Berean, Oct 10). Only when the relay couldn't ask the picture source this time (imagesPending).
+  const COMIC_PARTIAL_NOTE = () => "Cover pictures couldn't be loaded right now. Tap Lookup again later to try for them.";
   /** Centered line inside a picture tile whose image failed to load (Berean, Oct 10). */
   const COMIC_NOT_LOADED_LABEL = "Cover didn't load"; // cleared (Berean, Oct 10)
   /** After a busy answer, Lookup waits out Retry-After (capped) before asking the relay again. */
@@ -4784,7 +4798,18 @@
     if (layout === "names") shown.forEach((c, i) => tiles.push(nameRow(c, i)));
     else if (layout === "grid") shown.forEach((c, i) => tiles.push(pictureTile(c, i)));
     else {
-      const photos = shown.map((c, i) => (c.url ? pictureTile(c, i, " comic-photo") : "")).filter(Boolean);
+      // The pictured tile keeps its size and picked state; under it, outside the tile, its own
+      // small comics.org link (the names-only rows' link style, a separate ≥44px tap target).
+      const photoItem = (c, i) => {
+        const href = comicIssuePageUrl(c.sourceId);
+        const label = c.label || `Cover ${i + 1}`;
+        const src = comicSourceFor(c.sourceId);
+        const link = href && src
+          ? `<a class="comic-cover-link comic-photo-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(`${label}: ${src.issueLinkText}`)}">${escapeHtml(src.issueLinkShort)}</a>`
+          : "";
+        return `<div class="comic-photo-item">${pictureTile(c, i, " comic-photo")}${link}</div>`;
+      };
+      const photos = shown.map((c, i) => (c.url ? photoItem(c, i) : "")).filter(Boolean);
       if (photos.length) tiles.push(`<div class="comic-photo-row">${photos.join("")}</div>`);
       shown.forEach((c, i) => {
         if (!c.url) tiles.push(nameRow(c, i));

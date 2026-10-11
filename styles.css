@@ -970,6 +970,15 @@ body {
   white-space: normal;
 }
 
+/* Its lines are blocks, so it starts on its own line (no dangling "·" before it). */
+#footer-comic-credit:has(.credit-line + .credit-line) {
+  display: block;
+}
+
+.footer-sep:has(+ #footer-comic-credit .credit-line + .credit-line) {
+  display: none;
+}
+
 .footer-credits a {
   color: #f3ead7; /* on the oak, not accent brown; underline stays */
   text-decoration: underline;
@@ -2423,6 +2432,15 @@ body.modal-open {
   margin-top: var(--space-1);
 }
 
+/* Comic credits as separate lines (GCD, Metron, cover sentence), --space-1 apart. */
+.credit-line {
+  display: block;
+}
+
+.credit-line + .credit-line {
+  margin-top: var(--space-1);
+}
+
 .source-credit a,
 .source-credit-issue a {
   color: inherit;
@@ -2560,10 +2578,24 @@ body.modal-open {
   margin-bottom: var(--space-1);
 }
 
-.comic-cover.comic-photo {
+.comic-photo-item {
   flex: 0 0 140px;
   width: 140px;
   max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.comic-cover.comic-photo {
+  width: 100%;
+}
+
+/* The pictured tile's comics.org link: the names-only rows' link, under the tile (not on
+   it), --space-1 below it, its own 44px tap area. */
+.comic-cover-link.comic-photo-link {
+  align-self: flex-start;
+  margin-top: var(--space-1);
 }
 
 .comic-name-row {
