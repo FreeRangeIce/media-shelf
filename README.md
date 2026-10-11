@@ -99,8 +99,8 @@ Reference links (no keys): **RAWG** (`https://rawg.io/search?query=…`), **IGDB
 - Reference links: IMDb, ISFDB, RAWG, IGDB (by type)
 - Stats strip by type and status (all lowercase counts: “0 books”, “0 music”, “0 comics”)
 - Sample items on first load only (`media-shelf-seeded`); once cleared — or once every item is deleted — they don’t come back
-- App version: the end of Settings shows “App version v31”, from `APP_VERSION` in `app.js` only. Bump it together with the `sw.js` cache name (`media-shelf-v31`) each release; the tests check they match.
-- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v31`; only same-origin files are cached, never cover images, and comics.org / files1.comics.org requests, Metron's image host `static.metron.cloud` and the comic relay `frm-gcd.freerangeice.workers.dev` bypass the worker)
+- App version: the end of Settings shows “App version v32”, from `APP_VERSION` in `app.js` only. Bump it together with the `sw.js` cache name (`media-shelf-v32`) each release; the tests check they match.
+- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v32`; only same-origin files are cached, never cover images, and comics.org / files1.comics.org requests, Metron's image host `static.metron.cloud` and the comic relay `frm-gcd.freerangeice.workers.dev` bypass the worker)
 - Relative paths only — works from the GitHub Pages project path
 
 ## Add to Home Screen

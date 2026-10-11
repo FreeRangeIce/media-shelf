@@ -27,7 +27,7 @@
   --accent-dim: rgba(196, 106, 58, 0.15);
   --accent-border: rgba(196, 106, 58, 0.45);
 
-  /* Type identity: darker chip text, bright 4px card stripe + 28% chip tint */
+  /* Type identity: darker chip text, bright 2px card border + 28% chip tint */
   --book: #9a3b3b;
   --book-stripe: #d64545;
   --book-dim: rgba(214, 69, 69, 0.28);
@@ -754,32 +754,42 @@ body {
   box-shadow: var(--focus);
 }
 
-/* Type stripe: 4px on the left edge only. The cover column already carries data-type. */
+/* Category border: the card's whole 2px border is the category colour (Micah, Oct 11),
+   replacing the 4px left stripe; same corner radius. Hover darkens it to the category's text
+   colour. The cover column already carries data-type. */
+.item-card:has(.item-cover-col[data-type]) {
+  border-width: 2px;
+  border-color: var(--card-rule, var(--border));
+}
+
+.item-card:has(.item-cover-col[data-type]):hover {
+  border-color: var(--card-rule-hover, var(--border-strong));
+}
+
 .item-card:has(.item-cover-col[data-type="book"]) {
-  border-left-width: 4px;
-  border-left-color: var(--book-stripe);
+  --card-rule: var(--book-stripe);
+  --card-rule-hover: var(--book);
 }
 
 .item-card:has(.item-cover-col[data-type="game"]) {
-  border-left-width: 4px;
-  border-left-color: var(--game-stripe);
+  --card-rule: var(--game-stripe);
+  --card-rule-hover: var(--game);
 }
 
 .item-card:has(.item-cover-col[data-type="movie"]) {
-  border-left-width: 4px;
-  border-left-color: var(--movie-stripe);
+  --card-rule: var(--movie-stripe);
+  --card-rule-hover: var(--movie);
 }
 
 .item-card:has(.item-cover-col[data-type="music"]) {
-  border-left-width: 4px;
-  border-left-color: var(--music-stripe);
+  --card-rule: var(--music-stripe);
+  --card-rule-hover: var(--music);
 }
 
 .item-card:has(.item-cover-col[data-type="comic"]) {
-  border-left-width: 4px;
-  border-left-color: var(--comic-stripe);
+  --card-rule: var(--comic-stripe);
+  --card-rule-hover: var(--comic);
 }
-
 
 .item-top {
   display: flex;

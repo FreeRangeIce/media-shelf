@@ -2,10 +2,10 @@
 (() => {
   "use strict";
 
-  // App version shown at the end of Settings ("App version v31"; cleared, Berean, Oct 11).
+  // App version shown at the end of Settings ("App version v32"; cleared, Berean, Oct 11).
   // Bump it with the service worker cache each release: it must match sw.js's CACHE name
-  // (media-shelf-v31), which the tests check.
-  const APP_VERSION = 31;
+  // (media-shelf-v32), which the tests check.
+  const APP_VERSION = 32;
   const STORAGE_KEY = "media-tracker-v1";
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
   const RAWG_KEY_STORAGE = "media-shelf-rawg-key";
