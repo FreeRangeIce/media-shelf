@@ -736,8 +736,8 @@
       barcodeRoute: false, // GCD has no barcode search: a barcode alone is a miss
       // Credit wording cleared by Berean (Oct 5, 2026). Use exactly.
       creditHtml: () =>
-        'Comic details from the <a href="https://www.comics.org/" target="_blank" rel="noopener noreferrer">Grand Comics Database</a>™, ' +
-        'licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>.',
+        'Comic details from the <span class="nowrap"><a class="nowrap credit-src" href="https://www.comics.org/" target="_blank" rel="noopener noreferrer">Grand Comics Database</a>™</span>, ' +
+        'licensed under <a class="nowrap credit-lic" href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>.',
       // GCD's first sentence only: GCD images are never shown (files1.comics.org refuses
       // browsers outside comics.org). Cover pictures come from Metron, credited below.
       issueUrlRe: /^https:\/\/www\.comics\.org\/issue\/\d+\/?$/i,
@@ -777,8 +777,8 @@
       // Credit wording cleared by Berean (Oct 10, 2026). Use exactly. Shown as its own line
       // after GCD's, then the cover sentence on a third line.
       creditHtml: () =>
-        'Cover pictures found through <a href="https://metron.cloud/" target="_blank" rel="noopener noreferrer">Metron</a>, ' +
-        'licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>.',
+        'Cover pictures found through <a class="credit-src" href="https://metron.cloud/" target="_blank" rel="noopener noreferrer">Metron</a>, ' +
+        'licensed under <a class="nowrap credit-lic" href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>.',
       // Cleared (Berean, Oct 5 / Oct 10): the cover sentence, shown whenever a picture is.
       coverSentence: "Cover images are © their respective copyright holders and shown for identification only.",
     },

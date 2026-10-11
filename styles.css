@@ -1001,6 +1001,12 @@ body {
   font-size: var(--fs-md);
 }
 
+/* Licence names (CC BY-SA 4.0, CC BY-NC 4.0) and "Grand Comics Database™" never split across
+   lines, in the footer, Settings and the picker credit. */
+.nowrap {
+  white-space: nowrap;
+}
+
 /* Footer */
 .site-footer {
   max-width: 960px;
@@ -1093,16 +1099,12 @@ body {
     margin-inline: -1px;
   }
 
-  #footer-comic-credit .credit-line a:first-of-type {
+  #footer-comic-credit .credit-line .credit-src {
     padding-block: 7px 0;
   }
 
-  #footer-comic-credit .credit-line a:last-of-type {
+  #footer-comic-credit .credit-line .credit-lic {
     padding-block: 0 7px;
-  }
-
-  #footer-comic-credit .credit-line a:only-of-type {
-    padding-block: 3.5px;
   }
 
   #footer-comic-credit .credit-line + .credit-line {
