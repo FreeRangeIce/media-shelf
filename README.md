@@ -99,14 +99,14 @@ Reference links (no keys): **RAWG** (`https://rawg.io/search?query=…`), **IGDB
 - Reference links: IMDb, ISFDB, RAWG, IGDB (by type)
 - Stats strip by type and status (all lowercase counts: “0 books”, “0 music”, “0 comics”)
 - Sample items on first load only (`media-shelf-seeded`); once cleared — or once every item is deleted — they don’t come back
-- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v27`; only same-origin files are cached, never cover images, and comics.org / files1.comics.org requests and the comic relay `frm-gcd.freerangeice.workers.dev` bypass the worker)
+- PWA basics: `manifest.webmanifest`, icons, `sw.js` (cache `media-shelf-v28`; only same-origin files are cached, never cover images, and comics.org / files1.comics.org requests and the comic relay `frm-gcd.freerangeice.workers.dev` bypass the worker)
 - Relative paths only — works from the GitHub Pages project path
 
 ## Add to Home Screen
 
 On iPhone or iPad, open the live site in Safari, tap **Share → Add to Home Screen**. Offline caching is handled by the service worker for the core shell assets. Your library still lives in that browser’s `localStorage` — use **Back up** to save a copy (for example to iCloud Drive via Save to Files). Cover images and lookups need network when first loaded.
 
-On phones the brand and **+ Add** stay pinned in a slim row. The page uses `viewport-fit=cover`, so `env(safe-area-inset-top)` reports the status bar's height in Safari and in the Home Screen app (black-translucent status bar), and the pinned row sits below the status bar on its own oak bar instead of under it (iOS 26 Safari blurs whatever sits under the status bar). Bottom sheets' Save row and the toast also keep clear of the home indicator.
+On phones the brand and **+ Add** stay pinned in a slim row. The page uses `viewport-fit=cover`, so `env(safe-area-inset-top)` reports the status bar's height in Safari and in the Home Screen app (black-translucent status bar), and the pinned row sits below the status bar on its own oak bar instead of under it (iOS 26 Safari blurs whatever sits under the status bar). In the Home Screen app the oak bar behind that row is a real element (`.pin-bar`, only under `display-mode: standalone`) rather than a pseudo-element: iOS 26 lays a wide top blur over standalone web apps unless a fixed element with a solid background sits at the very top edge. Bottom sheets' Save row and the toast also keep clear of the home indicator.
 
 ## GitHub Pages
 

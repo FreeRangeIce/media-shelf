@@ -313,6 +313,35 @@ body {
   }
 }
 
+/* Home Screen app on phones (iOS 26): the same oak bar, but as a real element instead of
+   .site-header::before. In a standalone web app iOS lays its wide top scroll-edge blur over the
+   web view (it reached the brand and "+ Add") unless a fixed element with a painted background
+   sits at the very top edge; WebKit then extends that solid colour under the status bar
+   instead. Pseudo-elements don't count, so the ::before bar alone left the blur on. Same size,
+   colour and border as the ::before; Safari tabs keep the ::before (they already looked right).
+   Inert and aria-hidden; it still takes taps on the bar like the ::before did. */
+.pin-bar {
+  display: none;
+}
+
+@media (max-width: 559px) and (display-mode: standalone) {
+  .site-header::before {
+    content: none;
+  }
+
+  .pin-bar {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 40;
+    height: calc(var(--pin-h) + var(--safe-top));
+    background-color: var(--bg); /* solid oak, no backdrop-filter */
+    border-bottom: 1px solid var(--border);
+  }
+}
+
 /* Buttons */
 .btn {
   appearance: none;
