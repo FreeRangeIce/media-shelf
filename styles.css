@@ -1790,8 +1790,8 @@ body.modal-open {
   line-height: var(--lh-base);
 }
 
-/* Release line at the very bottom of Settings ("Build <hash> · v<n>"), quiet like the credits */
-.settings-build {
+/* App version line at the very end of Settings ("App version v31"), quiet like the credits */
+.settings-version {
   margin: var(--space-4) 0 0;
   font-size: var(--fs-xs);
   color: var(--text-muted);
