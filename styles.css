@@ -1062,11 +1062,17 @@ body {
 
 /* Phones: the credits stack as centred blocks and the decorative "·" (aria-hidden) is
    hidden, so there is no stray dot. Inside a credit the lines sit at 1.4 so a wrapped
-   credit reads as one; credits are --space-2 apart (Oholiab, Oct 11). This replaces the
-   old 2.2 line pitch, which spread every line apart to keep each link's 8px tap padding
-   off its neighbour's text. At 1.4 there is no room for vertical tap padding (any of it
-   lands on the next wrapped line's text), so on phones the links' tap area is their text
-   line (~17px tall); the inline padding stays. */
+   credit reads as one (Oholiab, Oct 11). Footer links get at least 24px of tap height
+   (comfort; inline links are exempt from WCAG 2.5.8) without any link's tap box
+   overlapping another's: vertical padding on an inline link doesn't move the text, so
+   - one-line credits: 3.5px above and below (17px text line + 7 = 24px), credits --space-3
+     (12px) apart, which leaves the boxes of neighbouring credits clear of each other;
+   - the comic credit's sentences, which wrap to two lines: the first link (the source
+     name, on the first line) takes its 7px above, the last (the licence, on the last line)
+     below, so the two lines' boxes meet but don't overlap. Between two such sentences
+     both extend into the gap, which therefore needs 14.5px (--space-3 + 2.5px). At 1.4 the
+     font's 17px text box is 0.2px taller than the 16.8px line, so the two lines of one
+     sentence touch by 0.2px even with no padding (the tests allow 0.5px). */
 @media (max-width: 559px) {
   .footer-credits {
     line-height: 1.4;
@@ -1078,11 +1084,29 @@ body {
 
   .footer-credit + .footer-sep + .footer-credit,
   .footer-credit + .footer-credit {
-    margin-top: var(--space-2);
+    margin-top: var(--space-3);
   }
 
   .footer-credits a {
-    padding-block: 0;
+    padding-block: 3.5px;
+    padding-inline: 1px; /* 4px made "OMDb" and "CC BY-NC 4.0" boxes overlap across the "(" */
+    margin-inline: -1px;
+  }
+
+  #footer-comic-credit .credit-line a:first-of-type {
+    padding-block: 7px 0;
+  }
+
+  #footer-comic-credit .credit-line a:last-of-type {
+    padding-block: 0 7px;
+  }
+
+  #footer-comic-credit .credit-line a:only-of-type {
+    padding-block: 3.5px;
+  }
+
+  #footer-comic-credit .credit-line + .credit-line {
+    margin-top: calc(var(--space-3) + 2.5px);
   }
 
   .footer-sep {

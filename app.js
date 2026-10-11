@@ -2033,7 +2033,6 @@
         const tags = (item.tags || [])
           .map((t) => `<span class="tag">${escapeHtml(t)}</span>`)
           .join("");
-        const year = item.year != null ? ` · ${item.year}` : "";
         const name = displayTitle(item);
         // A comic card without a picture (names only, or a cover name picked without one): two
         // variants of one issue are told apart by their cover name.
@@ -2041,10 +2040,14 @@
           item.type === "comic" && item.coverLabel && (!comicCoverImagesOn() || comicImageSuppressed(item.type, item.coverUrl) || !String(item.coverUrl || "").trim())
             ? `<p class="item-cover-name">${escapeHtml(item.coverLabel)}</p>`
             : "";
-        const metaText =
+        // Byline: join only the parts that exist ("2002", not "— · 2002"); with no creator and no
+        // year it stays the existing lone "—".
+        const creatorText =
           item.type === "comic"
-            ? [comicCreatorNames(item.writer, item.artist).join(", "), item.publisher].filter(Boolean).join(" · ") || "—"
-            : item.creator || "—";
+            ? [comicCreatorNames(item.writer, item.artist).join(", "), item.publisher].filter(Boolean).join(" · ")
+            : String(item.creator || "").trim();
+        const yearText = item.year != null && String(item.year).trim() !== "" ? String(item.year).trim() : "";
+        const metaText = [creatorText, yearText].filter(Boolean).join(" · ") || "—";
         const progress = item.progress
           ? `<span class="progress">${escapeHtml(item.progress)}</span>`
           : "";
@@ -2099,7 +2102,7 @@
         <div>
           <h3 class="item-title">${escapeHtml(name)}</h3>
           ${coverNameLine}
-          <p class="item-meta">${escapeHtml(metaText)}${year}</p>
+          <p class="item-meta">${escapeHtml(metaText)}</p>
         </div>
         <div class="item-badges">
           <span class="badge badge-type ${item.type}">${TYPE_LABELS[item.type]}</span>
