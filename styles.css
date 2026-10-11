@@ -386,6 +386,50 @@ body {
   }
 }
 
+/* Phones (Safari tab and Home Screen app): the Settings / Back up row is a dark nav row so it
+   stands apart from the oak shelf (Micah, Oct 11). --nav-bg is the warm near-black #14110e
+   (cream text 15.73:1, the copper focus ring 4.90:1). A 1px divider down the middle, inset
+   10px top and bottom, in cream at 40% (3.39:1 on --nav-bg; 30% was only 2.43:1), drawn on the
+   row behind the 4px gap so it never shrinks either 44px target. The row has its own hover,
+   pressed and focus colours: the general ghost hover turns text dark brown, and iOS keeps
+   :hover after a tap. The near-black rules above and below the row merge into it, so there is
+   no doubled line; the colour change is the edge. */
+:root {
+  --nav-bg: #14110e;
+  --nav-divider: rgba(243, 234, 215, 0.4);
+  --nav-hover: rgba(243, 234, 215, 0.08);
+  --nav-pressed: rgba(243, 234, 215, 0.16);
+}
+
+@media (max-width: 559px) {
+  .header-inner {
+    background: var(--nav-bg);
+  }
+
+  .header-actions {
+    background: linear-gradient(var(--nav-divider), var(--nav-divider)) center / 1px calc(100% - 20px) no-repeat;
+  }
+
+  .header-actions .btn-ghost,
+  .header-actions .btn-ghost:hover {
+    color: #f3ead7;
+    border-color: transparent;
+  }
+
+  .header-actions .btn-ghost:hover {
+    background: var(--nav-hover);
+  }
+
+  .header-actions .btn-ghost:active {
+    background: var(--nav-pressed);
+  }
+
+  .header-actions .btn-ghost:focus-visible {
+    color: #f3ead7;
+    box-shadow: var(--focus);
+  }
+}
+
 /* Buttons */
 .btn {
   appearance: none;
@@ -1057,7 +1101,7 @@ body {
   color: #f3ead7;
 }
 
-/* Last line of the page: "App version v32", the same line as at the end of Settings. Muted
+/* Last line of the page: "App version v33", the same line as at the end of Settings. Muted
    cream on the oak (#c4b8a2, 6.77:1; --text-muted is for paper, not the oak). */
 .footer-version {
   margin: var(--space-4) 0 0;
