@@ -138,6 +138,8 @@
   let coverChoiceSetIndex = 0;
   /** Copy of the item as it was when the edit form opened (two-tab merge base). */
   let editingSnapshot = null;
+  /** Serialized item form when the sheet opened (see itemFormChanged). */
+  let itemFormBaseline = null;
   /** Add form: the user already chose "Add as a separate copy" for this existing item. */
   let dupAcceptedSeparateId = null;
   let lastFocus = null;
@@ -1486,7 +1488,24 @@
     els.modal.hidden = false;
     els.modal.setAttribute("aria-hidden", "false");
     document.body.classList.add("modal-open");
-    requestAnimationFrame(() => els.fieldTitle.focus());
+    itemFormBaseline = null;
+    requestAnimationFrame(() => {
+      // After callers' same-tick setup (e.g. a tab presetting the type), before any typing.
+      itemFormBaseline = serializeItemForm();
+      els.fieldTitle.focus();
+    });
+  }
+
+  /** The item form as it was when the sheet opened (itemFormBaseline); a backdrop tap never discards changes. */
+  function serializeItemForm() {
+    return JSON.stringify(
+      [...els.form.elements]
+        .filter((el) => el.name || el.id)
+        .map((el) => (el.type === "checkbox" || el.type === "radio" ? el.checked : el.value))
+    );
+  }
+  function itemFormChanged() {
+    return itemFormBaseline !== null && serializeItemForm() !== itemFormBaseline;
   }
 
   function fillComicFields(item) {
@@ -5668,6 +5687,13 @@
     $$("[data-close]").forEach((el) => {
       el.addEventListener("click", () => {
         if (!els.confirm.hidden || !els.scanModal.hidden) return;
+        // A tap on the dimmed backdrop closes the sheet like X, unless something was typed,
+        // picked or looked up since it opened: then nothing is discarded and focus goes to
+        // the X (Cancel and X still close it, as before).
+        if (el.classList.contains("modal-backdrop") && itemFormChanged()) {
+          $("#modal-close").focus();
+          return;
+        }
         closeModal();
       });
     });
