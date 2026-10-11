@@ -2760,9 +2760,15 @@
     });
   }
 
+  // One wording for both places: the end of Settings and the bottom of the page footer.
+  function appVersionText() {
+    return `App version v${APP_VERSION}`; // cleared (Berean, Oct 11)
+  }
   function fillAppVersionLine() {
-    const el = $("#settings-version");
-    if (el) el.textContent = `App version v${APP_VERSION}`; // cleared (Berean, Oct 11)
+    ["#settings-version", "#footer-version"].forEach((sel) => {
+      const el = $(sel);
+      if (el) el.textContent = appVersionText();
+    });
   }
 
   function openSettingsModal(focusProvider) {
@@ -7483,6 +7489,7 @@
     bindImport();
     bindClz();
     renderComicFooterCredit();
+    fillAppVersionLine();
     window.addEventListener("storage", onStorageEvent);
     updateFormatOptions();
     await seedIfEmpty();

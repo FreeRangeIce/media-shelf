@@ -754,17 +754,23 @@ body {
   border-color: var(--border-strong);
 }
 
+/* Focus: a copper outline 3px outside the card's (category) border, so the two never merge */
 .item-card:focus-visible {
-  outline: none;
-  box-shadow: var(--focus);
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow: none;
 }
 
 /* Category border: the card's whole 2px border is the category colour (Micah, Oct 11),
-   replacing the 4px left stripe; same corner radius. Hover darkens it to the category's text
-   colour. The cover column already carries data-type. */
+   replacing the 4px left stripe; same corner radius. With six or more mixed cards the full
+   stripe colours were loud, so the border is the category colour at 75% strength over the
+   card (same hue as the chip, whose tint and text stay full strength; Oholiab/Berean, Oct 11).
+   Browsers without color-mix() keep the full colour. Hover darkens it to the category's
+   text colour. The cover column already carries data-type. */
 .item-card:has(.item-cover-col[data-type]) {
   border-width: 2px;
   border-color: var(--card-rule, var(--border));
+  border-color: color-mix(in srgb, var(--card-rule, var(--border)) 75%, var(--bg-card));
 }
 
 .item-card:has(.item-cover-col[data-type]):hover {
@@ -1045,19 +1051,38 @@ body {
   color: #f3ead7;
 }
 
-/* Phones: the two credits stack as centred blocks and the decorative "·" (aria-hidden)
-   is hidden, so there is no stray dot. At the base 18px line pitch, the 8px tap padding
-   of "CC BY-NC 4.0" on line 2 covered the lower half of the RAWG link on line 1 (10/25
-   hit-test points on RAWG went to the licence link). A 2.2 line-height (~26px pitch:
-   17px glyph box + 8px padding + 1px) keeps every link's text clear of its neighbour's
-   tap area. */
+/* Last line of the page: "App version v32", the same line as at the end of Settings. Muted
+   cream on the oak (#c4b8a2, 6.77:1; --text-muted is for paper, not the oak). */
+.footer-version {
+  margin: var(--space-4) 0 0;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  color: #c4b8a2;
+}
+
+/* Phones: the credits stack as centred blocks and the decorative "·" (aria-hidden) is
+   hidden, so there is no stray dot. Inside a credit the lines sit at 1.4 so a wrapped
+   credit reads as one; credits are --space-2 apart (Oholiab, Oct 11). This replaces the
+   old 2.2 line pitch, which spread every line apart to keep each link's 8px tap padding
+   off its neighbour's text. At 1.4 there is no room for vertical tap padding (any of it
+   lands on the next wrapped line's text), so on phones the links' tap area is their text
+   line (~17px tall); the inline padding stays. */
 @media (max-width: 559px) {
   .footer-credits {
-    line-height: 2.2;
+    line-height: 1.4;
   }
 
   .footer-credit {
     display: block;
+  }
+
+  .footer-credit + .footer-sep + .footer-credit,
+  .footer-credit + .footer-credit {
+    margin-top: var(--space-2);
+  }
+
+  .footer-credits a {
+    padding-block: 0;
   }
 
   .footer-sep {
