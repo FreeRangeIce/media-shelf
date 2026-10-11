@@ -4313,13 +4313,16 @@
   /**
    * One relay GET -> { busy, failed, body }. busy only for 429 or a 503 with Retry-After
    * (honoured, capped at 5 min). Any other 4xx/5xx, or a body that isn't JSON -> failed.
-   * Network errors and the 10 s timeout throw.
+   * Network errors and the timeout (COMIC_RELAY_TIMEOUT_MS) throw.
    */
+  // 15 s: a cold relay lookup (GCD search + base + series record, then Metron) took ~6.8 s
+  // live on Oct 10; 10 s left too little room on a slow cell connection (Nathan).
+  const COMIC_RELAY_TIMEOUT_MS = 15000;
   async function comicRelayGet(path, query) {
     const base = COMIC_RELAY_URL.replace(/\/+$/, "");
     if (!/^https:\/\//i.test(base)) return { busy: false, failed: true, body: null };
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 10000);
+    const timer = setTimeout(() => ctrl.abort(), COMIC_RELAY_TIMEOUT_MS);
     try {
       const res = await fetch(`${base}${path}?${new URLSearchParams(query)}`, { signal: ctrl.signal });
       if (!res.ok) {
