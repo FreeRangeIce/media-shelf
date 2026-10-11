@@ -99,6 +99,10 @@
      Safari's top blur, black-translucent in the Home Screen app). One variable so the
      shots can simulate an inset; production always uses env(). */
   --safe-top: env(safe-area-inset-top, 0px);
+  /* Top offset for anything that must sit clear of the top edge (pinned brand row, sheet tops,
+     the toast over a sheet). Same as --safe-top in Safari; the Home Screen app on phones adds
+     40px below the status bar (see the standalone rule after .pin-bar). */
+  --clear-top: var(--safe-top);
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%232c241c' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
 }
 
@@ -340,6 +344,40 @@ body {
     height: calc(var(--pin-h) + var(--safe-top));
     background-color: var(--bg); /* solid oak, no backdrop-filter */
     border-bottom: 1px solid var(--border);
+  }
+}
+
+/* Home Screen app on phones, option 2: iOS 27 blurs roughly the top inset + 33px of a
+   standalone web app whatever the status-bar style or a fixed bar does (Micah's iPhone 17 Pro,
+   iOS 27.2 beta, Oct 11). So the oak band runs 40px further down, plain (no line, glow or
+   texture), and the brand row starts at its lower edge, --clear-top. The row is one tap tall
+   (+ Add's 44px, the brand centred on it) plus --space-2; only the band's bottom border marks
+   the pinned area, and Settings / Back up still scroll away under it. Safari tabs unchanged. */
+@media (max-width: 559px) and (display-mode: standalone) {
+  :root {
+    --clear-top: calc(var(--safe-top) + 40px);
+    --pin-row: calc(var(--tap) + var(--space-2));
+  }
+
+  html {
+    scroll-padding-top: calc(var(--clear-top) + var(--pin-row) + var(--space-2));
+  }
+
+  .site-header {
+    padding-top: calc(var(--clear-top) + var(--pin-row));
+  }
+
+  .pin-bar {
+    height: calc(var(--clear-top) + var(--pin-row));
+  }
+
+  .brand {
+    top: var(--clear-top);
+    height: var(--tap);
+  }
+
+  #btn-add {
+    top: var(--clear-top);
   }
 }
 
@@ -1016,7 +1054,7 @@ body {
 .modal {
   /* Sheets never reach under the status bar (viewport-fit=cover): every panel's height is
      capped so its top, with the title and X, stays at least this far down. */
-  --sheet-gap: calc(var(--safe-top) + var(--space-2));
+  --sheet-gap: calc(var(--clear-top) + var(--space-2));
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -1064,7 +1102,7 @@ body {
 
 @media (min-width: 560px) {
   .modal {
-    --sheet-gap: max(var(--space-4), calc(var(--safe-top) + var(--space-2)));
+    --sheet-gap: max(var(--space-4), calc(var(--clear-top) + var(--space-2)));
     align-items: center;
     padding: var(--sheet-gap) var(--space-4) var(--space-4);
   }
@@ -1456,7 +1494,7 @@ label.check.confirm-option {
 /* While a sheet is open the toast moves to the top so it never covers Save / Cancel */
 body.modal-open .toast {
   bottom: auto;
-  top: calc(var(--space-5) + var(--safe-top));
+  top: calc(var(--space-5) + var(--clear-top));
 }
 
 body.modal-open {
