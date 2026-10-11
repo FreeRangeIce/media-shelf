@@ -430,6 +430,28 @@ body {
   }
 }
 
+/* Variant B: the whole top on phones (the blur-clearing band, the brand row and the nav row)
+   is the same near-black, so the oak shelf only starts below Settings / Back up and the status
+   bar area reads as dark, not shelf. The line between the brand row and the nav row would vanish
+   in #14110e on #14110e, so it uses the divider's cream at 40% (3.39:1). Logo, copper "+ Add",
+   band height and --clear-top are unchanged. */
+:root {
+  --nav-top: on;
+  --nav-line: rgba(243, 234, 215, 0.4);
+}
+
+@media (max-width: 559px) {
+  .site-header {
+    background: var(--nav-bg);
+  }
+
+  .site-header::before,
+  .site-header > .pin-bar {
+    background: var(--nav-bg);
+    border-bottom-color: var(--nav-line);
+  }
+}
+
 /* Buttons */
 .btn {
   appearance: none;
