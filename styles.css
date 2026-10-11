@@ -13,6 +13,11 @@
   --border: #e6dccb;
   --border-strong: #d2c4ae;
   --border-control: #7d6e5e; /* form-control boundary on the light card and sheet */
+  /* Lines under the pinned brand row and under the header (Settings / Back up), in Safari and
+     the Home Screen app, 1px. The darkest warm brown in the palette (the theme colour, not
+     #000): 18.51:1 on a card (#fffdf8), so it shows when a white card scrolls under it (the
+     cream line vanished); on the oak it is a quiet dark seam (1.42:1). Oholiab/Berean, Oct 11. */
+  --rule-header: #14110e;
 
   /* Text */
   --text: #2c241c;
@@ -170,7 +175,7 @@ body {
   background: var(--bg); /* oak #3e2c1e; cream header text sits on this, not on paper */
   color: #f3ead7;
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--rule-header);
 }
 
 .header-inner {
@@ -275,7 +280,7 @@ body {
     background: var(--bg); /* oak, same as the header; opaque, so no backdrop blur (it did
        nothing visible and Safari 26 skips a blurred fixed bar when tinting the status bar) */
     color: #f3ead7;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--rule-header);
   }
 
   .tagline {
@@ -343,7 +348,7 @@ body {
     z-index: 40;
     height: calc(var(--pin-h) + var(--safe-top));
     background-color: var(--bg); /* solid oak, no backdrop-filter */
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--rule-header);
   }
 }
 
