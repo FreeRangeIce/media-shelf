@@ -733,9 +733,9 @@
       // Credit wording cleared by Berean (Oct 5, 2026). Use exactly.
       creditHtml: () =>
         'Comic details from the <a href="https://www.comics.org/" target="_blank" rel="noopener noreferrer">Grand Comics Database</a>™, ' +
-        'licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>.' +
-        // Names only: no images on screen, so no cover sentence (Berean, Oct 10).
-        (comicCoverImagesOn() ? " Cover images are © their respective copyright holders and shown for identification only." : ""),
+        'licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>.',
+      // GCD's first sentence only: GCD images are never shown (files1.comics.org refuses
+      // browsers outside comics.org). Cover pictures come from Metron, credited below.
       issueUrlRe: /^https:\/\/www\.comics\.org\/issue\/\d+\/?$/i,
       // NEW COPY (fact check): link to the comic's own page at the source.
       issueLinkText: "This issue on comics.org",
@@ -758,33 +758,75 @@
   /** The source the relay currently serves (Settings credit, footer, dev fixture). */
   const COMIC_ACTIVE_SOURCE = COMIC_SOURCES[0];
 
+  /**
+   * Cover picture sources: the relay attaches a picture link to a GCD row only when the
+   * picture source verifiably has the same issue. The image link is shown exactly as sent and
+   * only from these hosts; image bytes are never fetched, copied or cached (the service worker
+   * doesn't even route these hosts). Wherever a picture from here is on screen or stored as
+   * the comic's cover, this credit is shown after GCD's.
+   */
+  const COMIC_IMAGE_SOURCES = [
+    {
+      key: "metron",
+      name: "Metron",
+      hostRe: /^static\.metron\.cloud$/i,
+      // Credit wording cleared by Berean (Oct 10, 2026). Use exactly.
+      creditHtml: () =>
+        'Comic details from <a href="https://metron.cloud/" target="_blank" rel="noopener noreferrer">Metron</a>, ' +
+        'licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>. ' +
+        "Cover images are © their respective copyright holders and shown for identification only.",
+    },
+  ];
+  const COMIC_ACTIVE_IMAGE_SOURCE = COMIC_IMAGE_SOURCES[0];
+
+  /** The picture source an https image URL comes from (by host), or null. */
+  function comicImageSourceFor(url) {
+    try {
+      const u = new URL(String(url || "").trim());
+      if (u.protocol !== "https:") return null;
+      return COMIC_IMAGE_SOURCES.find((s) => s.hostRe.test(u.hostname)) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** "relay key" of an answer's imagesFrom -> picture source, or null. */
+  function comicImageSourceByKey(key) {
+    return COMIC_IMAGE_SOURCES.find((s) => s.key === key) || null;
+  }
+
   /** The source a sourceId came from, or null (typed by hand, CLZ import, unknown). */
   function comicSourceFor(sourceId) {
     const id = String(sourceId || "").trim().toLowerCase();
     return (id && COMIC_SOURCES.find((s) => id.startsWith(s.prefix))) || null;
   }
 
-  /** Settings + footer: the credit of the source the relay serves now. */
+  /**
+   * Settings + footer: the credit of the source the relay serves now, plus the picture
+   * source's credit while cover pictures are on (Lookup may show them).
+   */
   function renderComicFooterCredit() {
-    const s = COMIC_ACTIVE_SOURCE;
+    const html = COMIC_ACTIVE_SOURCE.creditHtml() + (comicCoverImagesOn() ? " " + COMIC_ACTIVE_IMAGE_SOURCE.creditHtml() : "");
     const settings = document.getElementById("comic-lookup-credit");
-    if (settings) settings.innerHTML = s.creditHtml();
+    if (settings) settings.innerHTML = html;
     const el = document.getElementById("footer-comic-credit");
-    if (el) el.innerHTML = s.creditHtml();
+    if (el) el.innerHTML = html;
   }
 
   /**
    * Plain-text credit (no button) for the comic form and the cover picker, plus a small
    * link to the issue's own page when sourceUrl is one of that source's issue pages.
    */
-  function comicCreditHtml(source, sourceUrl) {
+  function comicCreditHtml(source, sourceUrl, imageSource = null) {
     if (!source) return "";
     const url = safeHttpsUrl(sourceUrl);
     const issue =
       url && source.issueUrlRe.test(url)
         ? `<p class="source-credit-issue"><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.issueLinkText)}</a></p>`
         : "";
-    return `<p class="source-credit">${source.creditHtml()}</p>${issue}`;
+    // Both sources contributed (GCD's details, a Metron picture): GCD's sentence, then Metron's credit.
+    const both = imageSource ? " " + imageSource.creditHtml() : "";
+    return `<p class="source-credit">${source.creditHtml()}${both}</p>${issue}`;
   }
 
   /** What a card, list or prompt calls the item. Comics: "Saga #1: Chapter One". */
@@ -1088,7 +1130,7 @@
   function updateCoverPreview() {
     updateGoogleBooksAttr();
     updateCoverUrlError();
-    // Names-only mode never requests a GCD image (the field keeps the stored URL).
+    // A GCD image is never requested, nor a Metron one in names-only mode (the field keeps the stored URL).
     const url = comicImageSuppressed(els.fieldType.value, els.fieldCover.value) ? "" : els.fieldCover.value.trim();
     if (url) {
       els.coverPreview.src = url;
@@ -1934,8 +1976,8 @@
   function coverMarkup(item) {
     const label = escapeHtml(TYPE_LABELS[item.type] || item.type);
     const type = escapeHtml(item.type);
-    // Names-only mode: a stored GCD image URL is kept but never requested; the card shows the
-    // Comic placeholder and the cover-name line instead.
+    // A stored GCD image URL (and, in names-only mode, a Metron one) is kept but never
+    // requested; the card shows the Comic placeholder and the cover-name line instead.
     const url = comicImageSuppressed(item.type, item.coverUrl) ? "" : (item.coverUrl || "").trim();
     // The column keeps the 2:3 height for every type, so mixed lists line up; music
     // covers (square album art) sit top-aligned in it as a 1:1 frame.
@@ -1976,9 +2018,10 @@
           .join("");
         const year = item.year != null ? ` · ${item.year}` : "";
         const name = displayTitle(item);
-        // Names-only mode: two variants of one issue are told apart by their cover name.
+        // A comic card without a picture (names only, or a cover name picked without one): two
+        // variants of one issue are told apart by their cover name.
         const coverNameLine =
-          item.type === "comic" && item.coverLabel && !comicCoverImagesOn()
+          item.type === "comic" && item.coverLabel && (!comicCoverImagesOn() || comicImageSuppressed(item.type, item.coverUrl) || !String(item.coverUrl || "").trim())
             ? `<p class="item-cover-name">${escapeHtml(item.coverLabel)}</p>`
             : "";
         const metaText =
@@ -4088,17 +4131,20 @@
    *     -> { match: { series, issue, title, publisher, year, writer: [], artist: [],
    *                   sourceId: "<prefix>issue-<id>", sourceName, sourceUrl } | null,
    *          candidates: [{ series, year, publisher, sourceId: "<prefix>…-<id>" }],
-   *          variants: [{ sourceId, label, variant }],  (ALL cover names, base first)
+   *          variants: [{ sourceId, label, variant, image? }],  (ALL GCD cover names, base
+   *                                            first; image = a Metron picture link, only on
+   *                                            rows the relay verifiably matched)
    *          total,                                   (number of covers the issue has)
-   *          covers: [{ sourceId, url, label, variant }] }  (base + up to 4 more; labels
-   *                                                  may be long variant names)
-   *   GET {COMIC_RELAY_URL}/comic-covers?ids=<comma list, max 13>
-   *     -> { covers: [{ sourceId, url, label, variant }] }   ("Show all N covers")
+   *          covers: [{ sourceId, url, label, variant }],  (exactly the rows with a picture:
+   *                                                  GCD id + GCD label + Metron URL)
+   *          imagesFrom?: "metron",   (a Metron picture is in this answer: credit Metron too)
+   *          imagesPending?: true }   (Metron was busy or down: GCD names only this time)
    *     A miss may carry reason: "add-year" (too many comics match the name): asked
    *     without a year, the form asks for the year (COMIC_ADD_YEAR_MESSAGE).
    *   partial: true (the relay's GCD budget ran out mid-answer): WITH a match the picker
-   *   opens with the covers that arrived and every named variant, plus a muted note; "Show
-   *   all" fetches the rest later. Without a match -> busy. On /comic-covers -> busy.
+   *   opens with every named variant. Without a match -> busy.
+   *   Pictures come only with /comic; the app never calls /comic-covers (GCD's scans can't be
+   *   shown, so there is nothing to fetch later: no retry button).
    *   GET {COMIC_RELAY_URL}/comic-barcode?upc=
    *     -> same shape (base + variants as covers), or { match: null, reason } on a miss
    *        such as "barcode-unsupported".
@@ -4131,13 +4177,13 @@
   /** DEV ONLY: set this localStorage key to get fixture results (see devComicFixture). */
   const COMIC_DEV_FIXTURE_STORAGE = "frm:devComicFixture";
   /**
-   * Show cover images from the source in the picker (2:3 thumbnails). false = names only:
-   * a one-column list, one variant per row with a link to its issue page at the source, no
-   * images and no /comic-covers calls ("Show all" just lists the names from the search);
-   * picking a row stores the cover name only (no image URL), so no source image is shown
-   * anywhere. Names only (false) since Micah chose it; set true for thumbnails.
+   * Show cover pictures in the picker, on shelf cards and in the edit preview, but ONLY from
+   * the hosts in COMIC_IMAGE_SOURCES (static.metron.cloud). GCD's files1.comics.org is
+   * suppressed everywhere whatever this says. false = names only everywhere: a one-column
+   * list, one variant per row with its issue link, no images; picking a row stores the cover
+   * name only.
    */
-  const COMIC_COVER_IMAGES = false; // names only (Micah, Oct 10); true = thumbnails
+  const COMIC_COVER_IMAGES = true; // Metron pictures (Oct 10); false = names only
   /**
    * DEV ONLY: localStorage["frm:devComicCoverImages"] = "off" previews names-only mode and
    * "on" previews thumbnails, whichever way COMIC_COVER_IMAGES is set (tests use both).
@@ -4153,7 +4199,7 @@
     return COMIC_COVER_IMAGES;
   }
 
-  /** Hosts of the comic database's cover images (GCD serves them from files1.comics.org). */
+  /** GCD's image hosts (files1.comics.org): refused to browsers outside comics.org, never requested. */
   const COMIC_IMAGE_HOST_RE = /^files\d*\.comics\.org$/i;
   function isComicSourceImage(url) {
     try {
@@ -4163,17 +4209,17 @@
     }
   }
   /**
-   * Names-only mode (switch off or the dev override): a comic's stored GCD image URL is
-   * never put in an <img> anywhere. Stored data is left as it is.
+   * A comic's stored GCD image URL is never put in an <img> anywhere; in names-only mode
+   * (switch off or the dev override) a stored Metron picture isn't either. A cover URL the
+   * user pasted from anywhere else is shown as before. Stored data is left as it is.
    */
   function comicImageSuppressed(type, url) {
-    return type === "comic" && !comicCoverImagesOn() && isComicSourceImage(url);
+    if (type !== "comic") return false;
+    return isComicSourceImage(url) || (!comicCoverImagesOn() && Boolean(comicImageSourceFor(url)));
   }
 
   /** The picker shows the main cover plus 4 more until "Show all N covers" is tapped. */
   const COMIC_COVER_MAX = 5;
-  /** /comic-covers takes at most this many ids per request. */
-  const COMIC_COVERS_CHUNK = 13;
   /** Upper bound on cover names kept from one answer (defensive). */
   const COMIC_VARIANTS_MAX = 200;
   // Copy cleared (Berean). Busy only for 429, a 503 with Retry-After, or a partial answer
@@ -4186,24 +4232,15 @@
   /** A miss with reason "add-year" when no year was sent (muted, not red). */
   const COMIC_ADD_YEAR_MESSAGE = "Too many comics match that series name. Add the year it came out, then look up again. What you typed is kept."; // cleared (Berean, Oct 10)
   /**
-   * Muted note under the covers when a partial answer
-   * (the relay ran out of GCD calls) left some covers without an image.
+   * Muted note under the covers when the relay couldn't ask the picture source this time
+   * (imagesPending: Metron busy or down), so no row could get a picture. A new Lookup asks
+   * again (the relay doesn't store such an answer).
    */
-  const COMIC_PARTIAL_NOTE = () => "Some covers didn't load because the comic database is busy. Try again later."; // cleared (Berean, Oct 10); only after a partial answer
-  /** Centered line inside a cover tile with no image (Berean, Oct 10): never fetched yet... */
+  const COMIC_PARTIAL_NOTE = () => "Some covers didn't load because the comic database is busy. Try again later."; // cleared (Berean, Oct 10); only after imagesPending
+  /** Centered line inside a picture tile whose image failed to load (Berean, Oct 10). */
   const COMIC_NOT_LOADED_LABEL = "Cover didn't load"; // cleared (Berean, Oct 10)
-  /** ...or the source said it has no scan (the relay's noCover list). */
-  const COMIC_NO_SCAN_LABEL = "No cover scan on GCD"; // cleared (Berean, Oct 10)
-  /** The retry button whenever a cover with an id is still missing its image. */
-  const COMIC_RETRY_COVERS_LABEL = "Try again for the missing covers"; // cleared (Berean, Oct 10)
   /** After a busy answer, Lookup waits out Retry-After (capped) before asking the relay again. */
   let comicBusyUntil = 0;
-  /**
-   * A partial 200's Retry-After: only the cover retry waits it out (Nathan), so a tap before
-   * then is answered busy here without asking the relay. A new Lookup isn't held back by it,
-   * because the relay may answer that one from its cache.
-   */
-  let comicCoversBusyUntil = 0;
 
   /** A JSON object (not null, not an array): the only body shape the relay sends. */
   function isPlainObject(v) {
@@ -4222,7 +4259,7 @@
     };
     const barcodeOnly = !(q.series && q.issue);
     // yearSent: the series route carried a year (so "add-year" can't be asked again).
-    const empty = { match: null, covers: [], variants: [], total: 0, candidates: [], barcodeOnly, busy: false, failed: false, partial: false, yearSent: Boolean(!barcodeOnly && q.year), reason: "", matchedBy: "" };
+    const empty = { match: null, covers: [], variants: [], total: 0, candidates: [], imagesFrom: "", imagesPending: false, barcodeOnly, busy: false, failed: false, partial: false, yearSent: Boolean(!barcodeOnly && q.year), reason: "", matchedBy: "" };
     const routes = [];
     // The barcode route is only asked when the active source can search barcodes (GCD
     // can't), so a barcode alone is a miss; the code stays and series + issue still match.
@@ -4282,11 +4319,6 @@
       }
       const body = await res.json().catch(() => undefined);
       if (!isPlainObject(body)) return { busy: false, failed: true, body: null };
-      // A partial 200 carries the relay's Retry-After (capped at 5 min like a 503).
-      if (body.partial === true) {
-        const secs = Number(res.headers.get("Retry-After"));
-        if (Number.isFinite(secs) && secs > 0) comicCoversBusyUntil = Date.now() + Math.min(secs, 300) * 1000;
-      }
       return { busy: false, failed: false, body };
     } finally {
       clearTimeout(timer);
@@ -4317,13 +4349,16 @@
             sourceUrl: safeHttpsUrl(m.sourceUrl),
           }
         : null;
-    const covers = sanitizeComicCovers(res && res.covers, okUrl).slice(0, COMIC_COVER_MAX);
     const seenIds = new Set();
-    const variants = (res && Array.isArray(res.variants) ? res.variants : [])
-      .filter((v) => v && typeof v === "object")
+    const rawVariants = (res && Array.isArray(res.variants) ? res.variants : []).filter((v) => v && typeof v === "object");
+    const variants = rawVariants
       .map((v) => ({ sourceId: cleanText(v.sourceId, 80), label: cleanText(v.label, 160), variant: v.variant === true }))
       .filter((v) => (v.sourceId || v.label) && !(v.sourceId && seenIds.has(v.sourceId)) && (v.sourceId ? seenIds.add(v.sourceId) : true))
       .slice(0, COMIC_VARIANTS_MAX);
+    // Pictures: the answer's covers plus any variant row's image, allowed hosts only (a GCD
+    // files1.comics.org URL is dropped here, so it's never requested).
+    const rowImages = rawVariants.filter((v) => v.image).map((v) => ({ sourceId: v.sourceId, url: v.image, label: v.label, variant: v.variant }));
+    const covers = sanitizeComicCovers([...(res && Array.isArray(res.covers) ? res.covers : []), ...rowImages], okUrl).slice(0, COMIC_VARIANTS_MAX);
     const totalRaw = Math.floor(Number(res && res.total));
     const total = Number.isFinite(totalRaw) && totalRaw > 0 ? Math.min(totalRaw, COMIC_VARIANTS_MAX) : Math.max(variants.length, covers.length);
     // Candidates (other volumes with that name) are kept for a future "which series?" step;
@@ -4333,18 +4368,23 @@
       .slice(0, 10)
       .map((c) => ({ series: cleanText(c.series), year: year(c.year), publisher: cleanText(c.publisher), sourceId: cleanText(c.sourceId, 80) }));
     const reason = res && typeof res.reason === "string" ? cleanText(res.reason, 40) : "";
-    return { match, covers, variants, total, candidates, reason };
+    // Credit the picture source only when one of its pictures actually came through.
+    const imagesFrom = covers.length && res && comicImageSourceByKey(res.imagesFrom) ? res.imagesFrom : "";
+    const imagesPending = Boolean(res && res.imagesPending === true);
+    return { match, covers, variants, total, candidates, reason, imagesFrom, imagesPending };
   }
 
   /**
-   * A cover URL from the relay, kept exactly as sent (e.g. files1.comics.org …/w400/<id>.jpg;
-   * the size is never rewritten). https only; the dev fixture may also use its own
-   * placeholder files. Image bytes are never fetched or copied: no data:, blob: or canvas.
+   * A cover URL from the relay, kept exactly as sent (never rewritten), and only from a
+   * picture source's host (static.metron.cloud); anything else, files1.comics.org included,
+   * is dropped. The dev fixture may also use its own placeholder files. Image bytes are
+   * never fetched or copied: no data:, blob: or canvas.
    */
   function comicCoverUrl(u, fixture) {
     const s = String(u || "").trim();
     if (fixture && /^\.\/dev\/fixture-cover-\d\.svg$/.test(s)) return s; // dev placeholder files only
-    return exactHttpsUrl(s);
+    const url = exactHttpsUrl(s);
+    return url && comicImageSourceFor(url) ? url : "";
   }
 
   /** Covers from any relay answer: URL kept as sent, no repeats. */
@@ -4360,38 +4400,6 @@
       out.push({ sourceId, url, label: cleanText(c.label, 160), variant: c.variant === true });
     });
     return out;
-  }
-
-  /**
-   * "Show all N covers": fetch the covers for these variant ids from /comic-covers in
-   * chunks of 13. Resolves { covers, busy, failed }; busy = a chunk was busy or partial,
-   * failed = any other error (covers fetched before that are still returned).
-   */
-  async function comicFetchCovers(ids) {
-    const want = [...new Set(ids.filter(Boolean))];
-    const useFixture = devComicFixtureMode() !== null;
-    const okUrl = (u) => comicCoverUrl(u, useFixture);
-    const covers = [];
-    const noCover = [];
-    for (let i = 0; i < want.length; i += COMIC_COVERS_CHUNK) {
-      const chunk = want.slice(i, i + COMIC_COVERS_CHUNK);
-      let got;
-      try {
-        if (useFixture) got = devComicFixtureCovers(chunk);
-        else if (!comicRelaySetUp()) got = { busy: false, failed: true, body: null };
-        else if (Date.now() < Math.max(comicBusyUntil, comicCoversBusyUntil)) got = { busy: true, body: null };
-        else got = await comicRelayGet("/comic-covers", { ids: chunk.join(",") });
-      } catch {
-        got = { busy: false, failed: true, body: null };
-      }
-      if (got.busy) return { covers, noCover, busy: true, failed: false };
-      if (got.failed || !isPlainObject(got.body)) return { covers, noCover, busy: false, failed: true };
-      covers.push(...sanitizeComicCovers(got.body.covers, okUrl));
-      // Ids the source says have no scan (only ids we asked for).
-      if (Array.isArray(got.body.noCover)) noCover.push(...got.body.noCover.filter((id) => typeof id === "string" && chunk.includes(id)));
-      if (got.body.partial === true) return { covers, noCover, busy: true, failed: false };
-    }
-    return { covers, noCover, busy: false, failed: false };
   }
 
   /** DEV ONLY: the fixture mode from localStorage, or null when it isn't set. */
@@ -4424,8 +4432,6 @@
     "Cover Q Trade Dress Variant",
     "Cover R Newsstand Edition",
   ];
-  /** DEV ONLY: in the 18-cover fixture these have a name but no cover image yet. */
-  const DEV_FIXTURE_NO_IMAGE = new Set([9, 14]);
 
   /** DEV ONLY: one of five plain placeholder covers in ./dev (a URL, like the relay's). */
   function devFixtureCoverUrl(i) {
@@ -4442,9 +4448,9 @@
    * the relay's shape, as { busy, body }, labelled as COMIC_ACTIVE_SOURCE. The body carries
    * a stray price that must be dropped.
    * Placeholder data only (plain SVG files in ./dev, made-up names) — never real source data.
+   * Covers stand in for Metron pictures (imagesFrom: "metron").
    * Modes: "5" five covers · "2" · "1" · "0" match without covers · "18" eighteen named
-   * covers (5 sent, the rest via "Show all"; two have no image yet) · "18busy" / "18partial"
-   * the same, but fetching the rest is busy / partial · "miss" no match (with a candidate) ·
+   * covers, every one with a picture (the grid; 5 shown until "Show all") · "miss" no match (with a candidate) ·
    * "busy" a 503 with Retry-After · "error" any other relay error (e.g. 502) · "badjson"
    * a 200 that isn't JSON · "partial" a partial answer without a match. The barcode route (only asked when the
    * active source has one) answers like a match in "upc" mode, otherwise reason
@@ -4485,23 +4491,10 @@
         candidates: [],
         variants,
         total: n,
-        covers: variants.slice(0, COMIC_COVER_MAX).map((v, i) => ({ ...v, url: devFixtureCoverUrl(i), price: "9.99" })),
+        covers: variants.map((v, i) => ({ ...v, url: devFixtureCoverUrl(i), price: "9.99" })),
+        ...(n ? { imagesFrom: COMIC_ACTIVE_IMAGE_SOURCE.key } : {}),
       },
     };
-  }
-
-  /** DEV ONLY: /comic-covers for the fixture (honours the "18busy" / "18error" / "18partial" modes). */
-  function devComicFixtureCovers(ids) {
-    const mode = devComicFixtureMode();
-    if (mode === "18busy") return { busy: true, body: null };
-    if (mode === "18error") return { busy: false, failed: true, body: null };
-    const covers = ids
-      .map((id) => DEV_FIXTURE_LABELS.findIndex((_, i) => devFixtureVariant(i).sourceId === id))
-      .filter((i) => i >= 0 && !DEV_FIXTURE_NO_IMAGE.has(i))
-      .map((i) => ({ ...devFixtureVariant(i), url: devFixtureCoverUrl(i) }));
-    const noCover = ids.filter((id) => DEV_FIXTURE_LABELS.some((_, i) => DEV_FIXTURE_NO_IMAGE.has(i) && devFixtureVariant(i).sourceId === id));
-    if (mode === "18partial") return { busy: false, body: { partial: true, covers: covers.slice(0, 3) } };
-    return { busy: false, body: { covers, noCover } };
   }
 
   /* ---------- Comic cover picker + Save gate ----------
@@ -4513,8 +4506,10 @@
   // choice: "" | "cover" | "url" | "none"; picked: index into tiles of the chosen cover;
   // credit: the source to credit (COMIC_SOURCES entry) or null; tiles: every cover name
   // with its image once known; total: covers the issue has; expanded: "Show all" tapped.
-  // partial: the match came from a partial answer, so some images may still be missing.
-  let comicPicker = { open: false, required: false, tiles: [], total: 0, expanded: false, loading: false, picked: -1, choice: "", credit: null, partial: false, token: 0 };
+  // partial: the match came from a partial answer (GCD's budget ran out mid-answer).
+  // imageCredit: the picture source to credit after GCD's (COMIC_IMAGE_SOURCES entry) or null;
+  // imagesPending: the relay couldn't ask the picture source this time (muted note).
+  let comicPicker = { open: false, required: false, tiles: [], total: 0, expanded: false, picked: -1, choice: "", credit: null, imageCredit: null, imagesPending: false, partial: false, token: 0 };
 
   function comicSaveBlocked() {
     return (
@@ -4563,7 +4558,7 @@
   }
 
   function resetComicPicker() {
-    comicPicker = { open: false, required: false, tiles: [], total: 0, expanded: false, loading: false, picked: -1, choice: "", credit: null, partial: false, token: comicPicker.token + 1 };
+    comicPicker = { open: false, required: false, tiles: [], total: 0, expanded: false, picked: -1, choice: "", credit: null, imageCredit: null, imagesPending: false, partial: false, token: comicPicker.token + 1 };
     saveBlockedTried = false;
     const box = $("#comic-picker");
     if (box) box.hidden = true;
@@ -4585,8 +4580,8 @@
   }
 
   /**
-   * Show all's busy / isn't-working line, directly under the covers (Oholiab fix 5). muted:
-   * the partial answer's note uses the same spot in the muted status color.
+   * The line directly under the covers (Oholiab fix 5); muted: the imagesPending note in the
+   * muted status color.
    */
   function setComicShowAllStatus(msg, { muted = false } = {}) {
     const el = $("#comic-show-all-status");
@@ -4598,19 +4593,10 @@
   }
 
   /**
-   * Tiles with an id but no image that a retry can still fetch: after a partial answer, or
-   * covers past the relay's detail limit in a complete one (Nathan). Not ones the source
-   * said have no scan.
-   */
-  function comicPickerMissingImages() {
-    return comicCoverImagesOn() && comicPicker.tiles.some((t) => !t.url && t.sourceId && !t.noScan);
-  }
-
-  /**
-   * covers: the covers sent with the match (base + up to 4); variants: every cover name
+   * covers: the rows with a picture (GCD id + label, picture URL); variants: every cover name
    * (base first) when the source lists them; total: how many covers the issue has.
    */
-  function openComicPicker(covers, { required = true, hint = "", credit = null, variants = [], total = 0, partial = false } = {}) {
+  function openComicPicker(covers, { required = true, hint = "", credit = null, variants = [], total = 0, partial = false, imagesFrom = "", imagesPending = false } = {}) {
     const cur = els.fieldCover.value.trim();
     // A cover from an earlier pick is cleared so this lookup needs its own choice; a URL
     // the user pasted stays and counts as the choice.
@@ -4632,10 +4618,11 @@
       tiles,
       total: Math.max(total, tiles.length),
       expanded: false,
-      loading: false,
       picked: -1,
       choice,
       credit,
+      imageCredit: credit && covers.length ? comicImageSourceByKey(imagesFrom) : null,
+      imagesPending: Boolean(imagesPending),
       partial: Boolean(partial),
       token: comicPicker.token + 1,
       // The match's own record; picking a variant swaps in that variant's record.
@@ -4649,8 +4636,8 @@
     $("#comic-picker-hint").textContent = hint;
     $("#comic-picker").hidden = false;
     setComicShowAllStatus("");
-    // The busy note only after a partial answer: in a complete one nothing was busy (Berean).
-    if (comicPicker.partial && comicPickerMissingImages()) setComicShowAllStatus(COMIC_PARTIAL_NOTE(), { muted: true });
+    // The busy note only when the picture source couldn't be asked this time (Berean).
+    if (comicPicker.imagesPending && comicCoverImagesOn() && !covers.length) setComicShowAllStatus(COMIC_PARTIAL_NOTE(), { muted: true });
     renderComicPicker();
   }
 
@@ -4705,68 +4692,25 @@
     return src && fallback && src.issueUrlRe.test(fallback) ? fallback : "";
   }
 
-  /** "Show all N covers": show every name now, fetch the missing images (chunks of 13). */
-  async function showAllComicCovers() {
+  /**
+   * "Show all N covers": list every name now. Nothing is fetched: pictures only come with
+   * the Lookup answer.
+   */
+  function showAllComicCovers() {
     if (!comicPicker.open || comicPicker.expanded) return;
     comicPicker.expanded = true;
-    await fetchMissingComicCovers();
-  }
-
-  /**
-   * The retry button after a partial answer: asks again only for the covers still missing.
-   * It stays as long as any are missing, so a busy or failed try can be tapped again (Nathan).
-   */
-  async function retryMissingComicCovers() {
-    if (!comicPicker.open || comicPicker.loading) return;
-    await fetchMissingComicCovers();
-  }
-
-  async function fetchMissingComicCovers() {
-    setComicShowAllStatus("");
-    const token = comicPicker.token;
-    // Names-only mode never asks for images.
-    const missing = comicCoverImagesOn() ? comicPicker.tiles.filter((t) => !t.url && t.sourceId && !t.noScan).map((t) => t.sourceId) : [];
-    if (!missing.length) {
-      renderComicPicker();
-      return;
-    }
-    comicPicker.loading = true;
-    renderComicPicker();
-    let res;
-    try {
-      res = await comicFetchCovers(missing);
-    } catch {
-      res = { covers: [], busy: false, failed: true };
-    }
-    if (token !== comicPicker.token) return; // a new Lookup or a closed form replaced this picker
-    const byId = new Map(res.covers.map((c) => [c.sourceId, c]));
-    const noScan = new Set(res.noCover || []);
-    comicPicker.tiles = comicPicker.tiles.map((t) =>
-      !t.url && byId.has(t.sourceId) ? { ...t, url: byId.get(t.sourceId).url } : !t.url && noScan.has(t.sourceId) ? { ...t, noScan: true } : t
-    );
-    comicPicker.loading = false;
-    // The picked tile may just have got its image.
-    const p = comicPicker.tiles[comicPicker.picked];
-    if (comicPicker.choice === "cover" && comicTileCoverUrl(p) && !els.fieldCover.value.trim()) {
-      setComicCover(p.url, "comiclookup", { label: p.label, variant: p.variant });
-    }
-    // Same texts as Lookup, but under the covers, not at the top of the form.
-    if (res.busy) setComicShowAllStatus(COMIC_BUSY_MESSAGE);
-    else if (res.failed) setComicShowAllStatus(COMIC_FAIL_MESSAGE);
-    else comicPicker.partial = false; // a complete reply: the busy note no longer applies
     renderComicPicker();
   }
 
   function comicBlankTileArt(c) {
-    return `<span class="comic-cover-blank" aria-hidden="true"><span class="comic-cover-blank-text">${escapeHtml(c.noScan ? COMIC_NO_SCAN_LABEL : COMIC_NOT_LOADED_LABEL)}</span></span>`;
+    return `<span class="comic-cover-blank" aria-hidden="true"><span class="comic-cover-blank-text">${escapeHtml(COMIC_NOT_LOADED_LABEL)}</span></span>`;
   }
 
   /**
-   * A tile's <img> failed (e.g. files1.comics.org answering a Cloudflare 403 page): remember it
-   * on the tile (URL kept, imgFailed: true) so re-renders show the blank "Cover didn't load"
-   * tile instead of retrying, swap this tile in place, and if it's the picked cover, drop the
-   * broken URL from the form but keep the pick. A failed tile isn't "missing": the retry
-   * button only asks the relay for tiles without a URL.
+   * A tile's <img> failed (e.g. the picture host refused or is down): remember it on the tile
+   * (URL kept, imgFailed: true) so re-renders show the blank "Cover didn't load" tile instead
+   * of retrying, swap this tile in place, and if it's the picked cover, drop the broken URL
+   * from the form but keep the pick.
    */
   function onComicCoverImgError(img) {
     const btn = img.closest("[data-comic-cover]");
@@ -4795,55 +4739,67 @@
     const shown = comicPicker.expanded ? all : all.slice(0, COMIC_COVER_MAX);
     // NEW COPY (fact check): picker captions and the Show all button.
     const images = comicCoverImagesOn();
-    const tiles = shown.map((c, i) => {
-      const on = comicPicker.choice === "cover" && comicPicker.picked === i;
+    // Layout (Oholiab): every row has a picture -> the two-column grid; none -> names only;
+    // some -> the pictured row(s) on top as ~140px tiles, the other names as rows under them.
+    // A name without a picture is never put in a blank tile beside a photo.
+    const pictured = images ? all.filter((t) => t.url).length : 0;
+    const layout = !pictured ? "names" : pictured === all.length ? "grid" : "mixed";
+    const selected = (i) => comicPicker.choice === "cover" && comicPicker.picked === i;
+    const nameRow = (c, i) => {
+      // Names only (Oholiab): one variant per row, ≥44px, the full name on up to two lines,
+      // the picker's outline + check when picked, the issue link at the row's end.
+      const on = selected(i);
       const label = c.label || `Cover ${i + 1}`;
-      if (!images) {
-        // Names only (Oholiab): one variant per row, ≥44px, the full name on up to two
-        // lines, the picker's outline + check when picked, the issue link at the row's end.
-        const href = comicIssuePageUrl(c.sourceId);
-        return (
-          `<div class="comic-name-row">` +
-          `<button type="button" class="comic-cover comic-name${on ? " is-selected" : ""}" data-comic-cover="${i}" aria-pressed="${on}" title="${escapeHtml(label)}">` +
-          `<span class="comic-cover-label">${escapeHtml(label)}</span>` +
-          (c.variant ? `<span class="comic-name-variant">Variant</span>` : "") +
-          `</button>` +
-          (href
-            ? `<a class="comic-cover-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(`${label}: ${comicSourceFor(c.sourceId).issueLinkText}`)}">${escapeHtml(comicSourceFor(c.sourceId).issueLinkShort)}</a>`
-            : "") +
-          `</div>`
-        );
-      }
-      // Thumbnails: 2:3 boxes; a name with no image yet, or whose image failed to load, gets
-      // a plain 2:3 tile (a failed one is never requested again in this picker).
+      const href = comicIssuePageUrl(c.sourceId);
+      return (
+        `<div class="comic-name-row">` +
+        `<button type="button" class="comic-cover comic-name${on ? " is-selected" : ""}" data-comic-cover="${i}" aria-pressed="${on}" title="${escapeHtml(label)}">` +
+        `<span class="comic-cover-label">${escapeHtml(label)}</span>` +
+        (c.variant ? `<span class="comic-name-variant">Variant</span>` : "") +
+        `</button>` +
+        (href
+          ? `<a class="comic-cover-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(`${label}: ${comicSourceFor(c.sourceId).issueLinkText}`)}">${escapeHtml(comicSourceFor(c.sourceId).issueLinkShort)}</a>`
+          : "") +
+        `</div>`
+      );
+    };
+    const pictureTile = (c, i, extraClass = "") => {
+      // 2:3 picture with the GCD name under it; a picture that failed to load gets the plain
+      // "Cover didn't load" tile (never requested again in this picker).
+      const on = selected(i);
+      const label = c.label || `Cover ${i + 1}`;
       const showImg = c.url && !c.imgFailed;
       const art = showImg
         ? `<img src="${escapeHtml(c.url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`
         : comicBlankTileArt(c);
       return (
-        `<button type="button" class="comic-cover${on ? " is-selected" : ""}${showImg ? "" : " is-blank"}" data-comic-cover="${i}" aria-pressed="${on}" title="${escapeHtml(label)}">` +
+        `<button type="button" class="comic-cover${extraClass}${on ? " is-selected" : ""}${showImg ? "" : " is-blank"}" data-comic-cover="${i}" aria-pressed="${on}" title="${escapeHtml(label)}">` +
         art +
         `<span class="comic-cover-label">${escapeHtml(label)}</span>` +
         (c.variant ? `<span class="comic-cover-variant">Variant</span>` : "") +
         `</button>`
       );
-    });
-    // "Show all N covers" only when names are hidden (more than 5). After a partial answer
-    // the retry button sits under the note, outside the grid (Oholiab fixes 3 and 4), and
-    // stays while any cover is still missing.
+    };
+    const tiles = [];
+    if (layout === "names") shown.forEach((c, i) => tiles.push(nameRow(c, i)));
+    else if (layout === "grid") shown.forEach((c, i) => tiles.push(pictureTile(c, i)));
+    else {
+      const photos = shown.map((c, i) => (c.url ? pictureTile(c, i, " comic-photo") : "")).filter(Boolean);
+      if (photos.length) tiles.push(`<div class="comic-photo-row">${photos.join("")}</div>`);
+      shown.forEach((c, i) => {
+        if (!c.url) tiles.push(nameRow(c, i));
+      });
+    }
+    // "Show all N covers" only when names are hidden (more than 5): it lists the rest, nothing
+    // is fetched.
     const collapsed = !comicPicker.expanded && comicPicker.total > COMIC_COVER_MAX;
     if (collapsed) {
       tiles.push(`<button type="button" class="btn btn-ghost comic-show-all" id="btn-comic-show-all">Show all ${comicPicker.total} covers</button>`);
     }
-    const retry = $("#btn-comic-retry-covers");
-    if (retry) {
-      retry.textContent = COMIC_RETRY_COVERS_LABEL;
-      retry.hidden = collapsed || !comicPickerMissingImages();
-      retry.disabled = comicPicker.loading;
-    }
     list.innerHTML = tiles.length ? tiles.join("") : `<p class="comic-picker-empty">No covers from this source.</p>`;
-    list.setAttribute("aria-busy", String(comicPicker.loading));
-    list.classList.toggle("is-names", !images);
+    list.setAttribute("aria-busy", "false");
+    list.classList.toggle("is-names", layout === "names");
+    list.classList.toggle("is-mixed", layout === "mixed");
     syncCoverRow();
     const urlInput = $("#field-comic-cover-url");
     if (urlInput && document.activeElement !== urlInput) {
@@ -4877,13 +4833,17 @@
     const source = els.fieldType.value === "comic" ? comicSourceFor(els.fieldSourceId.value) : null;
     const show = Boolean(source) && !(comicPicker.open && comicPicker.credit);
     box.hidden = !show;
-    box.innerHTML = show ? comicCreditHtml(source, els.fieldSourceUrl.value) : "";
+    // The form's cover is a picture source's image (e.g. a Metron link picked in Lookup): credit both.
+    const coverSource = comicCoverImagesOn() ? comicImageSourceFor(els.fieldCover.value) : null;
+    box.innerHTML = show ? comicCreditHtml(source, els.fieldSourceUrl.value, coverSource) : "";
     // Cover picker: the same plain-text credit under the covers (above Save).
     const pick = $("#comic-picker-credit");
     if (pick) {
       const on = comicPicker.open && Boolean(comicPicker.credit);
       pick.hidden = !on;
-      pick.innerHTML = on ? comicCreditHtml(comicPicker.credit, els.fieldSourceUrl.value) : "";
+      // Both credits while the picker shows the picture source's images; GCD's sentence alone otherwise.
+      const imageCredit = comicCoverImagesOn() && comicPicker.tiles.some((t) => t.url) ? comicPicker.imageCredit : null;
+      pick.innerHTML = on ? comicCreditHtml(comicPicker.credit, els.fieldSourceUrl.value, imageCredit) : "";
     }
   }
 
@@ -4980,6 +4940,8 @@
           variants: res.variants,
           total: res.total,
           partial: res.partial,
+          imagesFrom: res.imagesFrom,
+          imagesPending: res.imagesPending,
           hint: sameUpc
             ? SAME_UPC_HINT
             : coverCount > 1
@@ -5610,8 +5572,6 @@
     // :user-invalid settles on blur and on a Save attempt; the message follows it.
     els.fieldCover.addEventListener("blur", () => requestAnimationFrame(updateCoverUrlError));
     els.form.addEventListener("submit", () => requestAnimationFrame(updateCoverUrlError));
-    const comicRetry = $("#btn-comic-retry-covers");
-    if (comicRetry) comicRetry.addEventListener("click", () => retryMissingComicCovers());
     const comicCoverList = $("#comic-cover-list");
     if (comicCoverList) {
       // error doesn't bubble: listen in the capture phase for every tile's <img>.
@@ -5990,7 +5950,7 @@
     if (!comic) return text;
     // Comics: the stored cover URL as-is in an <img> (bytes are never fetched or copied);
     // names-only mode shows the cover / variant name instead of an image.
-    const url = String(it.coverUrl || "").trim();
+    const url = comicImageSuppressed(it.type, it.coverUrl) ? "" : String(it.coverUrl || "").trim();
     const thumb = images
       ? url
         ? `<img class="dup-thumb" src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`

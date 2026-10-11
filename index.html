@@ -142,7 +142,8 @@
           </div>
           <p class="field-hint" id="camera-hint">Allow camera when Safari asks.</p>
           <p id="lookup-status" class="lookup-status" role="status" aria-live="polite" hidden></p>
-          <!-- Comic source credit, filled from COMIC_SOURCES (app.js) by the comic's sourceId. -->
+          <!-- Comic source credit, filled from COMIC_SOURCES (app.js) by the comic's sourceId, plus
+               COMIC_IMAGE_SOURCES (Metron) when the cover is one of its pictures. -->
           <div id="comic-credit" class="comic-credit" hidden></div>
           <!-- Comic cover picker: required after any comic match (one UPC fits every variant).
                NEW COPY (fact check). -->
@@ -150,10 +151,8 @@
             <p class="comic-picker-title" id="comic-picker-title">Choose the cover</p>
             <p class="comic-picker-hint" id="comic-picker-hint"></p>
             <div id="comic-cover-list" class="comic-cover-list"></div>
-            <!-- Show all: busy / isn't-working line under the covers (same texts as Lookup). -->
+            <!-- Muted note under the covers when the picture source couldn't be asked (imagesPending). -->
             <p id="comic-show-all-status" class="lookup-status comic-show-all-status" role="status" aria-live="polite" hidden></p>
-            <!-- After a partial answer: retry for the covers still missing, under the note. -->
-            <button type="button" id="btn-comic-retry-covers" class="btn btn-ghost comic-show-all comic-retry-covers" hidden></button>
             <div id="comic-picker-credit" class="comic-credit" hidden></div>
             <div class="comic-picker-url">
               <label for="field-comic-cover-url">Or paste a photo URL</label>

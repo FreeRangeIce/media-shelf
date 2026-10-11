@@ -1,5 +1,5 @@
-/* FreeRangeMedia service worker — cache version v28 */
-const CACHE = "media-shelf-v28";
+/* FreeRangeMedia service worker — cache version v29 */
+const CACHE = "media-shelf-v29";
 /*
  * Cross-origin responses (cover images, APIs, CDNs) are never written to the cache: only
  * same-origin responses are (see the fetch handler). Comic data and covers from the Grand
@@ -13,6 +13,12 @@ const NEVER_HANDLE_HOSTS = /(^|\.)comics\.org$/i;
  * either: its answers go straight to the page and are never cached here.
  */
 const RELAY_HOSTS = /^frm-gcd\.freerangeice\.workers\.dev$/i;
+/*
+ * Comic cover pictures from Metron (static.metron.cloud) are never routed through this
+ * worker either, so the browser loads them straight from Metron and no image bytes can land
+ * in a cache (Berean's terms: the link is shown, the bytes are never fetched or stored by us).
+ */
+const IMAGE_HOSTS = /^static\.metron\.cloud$/i;
 const ASSETS = [
   "./",
   "./index.html",
@@ -51,7 +57,7 @@ self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
   const host = new URL(req.url).hostname;
-  if (NEVER_HANDLE_HOSTS.test(host) || RELAY_HOSTS.test(host)) return; // straight to the network
+  if (NEVER_HANDLE_HOSTS.test(host) || RELAY_HOSTS.test(host) || IMAGE_HOSTS.test(host)) return; // straight to the network
   event.respondWith(
     caches.match(req).then((cached) => {
       const fetched = fetch(req)

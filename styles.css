@@ -2546,6 +2546,26 @@ body.modal-open {
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* Mixed (Oholiab): only some rows have a picture. The pictured row(s) sit on top as
+   ~140px 2:3 tiles with the GCD name under them; the other names follow as the names-only
+   rows above. A name without a picture never gets a blank tile beside a photo. */
+.comic-cover-list.is-mixed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.comic-photo-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.comic-cover.comic-photo {
+  flex: 0 0 140px;
+  width: 140px;
+  max-width: 100%;
+}
+
 .comic-name-row {
   display: flex;
   align-items: center;
@@ -2623,17 +2643,7 @@ body.modal-open {
   margin-top: var(--space-2);
 }
 
-/* The retry button after a partial answer: 12px under the note (Oholiab fix 3). */
-.comic-retry-covers {
-  display: block;
-  margin-top: var(--space-3);
-}
-
-.comic-retry-covers[hidden] {
-  display: none;
-}
-
-/* A partial answer's "still loading" note in the same spot: muted, never the error red. */
+/* The "pictures couldn't be checked" note (imagesPending) in the same spot: muted, never the error red. */
 .comic-show-all-status.is-note {
   color: var(--text-muted);
 }
