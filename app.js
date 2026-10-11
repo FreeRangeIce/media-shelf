@@ -4140,15 +4140,27 @@
   const COMIC_FAIL_MESSAGE = "Comic lookup isn't working right now. What you typed is kept.";
   /** No relay URL in this build: nothing was looked up, so never "No match" (Berean, 12:05am). */
   const COMIC_NOT_SET_UP_MESSAGE = "Comic lookup isn't set up yet. What you typed is kept."; // cleared (Berean, 12:05am)
-  /** PLACEHOLDER copy (Berean must clear): a miss with reason "add-year" when no year was sent. */
+  /** A miss with reason "add-year" when no year was sent (muted, not red). */
   const COMIC_ADD_YEAR_MESSAGE = "Too many comics match that series name. Add the year it came out, then look up again. What you typed is kept."; // cleared (Berean, Oct 10)
   /**
-   * PLACEHOLDER copy (Berean must clear): muted note under the covers when a partial answer
-   * (the relay ran out of GCD calls) left some covers without an image. {source} = shortName.
+   * Muted note under the covers when a partial answer
+   * (the relay ran out of GCD calls) left some covers without an image.
    */
-  const COMIC_PARTIAL_NOTE = () => "Some covers didn't load because the comic database is busy. Tap Show all in a few minutes to try for the rest."; // cleared (Berean, Oct 10)
+  const COMIC_PARTIAL_NOTE = () => "Some covers didn't load because the comic database is busy. Try again later."; // cleared (Berean, Oct 10); only after a partial answer
+  /** Centered line inside a cover tile with no image (Berean, Oct 10): never fetched yet... */
+  const COMIC_NOT_LOADED_LABEL = "Cover didn't load"; // cleared (Berean, Oct 10)
+  /** ...or the source said it has no scan (the relay's noCover list). */
+  const COMIC_NO_SCAN_LABEL = "No cover scan on GCD"; // cleared (Berean, Oct 10)
+  /** The retry button whenever a cover with an id is still missing its image. */
+  const COMIC_RETRY_COVERS_LABEL = "Try again for the missing covers"; // cleared (Berean, Oct 10)
   /** After a busy answer, Lookup waits out Retry-After (capped) before asking the relay again. */
   let comicBusyUntil = 0;
+  /**
+   * A partial 200's Retry-After: only the cover retry waits it out (Nathan), so a tap before
+   * then is answered busy here without asking the relay. A new Lookup isn't held back by it,
+   * because the relay may answer that one from its cache.
+   */
+  let comicCoversBusyUntil = 0;
 
   /** A JSON object (not null, not an array): the only body shape the relay sends. */
   function isPlainObject(v) {
@@ -4227,6 +4239,11 @@
       }
       const body = await res.json().catch(() => undefined);
       if (!isPlainObject(body)) return { busy: false, failed: true, body: null };
+      // A partial 200 carries the relay's Retry-After (capped at 5 min like a 503).
+      if (body.partial === true) {
+        const secs = Number(res.headers.get("Retry-After"));
+        if (Number.isFinite(secs) && secs > 0) comicCoversBusyUntil = Date.now() + Math.min(secs, 300) * 1000;
+      }
       return { busy: false, failed: false, body };
     } finally {
       clearTimeout(timer);
@@ -4312,23 +4329,26 @@
     const useFixture = devComicFixtureMode() !== null;
     const okUrl = (u) => comicCoverUrl(u, useFixture);
     const covers = [];
+    const noCover = [];
     for (let i = 0; i < want.length; i += COMIC_COVERS_CHUNK) {
       const chunk = want.slice(i, i + COMIC_COVERS_CHUNK);
       let got;
       try {
         if (useFixture) got = devComicFixtureCovers(chunk);
         else if (!comicRelaySetUp()) got = { busy: false, failed: true, body: null };
-        else if (Date.now() < comicBusyUntil) got = { busy: true, body: null };
+        else if (Date.now() < Math.max(comicBusyUntil, comicCoversBusyUntil)) got = { busy: true, body: null };
         else got = await comicRelayGet("/comic-covers", { ids: chunk.join(",") });
       } catch {
         got = { busy: false, failed: true, body: null };
       }
-      if (got.busy) return { covers, busy: true, failed: false };
-      if (got.failed || !isPlainObject(got.body)) return { covers, busy: false, failed: true };
+      if (got.busy) return { covers, noCover, busy: true, failed: false };
+      if (got.failed || !isPlainObject(got.body)) return { covers, noCover, busy: false, failed: true };
       covers.push(...sanitizeComicCovers(got.body.covers, okUrl));
-      if (got.body.partial === true) return { covers, busy: true, failed: false };
+      // Ids the source says have no scan (only ids we asked for).
+      if (Array.isArray(got.body.noCover)) noCover.push(...got.body.noCover.filter((id) => typeof id === "string" && chunk.includes(id)));
+      if (got.body.partial === true) return { covers, noCover, busy: true, failed: false };
     }
-    return { covers, busy: false, failed: false };
+    return { covers, noCover, busy: false, failed: false };
   }
 
   /** DEV ONLY: the fixture mode from localStorage, or null when it isn't set. */
@@ -4436,8 +4456,9 @@
       .map((id) => DEV_FIXTURE_LABELS.findIndex((_, i) => devFixtureVariant(i).sourceId === id))
       .filter((i) => i >= 0 && !DEV_FIXTURE_NO_IMAGE.has(i))
       .map((i) => ({ ...devFixtureVariant(i), url: devFixtureCoverUrl(i) }));
+    const noCover = ids.filter((id) => DEV_FIXTURE_LABELS.some((_, i) => DEV_FIXTURE_NO_IMAGE.has(i) && devFixtureVariant(i).sourceId === id));
     if (mode === "18partial") return { busy: false, body: { partial: true, covers: covers.slice(0, 3) } };
-    return { busy: false, body: { covers } };
+    return { busy: false, body: { covers, noCover } };
   }
 
   /* ---------- Comic cover picker + Save gate ----------
@@ -4506,9 +4527,13 @@
     el.hidden = !msg;
   }
 
-  /** A partial answer left tiles without an image that "Show all" can still fetch. */
+  /**
+   * Tiles with an id but no image that a retry can still fetch: after a partial answer, or
+   * covers past the relay's detail limit in a complete one (Nathan). Not ones the source
+   * said have no scan.
+   */
   function comicPickerMissingImages() {
-    return comicPicker.partial && comicCoverImagesOn() && comicPicker.tiles.some((t) => !t.url && t.sourceId);
+    return comicCoverImagesOn() && comicPicker.tiles.some((t) => !t.url && t.sourceId && !t.noScan);
   }
 
   /**
@@ -4553,10 +4578,8 @@
     $("#comic-picker-hint").textContent = hint;
     $("#comic-picker").hidden = false;
     setComicShowAllStatus("");
-    if (comicPickerMissingImages()) {
-      const src = credit || COMIC_ACTIVE_SOURCE;
-      setComicShowAllStatus(COMIC_PARTIAL_NOTE(src.shortName || src.name), { muted: true });
-    }
+    // The busy note only after a partial answer: in a complete one nothing was busy (Berean).
+    if (comicPicker.partial && comicPickerMissingImages()) setComicShowAllStatus(COMIC_PARTIAL_NOTE(), { muted: true });
     renderComicPicker();
   }
 
@@ -4606,10 +4629,23 @@
   async function showAllComicCovers() {
     if (!comicPicker.open || comicPicker.expanded) return;
     comicPicker.expanded = true;
+    await fetchMissingComicCovers();
+  }
+
+  /**
+   * The retry button after a partial answer: asks again only for the covers still missing.
+   * It stays as long as any are missing, so a busy or failed try can be tapped again (Nathan).
+   */
+  async function retryMissingComicCovers() {
+    if (!comicPicker.open || comicPicker.loading) return;
+    await fetchMissingComicCovers();
+  }
+
+  async function fetchMissingComicCovers() {
     setComicShowAllStatus("");
     const token = comicPicker.token;
     // Names-only mode never asks for images.
-    const missing = comicCoverImagesOn() ? comicPicker.tiles.filter((t) => !t.url && t.sourceId).map((t) => t.sourceId) : [];
+    const missing = comicCoverImagesOn() ? comicPicker.tiles.filter((t) => !t.url && t.sourceId && !t.noScan).map((t) => t.sourceId) : [];
     if (!missing.length) {
       renderComicPicker();
       return;
@@ -4624,7 +4660,10 @@
     }
     if (token !== comicPicker.token) return; // a new Lookup or a closed form replaced this picker
     const byId = new Map(res.covers.map((c) => [c.sourceId, c]));
-    comicPicker.tiles = comicPicker.tiles.map((t) => (!t.url && byId.has(t.sourceId) ? { ...t, url: byId.get(t.sourceId).url } : t));
+    const noScan = new Set(res.noCover || []);
+    comicPicker.tiles = comicPicker.tiles.map((t) =>
+      !t.url && byId.has(t.sourceId) ? { ...t, url: byId.get(t.sourceId).url } : !t.url && noScan.has(t.sourceId) ? { ...t, noScan: true } : t
+    );
     comicPicker.loading = false;
     // The picked tile may just have got its image.
     const p = comicPicker.tiles[comicPicker.picked];
@@ -4634,6 +4673,7 @@
     // Same texts as Lookup, but under the covers, not at the top of the form.
     if (res.busy) setComicShowAllStatus(COMIC_BUSY_MESSAGE);
     else if (res.failed) setComicShowAllStatus(COMIC_FAIL_MESSAGE);
+    else comicPicker.partial = false; // a complete reply: the busy note no longer applies
     renderComicPicker();
   }
 
@@ -4667,7 +4707,7 @@
       // Thumbnails: 2:3 boxes; a name with no image yet gets a plain 2:3 tile.
       const art = c.url
         ? `<img src="${escapeHtml(c.url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`
-        : `<span class="comic-cover-blank" aria-hidden="true"></span>`;
+        : `<span class="comic-cover-blank" aria-hidden="true"><span class="comic-cover-blank-text">${escapeHtml(c.noScan ? COMIC_NO_SCAN_LABEL : COMIC_NOT_LOADED_LABEL)}</span></span>`;
       return (
         `<button type="button" class="comic-cover${on ? " is-selected" : ""}${c.url ? "" : " is-blank"}" data-comic-cover="${i}" aria-pressed="${on}" title="${escapeHtml(label)}">` +
         art +
@@ -4676,10 +4716,18 @@
         `</button>`
       );
     });
-    // Also after a partial answer that left images missing (even with 5 covers or fewer):
-    // the button is how the rest are fetched later.
-    if (!comicPicker.expanded && (comicPicker.total > COMIC_COVER_MAX || comicPickerMissingImages())) {
+    // "Show all N covers" only when names are hidden (more than 5). After a partial answer
+    // the retry button sits under the note, outside the grid (Oholiab fixes 3 and 4), and
+    // stays while any cover is still missing.
+    const collapsed = !comicPicker.expanded && comicPicker.total > COMIC_COVER_MAX;
+    if (collapsed) {
       tiles.push(`<button type="button" class="btn btn-ghost comic-show-all" id="btn-comic-show-all">Show all ${comicPicker.total} covers</button>`);
+    }
+    const retry = $("#btn-comic-retry-covers");
+    if (retry) {
+      retry.textContent = COMIC_RETRY_COVERS_LABEL;
+      retry.hidden = collapsed || !comicPickerMissingImages();
+      retry.disabled = comicPicker.loading;
     }
     list.innerHTML = tiles.length ? tiles.join("") : `<p class="comic-picker-empty">No covers from this source.</p>`;
     list.setAttribute("aria-busy", String(comicPicker.loading));
@@ -4846,7 +4894,8 @@
             : addYear
               ? COMIC_ADD_YEAR_MESSAGE
               : "No match. What you typed is kept.", // cleared (Berean): comics only
-          "error"
+          // The add-year line asks for something; nothing failed, so it stays muted (Oholiab).
+          addYear && !barcodeMiss ? undefined : "error"
         );
         if (barcodeMiss) (els.fieldSeries.value.trim() ? els.fieldIssue : els.fieldSeries).focus();
         else if (addYear) els.fieldYear.focus();
@@ -5442,6 +5491,8 @@
     // :user-invalid settles on blur and on a Save attempt; the message follows it.
     els.fieldCover.addEventListener("blur", () => requestAnimationFrame(updateCoverUrlError));
     els.form.addEventListener("submit", () => requestAnimationFrame(updateCoverUrlError));
+    const comicRetry = $("#btn-comic-retry-covers");
+    if (comicRetry) comicRetry.addEventListener("click", () => retryMissingComicCovers());
     const comicCoverList = $("#comic-cover-list");
     if (comicCoverList) {
       comicCoverList.addEventListener("click", (e) => {
