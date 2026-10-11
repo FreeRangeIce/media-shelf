@@ -410,17 +410,43 @@ body {
     background: linear-gradient(var(--nav-divider), var(--nav-divider)) center / 1px calc(100% - 20px) no-repeat;
   }
 
+  /* Each half stays a full 44px target; the hover / pressed fill is a pill drawn 8px inside it
+     on every side (::before), so it is centred in its half and never touches the divider. The
+     button itself never takes a fill, so the general .btn:hover light fill can't stick. */
   .header-actions .btn-ghost,
-  .header-actions .btn-ghost:hover {
+  .header-actions .btn-ghost:hover,
+  .header-actions .btn-ghost:active {
+    position: relative;
+    isolation: isolate;
     color: #f3ead7;
+    background: transparent;
     border-color: transparent;
   }
 
-  .header-actions .btn-ghost:hover {
+  .header-actions .btn-ghost::before {
+    content: "";
+    position: absolute;
+    inset: 8px;
+    z-index: -1;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    transition: background 0.15s;
+    pointer-events: none;
+  }
+
+  /* Hover fill only where hover is real (mouse, trackpad). On touch, iOS keeps :hover after a
+     tap, so there the pill shows only while pressed and for keyboard focus, and clears on release. */
+  @media (hover: hover) {
+    .header-actions .btn-ghost:hover::before {
+      background: var(--nav-hover);
+    }
+  }
+
+  .header-actions .btn-ghost:focus-visible::before {
     background: var(--nav-hover);
   }
 
-  .header-actions .btn-ghost:active {
+  .header-actions .btn-ghost:active::before {
     background: var(--nav-pressed);
   }
 
