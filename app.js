@@ -2,10 +2,10 @@
 (() => {
   "use strict";
 
-  // App version shown at the end of Settings ("App version v34"; cleared, Berean, Oct 11).
+  // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Bump it with the service worker cache each release: it must match sw.js's CACHE name
-  // (media-shelf-v34), which the tests check.
-  const APP_VERSION = 34;
+  // (media-shelf-v35), which the tests check.
+  const APP_VERSION = 35;
   const STORAGE_KEY = "media-tracker-v1";
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
   const RAWG_KEY_STORAGE = "media-shelf-rawg-key";
@@ -645,6 +645,15 @@
   const PHYSICAL_ONLY_CONDITIONS = ["fine", "damaged"];
   /** Types whose signed copy is tracked per name (books: creator; comics: writer + artist). */
   const SIGNED_TYPES = new Set(["book", "comic"]);
+  /**
+   * Music has a plain Signed flag (one tick, no per-name list: artist names such as
+   * "Simon & Garfunkel" must not be split). Its authors[] stays empty; `signed` is the flag.
+   */
+  const hasSignedBadge = (item) =>
+    Boolean(item && item.signed && (SIGNED_TYPES.has(item.type) || item.type === "music"));
+  /** Books (Digital and Audiobook copies) and music can only be signed as a Physical copy. */
+  const signedNeedsPhysical = (type, format) =>
+    (type === "book" || type === "music") && format !== "physical";
 
   function cleanText(v, max = 200) {
     if (Array.isArray(v)) v = v.map((x) => String(x ?? "").trim()).filter(Boolean).join(", ");
@@ -929,16 +938,22 @@
       comic.authors = comic.authors.map((a) => ({ ...a, signed: false }));
       if (PHYSICAL_ONLY_CONDITIONS.includes(comic.condition)) comic.condition = "";
     }
-    // A Digital book is never signed either (Micah, Oct 18): the flag is cleared on load, save,
-    // restore and import; the names and every other field stay.
-    const digitalBook = type === "book" && format === "digital";
-    const authors = (comic ? comic.authors : normalizeAuthors(raw.authors)).map((a) =>
-      digitalBook ? { ...a, signed: false } : a
-    );
-    // `signed` is derived from authors[]; a bare flag only survives when no author is known.
-    const signed = authors.length
-      ? authors.some((a) => a.signed)
-      : raw.signed === true && !digitalComic && !digitalBook;
+    // A Digital or Audiobook book is never signed either (Micah, Oct 18): the flag is cleared on
+    // load, save, restore and import; the names and every other field stay.
+    const digitalBook = type === "book" && signedNeedsPhysical(type, format);
+    const music = type === "music";
+    const authors = music
+      ? []
+      : (comic ? comic.authors : normalizeAuthors(raw.authors)).map((a) =>
+          digitalBook ? { ...a, signed: false } : a
+        );
+    // Books / comics: `signed` is derived from authors[]; a bare flag only survives when no author
+    // is known. Music: just the flag, Physical only; an old backup without it is unsigned.
+    const signed = music
+      ? raw.signed === true && !signedNeedsPhysical(type, format)
+      : authors.length
+        ? authors.some((a) => a.signed)
+        : raw.signed === true && !digitalComic && !digitalBook;
     const out = {
       id: String(raw.id || uid()),
       type,
@@ -1061,7 +1076,7 @@
     if (item.format === "physical" && item.disc) parts.push(DISC_LABELS[item.disc] || item.disc);
     if (isCib(item)) parts.push("CIB");
     if (item.type === "comic" && item.condition) parts.push(CONDITION_LABELS[item.condition]);
-    if (SIGNED_TYPES.has(item.type) && item.signed) {
+    if (hasSignedBadge(item)) {
       // "Signed" when every listed author signed; names only for a subset (Oholiab Pass 1
       // fix 4). The full list stays in the edit form.
       const who = item.authors.filter((a) => a.signed).map((a) => a.name);
@@ -1354,9 +1369,9 @@
     renderSignedUi();
   }
 
-  /** A Digital book is never signed: drop every signed flag in the form (names stay). */
+  /** A Digital / Audiobook book or a Digital music item is never signed: drop the flag (names stay). */
   function clearSignedIfDigitalBook() {
-    if (els.fieldType.value !== "book" || els.fieldFormat.value !== "digital") return;
+    if (!signedNeedsPhysical(els.fieldType.value, els.fieldFormat.value)) return;
     formSignedNoAuthor = false;
     formAuthors = formAuthors.map((a) => ({ ...a, signed: false }));
   }
@@ -1381,16 +1396,20 @@
   function renderSignedUi() {
     if (!els.signedRow) return;
     const type = els.fieldType.value;
-    const isBook = SIGNED_TYPES.has(type);
-    // Digital comics have no signed copy: hidden, but the ticks stay in the form so
-    // Physical → Digital → Physical loses nothing; a Digital Save drops them.
-    els.signedRow.hidden = !isBook || els.fieldFormat.value === "digital";
+    const isMusic = type === "music";
+    const isBook = SIGNED_TYPES.has(type) || isMusic;
+    // The row is hidden for Digital comics, for Digital / Audiobook books and for Digital music.
+    // Books and music have their flag cleared on the switch; Digital comics keep the ticks in the
+    // form (Physical → Digital → Physical loses nothing) and a Digital Save drops them.
+    els.signedRow.hidden =
+      !isBook ||
+      (type === "comic" ? els.fieldFormat.value === "digital" : signedNeedsPhysical(type, els.fieldFormat.value));
     if (!isBook) return;
-    // NEW COPY (fact check): "Signed" is the comic label; books keep "Signed by author".
+    // NEW COPY (fact check): "Signed" is the comic and music label; books keep "Signed by author".
     if (els.labelSignedSingle) {
-      els.labelSignedSingle.textContent = type === "comic" ? "Signed" : "Signed by author";
+      els.labelSignedSingle.textContent = type === "book" ? "Signed by author" : "Signed";
     }
-    const multi = formAuthors.length > 1;
+    const multi = !isMusic && formAuthors.length > 1;
     els.signedSingle.hidden = multi;
     els.signedMulti.hidden = !multi;
     if (!multi) {
@@ -1443,6 +1462,9 @@
 
   /** @param {boolean} [unsigned]  a Digital comic: names kept, every signed flag dropped */
   function collectAuthors(unsigned = false) {
+    if (els.fieldType.value === "music") {
+      return { authors: [], signed: !unsigned && formSignedNoAuthor };
+    }
     if (SIGNED_TYPES.has(els.fieldType.value)) syncAuthorsFromCreator();
     const authors = formAuthors.map((a) => ({ ...a, signed: unsigned ? false : a.signed }));
     return {
@@ -1786,7 +1808,7 @@
       ownsGame: componentState.ownsGame,
       ownsCase: componentState.ownsCase,
       ownsManual: componentState.ownsManual,
-      ...collectAuthors((type === "comic" || type === "book") && format === "digital"),
+      ...collectAuthors(type === "comic" ? format === "digital" : signedNeedsPhysical(type, format)),
       ...(type === "comic" ? collectComicFields() : {}),
       seed: false,
     };
@@ -2559,8 +2581,6 @@
     }
 
     fill(els.fieldCreator, data.creator);
-    // Overwrite: a lookup with no creator must not leave the old one behind.
-    if (overwrite && !data.creator && els.fieldCreator.value.trim()) els.fieldCreator.value = "";
     if (data.year != null && data.year !== "") {
       const cur = els.fieldYear.value.trim();
       if (!cur || overwrite) els.fieldYear.value = String(data.year);
@@ -2619,9 +2639,6 @@
     if (data.coverUrl && cur(els.fieldCover) && cur(els.fieldCover) !== data.coverUrl) replaced.push("cover");
     let text = "Lookup found details that differ from what’s already in the form.";
     if (replaced.length) text += ` Overwrite replaces the ${list(replaced)} with the lookup’s.`;
-    if (!data.creator && els.fieldCreator.value.trim()) {
-      text += " The lookup has no creator, so the creator will be cleared.";
-    }
     return text;
   }
 
@@ -6022,7 +6039,7 @@
     if (it.type === "comic" && it.condition) meta.push(CONDITION_LABELS[it.condition]);
     // The cover / variant name has its own line under the title (Oholiab), so "Variant" alone here.
     if (comic && it.coverVariant) meta.push("Variant");
-    if (SIGNED_TYPES.has(it.type) && it.signed) meta.push("Signed");
+    if (hasSignedBadge(it)) meta.push("Signed");
     let parts = "";
     const labels = COMPONENT_LABELS[it.type];
     if (comic) {
@@ -6119,6 +6136,8 @@
         }
       }
       if (!out.authors.length && incoming.signed) out.signed = true;
+    } else if (existing.type === "music" && incoming.signed) {
+      out.signed = true; // normalizeItem drops it again for a Digital copy
     }
     if (alsoReplace) {
       if (!empty(incoming.notes)) out.notes = incoming.notes;
@@ -7220,7 +7239,7 @@
     if ((it.type === "movie" || it.type === "music") && it.format === "physical" && it.disc) meta.push(DISC_LABELS[it.disc] || it.disc);
     if (it.year != null) meta.push(it.year);
     if (isCib(it)) meta.push("CIB");
-    if (SIGNED_TYPES.has(it.type) && it.signed) meta.push("Signed");
+    if (hasSignedBadge(it)) meta.push("Signed");
     meta.push(STATUS_LABELS[it.status] || it.status);
     const name = it.type === "comic" && !it.series ? "(no series)" : displayTitle(it);
     return { name, meta: meta.join(" · ") };
