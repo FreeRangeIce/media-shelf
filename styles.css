@@ -3049,12 +3049,24 @@ body.modal-open {
   font-size: var(--fs-sm);
   opacity: 0.85;
 }
+.cover-queue-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 0.35em; /* 8px between wrapped rows; the space between segments */
+}
+.cq-seg {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em; /* the same space before every dot */
+}
 .cover-queue-link {
   appearance: none;
   background: none;
   border: 0;
-  margin: 0;
-  padding: 0 var(--space-1);
+  margin: -12px 0; /* 44px tap height without growing the line: the gaps stay even with the other separators */
+  padding: 0;
   min-height: var(--tap);
   display: inline-flex;
   align-items: center;

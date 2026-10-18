@@ -1542,7 +1542,7 @@
    * @param {object} [snapshot] merge base for the edit, if different from `item` (the
    *   duplicate prompt opens the existing item pre-filled with incoming values)
    */
-  function openModal(item, snapshot) {
+  function openModal(item, snapshot, { focusTitle = true } = {}) {
     if (els.modal.hidden) lastFocus = document.activeElement;
     dismissPlainToast();
     editingId = item ? item.id : null;
@@ -1606,7 +1606,9 @@
     requestAnimationFrame(() => {
       // After callers' same-tick setup (e.g. a tab presetting the type), before any typing.
       itemFormBaseline = serializeItemForm();
-      els.fieldTitle.focus();
+      // Pick cover opens the sheet for the picker, not for typing: no keyboard, no jump to Title.
+      if (focusTitle) els.fieldTitle.focus();
+      else $("#modal-close").focus();
     });
   }
 
@@ -1732,6 +1734,7 @@
     if (back && back.isConnected && typeof back.focus === "function" && back.offsetParent) {
       back.focus();
     }
+    if (pickerFocusPending) focusPickerTop(); // Pick cover waited for the "Overwrite filled fields?" question
   }
 
   /** Toast; optional one action button (e.g. Undo) and a longer duration for it. */
@@ -4365,6 +4368,18 @@
   const COMIC_NOT_LOADED_LABEL = "Cover didn't load"; // cleared (Berean, Oct 10)
   /** After a busy answer, Lookup waits out Retry-After (capped) before asking the relay again. */
   let comicBusyUntil = 0;
+  /** The relay's wait, shared with other tabs and kept over a reload (only ever moves later; capped at 5 min). */
+  const COMIC_BUSY_STORAGE = "freerangemedia-comic-busy-until";
+  function comicBusyRemainingMs() {
+    let stored = 0;
+    try {
+      stored = Number(localStorage.getItem(COMIC_BUSY_STORAGE)) || 0;
+    } catch {
+      stored = 0;
+    }
+    const until = Math.max(comicBusyUntil, stored);
+    return until > Date.now() && until - Date.now() <= 300000 ? until - Date.now() : 0;
+  }
 
   /** A JSON object (not null, not an array): the only body shape the relay sends. */
   function isPlainObject(v) {
@@ -4403,7 +4418,7 @@
       let got;
       if (useFixture) got = devComicFixture(q, route.by);
       else {
-        if (Date.now() < comicBusyUntil) return { ...empty, busy: true };
+        if (comicBusyRemainingMs() > 0) return { ...empty, busy: true };
         got = await comicRelayGet(route.path, route.query);
       }
       if (got.busy) return { ...empty, busy: true };
@@ -4440,6 +4455,11 @@
         if (res.status === 429 || (res.status === 503 && retry !== null)) {
           const secs = Number(retry);
           comicBusyUntil = Date.now() + (Number.isFinite(secs) && secs > 0 ? Math.min(secs, 300) : 10) * 1000;
+          try {
+            localStorage.setItem(COMIC_BUSY_STORAGE, String(Math.max(comicBusyUntil, Number(localStorage.getItem(COMIC_BUSY_STORAGE)) || 0)));
+          } catch {
+            /* storage blocked: this tab still waits */
+          }
           return { busy: true, failed: false, body: null };
         }
         return { busy: false, failed: true, body: null };
@@ -6756,6 +6776,7 @@
     );
     if (!ok) return;
     writeLastImport(null); // the import is gone, so there's nothing left to remove
+    coverFillAfterRemoval();
     render();
     showToast("Import undone");
   }
@@ -6899,6 +6920,7 @@
       });
       if (!ok) return;
       writeLastImport(null);
+      if (done.removed) coverFillAfterRemoval();
       render();
       const msg = [];
       if (done.removed) msg.push(`Removed ${plural(done.removed, one, many)}`);
@@ -7639,7 +7661,8 @@
 
   function resumeCoverFillOnOpen() {
     const q = readCoverQueue();
-    if (q.ids.length) startCoverFill(2000);
+    // A wait the relay asked for (429) outlives a reload: no request until it ends.
+    if (q.ids.length) startCoverFill(Math.max(2000, comicBusyRemainingMs() + 500));
   }
 
   function startCoverFill(delay) {
@@ -7648,6 +7671,59 @@
       coverFillTimer = null;
       runCoverFill();
     }, delay);
+  }
+
+  /* One runner at a time across tabs: a lock in localStorage { tab, t } kept fresh by a heartbeat. */
+  const COVER_LOCK_STORAGE = "freerangemedia-clz-cover-lock";
+  const COVER_LOCK_STALE_MS = 8000;
+  const COVER_LOCK_BEAT_MS = 2000;
+  const coverTabId = `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  let coverLockBeat = null;
+
+  function readCoverLock() {
+    try {
+      const l = JSON.parse(localStorage.getItem(COVER_LOCK_STORAGE) || "null");
+      return l && typeof l.tab === "string" ? { tab: l.tab, t: Number(l.t) || 0 } : null;
+    } catch {
+      return null;
+    }
+  }
+  function ownsCoverLock() {
+    const l = readCoverLock();
+    return Boolean(l && l.tab === coverTabId);
+  }
+  /** Take the lock unless another tab holds a fresh one. Write, wait a beat, read back: the last writer wins. */
+  async function acquireCoverLock() {
+    const l = readCoverLock();
+    if (l && l.tab !== coverTabId && Date.now() - l.t < COVER_LOCK_STALE_MS) return false;
+    try {
+      localStorage.setItem(COVER_LOCK_STORAGE, JSON.stringify({ tab: coverTabId, t: Date.now() }));
+    } catch {
+      return true; // storage blocked: no other tab can be coordinated with
+    }
+    await coverFillSleep(60);
+    if (!ownsCoverLock()) return false;
+    coverLockBeat = setInterval(() => {
+      if (ownsCoverLock()) {
+        try {
+          localStorage.setItem(COVER_LOCK_STORAGE, JSON.stringify({ tab: coverTabId, t: Date.now() }));
+        } catch {
+          /* ignore */
+        }
+      }
+    }, COVER_LOCK_BEAT_MS);
+    return true;
+  }
+  function releaseCoverLock() {
+    clearInterval(coverLockBeat);
+    coverLockBeat = null;
+    if (ownsCoverLock()) {
+      try {
+        localStorage.removeItem(COVER_LOCK_STORAGE);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   const coverFillSleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -7676,13 +7752,23 @@
     return { kind: "needs" }; // several covers: attach none, never guess the variant
   }
 
-  /** Write ONLY the cover fields (and the mark) onto one row; false if it couldn't be saved. */
-  function writeCoverFill(id, outcome) {
-    return commitItems((list) => {
+  /** True while the row is still the one that was looked up: same series and issue, no cover, no mark. */
+  function coverFillRowCurrent(cur, looked) {
+    return Boolean(cur) && cur.series === looked.series && cur.issue === looked.issue && coverFillEligible(cur);
+  }
+
+  /**
+   * Write ONLY the cover fields (and the mark) onto one row. Returns "written", "dropped" (the row
+   * was deleted, removed, renamed to another series/issue or given a cover while the lookup ran:
+   * the result is thrown away and nothing is counted) or "failed" (storage full).
+   */
+  function writeCoverFill(id, outcome, looked) {
+    let applied = false;
+    const ok = commitItems((list) => {
       const idx = list.findIndex((i) => i.id === id);
       if (idx < 0) return;
       const cur = list[idx];
-      if (!coverFillEligible(cur)) return; // edited meanwhile: leave it
+      if (!coverFillRowCurrent(cur, looked)) return; // edited meanwhile: drop the result
       let fields;
       if (outcome.kind === "needs") {
         fields = { coverNeeded: true };
@@ -7714,8 +7800,22 @@
       }
       const next = list.slice();
       next[idx] = normalizeItem({ ...cur, ...fields }); // dateUpdated and every other field untouched
+      applied = true;
       return next;
     }, "other");
+    return ok ? (applied ? "written" : "dropped") : "failed";
+  }
+
+  /**
+   * After Undo / Remove last import took rows away: the queue forgets rows that are gone, and the
+   * filled / no match / skipped counts (which included those rows) are cleared rather than guessed.
+   */
+  function coverFillAfterRemoval() {
+    const q = readCoverQueue();
+    const keep = new Set(items.filter(coverFillEligible).map((i) => i.id));
+    q.ids = q.ids.filter((id) => keep.has(id));
+    Object.assign(q, { filled: 0, none: 0, skipped: 0, paused: q.ids.length ? q.paused : false, seen: q.ids.length > 0 });
+    writeCoverQueue(q);
   }
 
   /** The import record's fingerprint for a row the queue changed, so Remove last import still finds it. */
@@ -7731,7 +7831,15 @@
 
   async function runCoverFill() {
     if (coverFillRunning) return;
-    coverFillRunning = true;
+    coverFillRunning = true; // set first so a second start in this tab can't slip in during the lock check
+    if (!(await acquireCoverLock())) {
+      coverFillRunning = false;
+      // Another tab is running the queue. Look again later; if that tab pauses the queue, stay quiet.
+      setTimeout(() => {
+        if (readCoverQueue().ids.length && !readCoverQueue().paused) startCoverFill(0);
+      }, COVER_LOCK_STALE_MS / 2);
+      return;
+    }
     let fails = 0;
     const failed = new Set();
     let q = readCoverQueue();
@@ -7741,6 +7849,7 @@
     let stopped = false;
     try {
       for (;;) {
+        if (!ownsCoverLock()) return; // another tab took over (our heartbeat was starved): stop quietly; finally skips the pause write
         syncFromStorage();
         q = readCoverQueue();
         const id = q.ids.find((x) => !failed.has(x));
@@ -7771,16 +7880,28 @@
         } else {
           fails = 0;
           const outcome = classifyCoverAnswer(res);
-          if (outcome.kind !== "none" && !writeCoverFill(id, outcome)) {
-            stopped = true; // storage full: nothing written, row stays queued
-            break;
+          const looked = { series: it.series, issue: it.issue };
+          let counted = false; // only a row that is still the one we looked up is ever counted
+          let wrote = false;
+          if (outcome.kind === "none") {
+            syncFromStorage();
+            counted = coverFillRowCurrent(items.find((i) => i.id === id), looked); // no write, but the row must still be there
+          } else {
+            const w = writeCoverFill(id, outcome, looked);
+            if (w === "failed") {
+              stopped = true; // storage full: nothing written, row stays queued
+              break;
+            }
+            counted = wrote = w === "written";
           }
           q = readCoverQueue();
           q.ids = q.ids.filter((x) => x !== id);
-          if (outcome.kind === "one") q.filled += 1;
-          else if (outcome.kind === "none") q.none += 1;
+          if (counted) {
+            if (outcome.kind === "one") q.filled += 1;
+            else if (outcome.kind === "none") q.none += 1;
+          }
           writeCoverQueue(q);
-          if (outcome.kind !== "none") {
+          if (wrote) {
             refreshLastImportFingerprint(id);
             renderStats();
             renderList();
@@ -7790,11 +7911,15 @@
         if (q.ids.some((x) => !failed.has(x))) await coverFillSleep(COVER_FILL_DELAY_MS); // modest pause: one at a time
       }
     } finally {
+      const hadLock = ownsCoverLock();
       coverFillRunning = false;
-      q = readCoverQueue();
-      // Rows that failed (not rate limited) are still queued: say so, and retry on the next open or Resume.
-      q.paused = stopped || q.ids.length > 0;
-      writeCoverQueue(q);
+      releaseCoverLock();
+      if (hadLock) {
+        q = readCoverQueue();
+        // Rows that failed (not rate limited) are still queued: say so, and retry on the next open or Resume.
+        q.paused = stopped || q.ids.length > 0;
+        writeCoverQueue(q);
+      }
       renderCoverQueueUi();
     }
   }
@@ -7812,7 +7937,11 @@
     const needHtml = needs
       ? `<button type="button" class="cover-queue-link" id="btn-cover-needs" aria-label="${escapeHtml(`Show the ${needs} ${needs === 1 ? "comic that needs" : "comics that need"} a cover`)}" aria-pressed="${filterNeedsCover}">${needText}</button>`
       : needText;
-    $("#cover-queue-line").innerHTML = `${q.filled} filled · ${needHtml} · ${q.none} no match · ${q.skipped} skipped`;
+    // Each segment never breaks inside (nowrap); the line wraps only between segments. The dot
+    // stays with the segment before it, so a wrapped line never starts with one. The spaces keep
+    // the copied / read-out text "12 filled · 14 need a cover · 3 no match · 9 skipped".
+    const seg = (inner, dot = true) => `<span class="cq-seg">${inner}${dot ? ' <span class="cq-dot">·</span>' : ""}</span>`;
+    $("#cover-queue-line").innerHTML = [seg(`${q.filled} filled`), seg(needHtml), seg(`${q.none} no match`), seg(`${q.skipped} skipped`, false)].join(" ");
     const note = $("#cover-queue-note");
     let msg = "";
     if (coverFillRunning) msg = `Finding covers, ${q.ids.length} left`;
@@ -7824,11 +7953,25 @@
     $("#btn-cover-show-all").hidden = !filterNeedsCover;
   }
 
-  function pickCoverFor(id) {
+  async function pickCoverFor(id) {
     const item = items.find((i) => i.id === id);
     if (!item) return;
-    openModal(item);
-    runComicLookup(); // the existing Lookup + named-variant picker; Save keeps what you pick
+    openModal(item, null, { focusTitle: false });
+    await runComicLookup(); // the existing Lookup + named-variant picker; Save keeps what you pick
+    // Land on the top of the picker with the variant choices showing. If the existing Lookup is
+    // asking "Overwrite filled fields?", wait until that is answered.
+    if (!els.confirm.hidden) pickerFocusPending = true;
+    else focusPickerTop();
+  }
+
+  let pickerFocusPending = false;
+  function focusPickerTop() {
+    pickerFocusPending = false;
+    const picker = $("#comic-picker");
+    if (!picker || picker.hidden || els.modal.hidden) return;
+    picker.scrollIntoView({ block: "start" });
+    const first = picker.querySelector("[data-comic-cover]");
+    if (first) first.focus({ preventScroll: true });
   }
 
   function bindCoverQueue() {
