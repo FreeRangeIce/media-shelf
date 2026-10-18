@@ -3033,3 +3033,55 @@ body.modal-open {
     font-size: var(--fs-md);
   }
 }
+
+/* CLZ cover fill (v36): a quiet count line on the oak (cream like the banners), no red, no spinner. */
+.cover-queue {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-md);
+  color: #f3ead7;
+}
+.cover-queue-line,
+.cover-queue-note {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.cover-queue-note {
+  font-size: var(--fs-sm);
+  opacity: 0.85;
+}
+.cover-queue-link {
+  appearance: none;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0 var(--space-1);
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.cover-queue-link:focus-visible,
+.cover-queue-btn:focus-visible,
+.btn-pick-cover:focus-visible {
+  outline: 2px solid #f3ead7;
+  outline-offset: 2px;
+}
+.cover-queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.cover-queue .cover-queue-btn {
+  min-height: var(--tap);
+  color: #f3ead7;
+  border-color: #f3ead7;
+  background: transparent;
+}
+.btn-pick-cover {
+  min-height: var(--tap);
+  margin-top: var(--space-2);
+  align-self: flex-start;
+}

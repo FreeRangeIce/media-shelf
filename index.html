@@ -98,6 +98,15 @@
         <button type="button" class="btn btn-ghost btn-sm" id="btn-backup-dismiss" aria-label="Dismiss backup reminder for 7 days">Not now</button>
       </div>
     </div>
+    <!-- CLZ cover fill: one quiet count line, a muted note, Resume, and a way back from the Needs a cover list. -->
+    <section id="cover-queue" class="cover-queue" aria-label="Comic covers" hidden>
+      <p id="cover-queue-line" class="cover-queue-line" role="status" aria-live="polite"></p>
+      <p id="cover-queue-note" class="cover-queue-note" hidden></p>
+      <div class="cover-queue-actions">
+        <button type="button" class="btn btn-ghost btn-sm cover-queue-btn" id="btn-cover-resume" aria-label="Resume cover lookups" hidden>Resume</button>
+        <button type="button" class="btn btn-ghost btn-sm cover-queue-btn" id="btn-cover-show-all" hidden>Show all items</button>
+      </div>
+    </section>
     <ul id="item-list" class="item-list" aria-live="polite"></ul>
     <div id="empty-state" class="empty-state" hidden>
       <p class="empty-title">Nothing on this shelf yet</p>
