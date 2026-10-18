@@ -2,10 +2,10 @@
 (() => {
   "use strict";
 
-  // App version shown at the end of Settings ("App version v33"; cleared, Berean, Oct 11).
+  // App version shown at the end of Settings ("App version v34"; cleared, Berean, Oct 11).
   // Bump it with the service worker cache each release: it must match sw.js's CACHE name
-  // (media-shelf-v33), which the tests check.
-  const APP_VERSION = 33;
+  // (media-shelf-v34), which the tests check.
+  const APP_VERSION = 34;
   const STORAGE_KEY = "media-tracker-v1";
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
   const RAWG_KEY_STORAGE = "media-shelf-rawg-key";
@@ -929,11 +929,16 @@
       comic.authors = comic.authors.map((a) => ({ ...a, signed: false }));
       if (PHYSICAL_ONLY_CONDITIONS.includes(comic.condition)) comic.condition = "";
     }
-    const authors = comic ? comic.authors : normalizeAuthors(raw.authors);
+    // A Digital book is never signed either (Micah, Oct 18): the flag is cleared on load, save,
+    // restore and import; the names and every other field stay.
+    const digitalBook = type === "book" && format === "digital";
+    const authors = (comic ? comic.authors : normalizeAuthors(raw.authors)).map((a) =>
+      digitalBook ? { ...a, signed: false } : a
+    );
     // `signed` is derived from authors[]; a bare flag only survives when no author is known.
     const signed = authors.length
       ? authors.some((a) => a.signed)
-      : raw.signed === true && !digitalComic;
+      : raw.signed === true && !digitalComic && !digitalBook;
     const out = {
       id: String(raw.id || uid()),
       type,
@@ -1349,13 +1354,37 @@
     renderSignedUi();
   }
 
+  /** A Digital book is never signed: drop every signed flag in the form (names stay). */
+  function clearSignedIfDigitalBook() {
+    if (els.fieldType.value !== "book" || els.fieldFormat.value !== "digital") return;
+    formSignedNoAuthor = false;
+    formAuthors = formAuthors.map((a) => ({ ...a, signed: false }));
+  }
+
+  /**
+   * Switching Type starts the lookup fresh: the previous type's creator and cover (and the
+   * Google Books link) never carry into a lookup or its Overwrite. The typed title stays.
+   */
+  function clearCarriedCreatorAndCover() {
+    els.fieldCreator.value = "";
+    formAuthors = [];
+    formSignedNoAuthor = false;
+    els.fieldCover.value = "";
+    els.fieldCoverSource.value = "";
+    if (els.fieldCoverSourceId) els.fieldCoverSourceId.value = "";
+    if (els.fieldCoverPlatform) els.fieldCoverPlatform.value = "";
+    if (els.fieldGbUrl) els.fieldGbUrl.value = "";
+    clearCoverChoices();
+    updateCoverPreview();
+  }
+
   function renderSignedUi() {
     if (!els.signedRow) return;
     const type = els.fieldType.value;
     const isBook = SIGNED_TYPES.has(type);
     // Digital comics have no signed copy: hidden, but the ticks stay in the form so
     // Physical → Digital → Physical loses nothing; a Digital Save drops them.
-    els.signedRow.hidden = !isBook || (type === "comic" && els.fieldFormat.value === "digital");
+    els.signedRow.hidden = !isBook || els.fieldFormat.value === "digital";
     if (!isBook) return;
     // NEW COPY (fact check): "Signed" is the comic label; books keep "Signed by author".
     if (els.labelSignedSingle) {
@@ -1757,7 +1786,7 @@
       ownsGame: componentState.ownsGame,
       ownsCase: componentState.ownsCase,
       ownsManual: componentState.ownsManual,
-      ...collectAuthors(type === "comic" && format === "digital"),
+      ...collectAuthors((type === "comic" || type === "book") && format === "digital"),
       ...(type === "comic" ? collectComicFields() : {}),
       seed: false,
     };
@@ -2530,6 +2559,8 @@
     }
 
     fill(els.fieldCreator, data.creator);
+    // Overwrite: a lookup with no creator must not leave the old one behind.
+    if (overwrite && !data.creator && els.fieldCreator.value.trim()) els.fieldCreator.value = "";
     if (data.year != null && data.year !== "") {
       const cur = els.fieldYear.value.trim();
       if (!cur || overwrite) els.fieldYear.value = String(data.year);
@@ -2577,6 +2608,23 @@
     return checks.length > 0;
   }
 
+  /** Plain words for exactly what Overwrite will do with this lookup result. */
+  function overwriteLookupText(data) {
+    const list = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a[a.length - 1]}` : a[0]);
+    const replaced = [];
+    const cur = (el) => el.value.trim();
+    if (data.title && cur(els.fieldTitle) && cur(els.fieldTitle) !== data.title) replaced.push("title");
+    if (data.creator && cur(els.fieldCreator) && cur(els.fieldCreator) !== data.creator) replaced.push("creator");
+    if (data.year != null && cur(els.fieldYear) && cur(els.fieldYear) !== String(data.year)) replaced.push("year");
+    if (data.coverUrl && cur(els.fieldCover) && cur(els.fieldCover) !== data.coverUrl) replaced.push("cover");
+    let text = "Lookup found details that differ from what’s already in the form.";
+    if (replaced.length) text += ` Overwrite replaces the ${list(replaced)} with the lookup’s.`;
+    if (!data.creator && els.fieldCreator.value.trim()) {
+      text += " The lookup has no creator, so the creator will be cleared.";
+    }
+    return text;
+  }
+
   function commitLookup(data, okMsg, kind = "ok") {
     let payload = data || {};
     if (payload.coverNeedsPick && !els.fieldCover.value.trim()) {
@@ -2597,7 +2645,7 @@
     if (wouldOverwrite(payload)) {
       openConfirm(
         "Overwrite filled fields?",
-        "Lookup found details that differ from what’s already in the form. Overwrite title, creator, year, and cover?",
+        overwriteLookupText(payload),
         () => {
           applyLookupFields(payload, { overwrite: true });
           showCoverChoices(payload.covers, payload.altCovers);
@@ -5525,7 +5573,9 @@
     els.btnDelete.addEventListener("click", deleteCurrent);
     els.fieldType.addEventListener("change", () => {
       lookupYearLoose = false;
+      clearCarriedCreatorAndCover();
       updateFormatOptions();
+      clearSignedIfDigitalBook();
       updateCoverFrame();
       updateGoogleBooksAttr();
       if (els.fieldType.value === "comic" && !editingId) {
@@ -5543,6 +5593,7 @@
       updateApiKeyHint();
     });
     els.fieldFormat.addEventListener("change", () => {
+      clearSignedIfDigitalBook();
       updateDiscVisibility();
       applyNewStatusDefault();
       renderSignedUi();
