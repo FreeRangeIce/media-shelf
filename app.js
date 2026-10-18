@@ -1882,8 +1882,8 @@
       const ok = commitItems((list) => {
         const idx = list.findIndex((i) => i.id === id);
         const merged = mergeEditOntoFresh(snapshot, list[idx], data, ts);
-        // A cover chosen (or No cover / a pasted URL) answers 'Needs a cover'.
-        if (merged.coverNeeded && data.type === "comic" && (data.coverUrl || data.coverLabel || comicPicker.choice)) delete merged.coverNeeded;
+        // A picture, or a choice in the picker (a cover, No cover, a pasted URL), answers 'Needs a cover'; a name alone does not.
+        if (merged.coverNeeded && data.type === "comic" && (data.coverUrl || comicPicker.choice)) delete merged.coverNeeded;
         list.splice(idx >= 0 ? idx : 0, idx >= 0 ? 1 : 0, merged);
       });
       if (!ok) return; // storage full: the form stays open with what was typed
@@ -7539,7 +7539,11 @@
     resetClz();
     // Newly added comics with series + issue and no cover get a cover lookup later, one at a
     // time, after the Undo window. The import above never waits on it.
-    enqueueCoverFill(toAdd.filter((it) => it.type === "comic" && coverFillEligible(it)).map((it) => it.id));
+    // Rows with no issue (series only, or barcode-only) are never looked up: counted as Skipped.
+    enqueueCoverFill(
+      toAdd.filter((it) => it.type === "comic" && coverFillEligible(it)).map((it) => it.id),
+      toAdd.filter((it) => it.type === "comic" && !it.issue).length
+    );
     const n = toAdd.length;
     const u = previous.size;
     const msg = n && u
@@ -7556,13 +7560,13 @@
    * issue and no cover are queued for a Grand Comics Database lookup through the existing
    * comicLookup() / relay. One lookup at a time, COVER_FILL_DELAY_MS apart. The import never
    * waits on it. Per answer (same rule the Lookup picker uses to preselect):
-   *   exactly one cover  -> attach it (cover URL/source/name + source id, as the manual Lookup stores)
-   *   several covers     -> attach none; mark 'Needs a cover' (coverNeeded); never guess a variant
-   *   no match / no cover-> the row is left exactly as imported
-   * Only the cover fields and the mark are ever written. A busy answer (HTTP 429 / 503 + Retry-After,
-   * partial answer without match) stops the queue; so do COVER_FILL_MAX_FAILS failures in a row. The
-   * rest stays queued (localStorage + the Back up file) and resumes on the next open or Resume.
-   * Rows with only a barcode are never queued (GCD has no barcode search). No price anywhere. */
+   *   exactly one cover WITH a storable picture -> attach it (cover URL/source/name + source id, as the manual Lookup stores): filled
+   *   exactly one cover, no storable picture   -> keep its name + source id, mark 'Needs a cover' (not filled)
+   *   several covers                           -> attach none; mark 'Needs a cover'; never guess a variant
+   *   a match with no covers                   -> mark 'Needs a cover' (the mark only)
+   *   no match (GCD doesn't know the issue)    -> the row is left exactly as imported
+   * 'Filled' means a picture is attached, nothing else. Rows with no issue (series only, or barcode-only)
+   * are never looked up (GCD has no barcode search) and are counted as 'skipped'. No price anywhere. */
   const COVER_QUEUE_STORAGE = "freerangemedia-clz-cover-queue"; // { v:1, ids:[], filled, none, paused, seen }
   const COVER_FILL_DELAY_MS = 2000;
   const COVER_FILL_START_MS = IMPORT_UNDO_MS + 1000; // after the import's Undo window
@@ -7571,13 +7575,14 @@
   let coverFillTimer = null;
 
   function readCoverQueue() {
-    const q = { ids: [], filled: 0, none: 0, paused: false, seen: false };
+    const q = { ids: [], filled: 0, none: 0, skipped: 0, paused: false, seen: false };
     try {
       const r = JSON.parse(localStorage.getItem(COVER_QUEUE_STORAGE) || "null");
       if (r && r.v === 1) {
         q.ids = Array.isArray(r.ids) ? [...new Set(r.ids.map(String))] : [];
         q.filled = Math.max(0, Number(r.filled) || 0);
         q.none = Math.max(0, Number(r.none) || 0);
+        q.skipped = Math.max(0, Number(r.skipped) || 0);
         q.paused = r.paused === true;
         q.seen = r.seen === true;
       }
@@ -7589,7 +7594,7 @@
 
   function writeCoverQueue(q) {
     try {
-      localStorage.setItem(COVER_QUEUE_STORAGE, JSON.stringify({ v: 1, ids: q.ids, filled: q.filled, none: q.none, paused: q.paused, seen: q.seen }));
+      localStorage.setItem(COVER_QUEUE_STORAGE, JSON.stringify({ v: 1, ids: q.ids, filled: q.filled, none: q.none, skipped: q.skipped, paused: q.paused, seen: q.seen }));
     } catch {
       /* storage full: the queue just won't persist */
     }
@@ -7600,16 +7605,17 @@
     return Boolean(it && it.type === "comic" && it.series && it.issue && !String(it.coverUrl || "").trim() && !it.coverLabel && it.coverNeeded !== true);
   }
 
-  function enqueueCoverFill(ids) {
-    if (!ids.length) return;
+  function enqueueCoverFill(ids, skipped = 0) {
+    if (!ids.length && !skipped) return;
     const q = readCoverQueue();
-    if (!q.ids.length) Object.assign(q, { filled: 0, none: 0 }); // a fresh run starts its count at zero
+    if (!q.ids.length) Object.assign(q, { filled: 0, none: 0, skipped: 0 }); // a fresh run starts its count at zero
     q.ids = [...new Set([...q.ids, ...ids])];
+    q.skipped += skipped;
     q.paused = false;
     q.seen = true;
     writeCoverQueue(q);
     renderCoverQueueUi();
-    startCoverFill(COVER_FILL_START_MS);
+    if (q.ids.length) startCoverFill(COVER_FILL_START_MS);
   }
 
   /** After a restore: pick the queue up again for comics that still lack a cover. */
@@ -7624,7 +7630,7 @@
     const keep = new Set(items.filter(coverFillEligible).map((i) => i.id));
     const base = replace ? [] : q.ids.filter((id) => keep.has(id));
     q.ids = [...new Set([...base, ...(ids || []).filter((id) => keep.has(id))])];
-    if (replace) Object.assign(q, { filled: 0, none: 0, paused: false });
+    if (replace) Object.assign(q, { filled: 0, none: 0, skipped: 0, paused: false });
     if (q.ids.length) q.seen = true;
     if (!q.ids.length && !had) return; // an older backup: leave no queue record behind
     writeCoverQueue(q);
@@ -7658,10 +7664,16 @@
           return { sourceId: v.sourceId, label: v.label || (c && c.label) || "", variant: v.variant, url: c ? c.url : "" };
         })
       : covers.map((c) => ({ ...c }));
-    if (!tiles.length) return { kind: "none" }; // a match with no cover: nothing to attach
+    // A match with no cover at all: Needs a cover (the mark only).
+    if (!tiles.length) return { kind: "needs" };
     const total = Math.max(res.total || 0, tiles.length);
-    if (tiles.length === 1 && covers.length <= 1 && total <= 1 && !res.partial) return { kind: "one", tile: tiles[0], match: res.match };
-    return { kind: "several" };
+    if (tiles.length === 1 && covers.length <= 1 && total <= 1 && !res.partial) {
+      // Exactly one cover. With a storable picture it is filled; without one it keeps its name and
+      // source id and is marked Needs a cover (never counted as filled).
+      const pic = comicCoverImagesOn() && tiles[0].url;
+      return { kind: pic ? "one" : "needs", tile: tiles[0], match: res.match };
+    }
+    return { kind: "needs" }; // several covers: attach none, never guess the variant
   }
 
   /** Write ONLY the cover fields (and the mark) onto one row; false if it couldn't be saved. */
@@ -7672,8 +7684,19 @@
       const cur = list[idx];
       if (!coverFillEligible(cur)) return; // edited meanwhile: leave it
       let fields;
-      if (outcome.kind === "several") {
+      if (outcome.kind === "needs") {
         fields = { coverNeeded: true };
+        if (outcome.tile) {
+          const { tile, match } = outcome;
+          const own = comicSourceIssueId(tile);
+          Object.assign(fields, {
+            coverLabel: tile.label || "",
+            coverVariant: tile.variant === true,
+            sourceId: own ? tile.sourceId : match.sourceId,
+            sourceName: match.sourceName,
+            sourceUrl: own ? comicIssuePageUrl(tile.sourceId) || match.sourceUrl : match.sourceUrl,
+          });
+        }
       } else {
         const { tile, match } = outcome;
         const own = comicSourceIssueId(tile);
@@ -7782,14 +7805,14 @@
     if (!box) return;
     const q = readCoverQueue();
     const needs = items.filter((i) => i.type === "comic" && i.coverNeeded === true).length;
-    const show = (q.seen && (q.filled + q.none + q.ids.length > 0)) || needs > 0 || filterNeedsCover;
+    const show = (q.seen && (q.filled + q.none + q.skipped + q.ids.length > 0)) || needs > 0 || filterNeedsCover;
     box.hidden = !show;
     if (!show) return;
-    const needText = `${needs} need a cover`;
+    const needText = `${needs} ${needs === 1 ? "needs" : "need"} a cover`; // "1 needs a cover", otherwise "N need a cover"
     const needHtml = needs
       ? `<button type="button" class="cover-queue-link" id="btn-cover-needs" aria-label="${escapeHtml(`Show the ${needs} ${needs === 1 ? "comic that needs" : "comics that need"} a cover`)}" aria-pressed="${filterNeedsCover}">${needText}</button>`
       : needText;
-    $("#cover-queue-line").innerHTML = `${q.filled} filled · ${needHtml} · ${q.none} no match`;
+    $("#cover-queue-line").innerHTML = `${q.filled} filled · ${needHtml} · ${q.none} no match · ${q.skipped} skipped`;
     const note = $("#cover-queue-note");
     let msg = "";
     if (coverFillRunning) msg = `Finding covers, ${q.ids.length} left`;
