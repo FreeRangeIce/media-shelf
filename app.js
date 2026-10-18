@@ -7593,11 +7593,12 @@
   const COVER_FILL_DELAY_MS = 2000;
   const COVER_FILL_START_MS = IMPORT_UNDO_MS + 1000; // after the import's Undo window
   const COVER_FILL_MAX_FAILS = 3;
+  const COVER_LAST_STORAGE = "freerangemedia-clz-cover-last"; // when a tab last sent a lookup
   let coverFillRunning = false;
   let coverFillTimer = null;
 
   function readCoverQueue() {
-    const q = { ids: [], filled: 0, none: 0, skipped: 0, paused: false, seen: false };
+    const q = { ids: [], filled: 0, none: 0, skipped: 0, paused: false, seen: false, startAt: 0 };
     try {
       const r = JSON.parse(localStorage.getItem(COVER_QUEUE_STORAGE) || "null");
       if (r && r.v === 1) {
@@ -7607,6 +7608,7 @@
         q.skipped = Math.max(0, Number(r.skipped) || 0);
         q.paused = r.paused === true;
         q.seen = r.seen === true;
+        q.startAt = Number(r.startAt) || 0;
       }
     } catch {
       /* unreadable: start empty */
@@ -7616,7 +7618,7 @@
 
   function writeCoverQueue(q) {
     try {
-      localStorage.setItem(COVER_QUEUE_STORAGE, JSON.stringify({ v: 1, ids: q.ids, filled: q.filled, none: q.none, skipped: q.skipped, paused: q.paused, seen: q.seen }));
+      localStorage.setItem(COVER_QUEUE_STORAGE, JSON.stringify({ v: 1, ids: q.ids, filled: q.filled, none: q.none, skipped: q.skipped, paused: q.paused, seen: q.seen, startAt: q.startAt }));
     } catch {
       /* storage full: the queue just won't persist */
     }
@@ -7635,6 +7637,7 @@
     q.skipped += skipped;
     q.paused = false;
     q.seen = true;
+    q.startAt = Date.now() + COVER_FILL_START_MS; // after the import's Undo window
     writeCoverQueue(q);
     renderCoverQueueUi();
     if (q.ids.length) startCoverFill(COVER_FILL_START_MS);
@@ -7662,7 +7665,7 @@
   function resumeCoverFillOnOpen() {
     const q = readCoverQueue();
     // A wait the relay asked for (429) outlives a reload: no request until it ends.
-    if (q.ids.length) startCoverFill(Math.max(2000, comicBusyRemainingMs() + 500));
+    if (q.ids.length) startCoverFill(Math.max(2000, comicBusyRemainingMs() + 500, q.startAt - Date.now() > 0 && q.startAt - Date.now() <= COVER_FILL_START_MS ? q.startAt - Date.now() : 0));
   }
 
   function startCoverFill(delay) {
@@ -7692,10 +7695,16 @@
     const l = readCoverLock();
     return Boolean(l && l.tab === coverTabId);
   }
+  /** No lock, one older than 8 s, or one stamped in the future (a clock set back) can't block anyone. */
+  function coverLockStale(l) {
+    if (!l) return true;
+    const age = Date.now() - l.t;
+    return age >= COVER_LOCK_STALE_MS || age < -1000;
+  }
   /** Take the lock unless another tab holds a fresh one. Write, wait a beat, read back: the last writer wins. */
   async function acquireCoverLock() {
     const l = readCoverLock();
-    if (l && l.tab !== coverTabId && Date.now() - l.t < COVER_LOCK_STALE_MS) return false;
+    if (l && l.tab !== coverTabId && !coverLockStale(l)) return false;
     try {
       localStorage.setItem(COVER_LOCK_STORAGE, JSON.stringify({ tab: coverTabId, t: Date.now() }));
     } catch {
@@ -7714,6 +7723,35 @@
     }, COVER_LOCK_BEAT_MS);
     return true;
   }
+  /** A tab that is closing lets go of the lock at once (a crash still goes stale after 8 s). */
+  function bindCoverLockLifecycle() {
+    const letGo = () => {
+      if (ownsCoverLock()) {
+        try {
+          localStorage.removeItem(COVER_LOCK_STORAGE);
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    window.addEventListener("pagehide", letGo);
+    window.addEventListener("beforeunload", letGo);
+    // Back from the back/forward cache: the lock was let go, so look again.
+    window.addEventListener("pageshow", (e) => {
+      if (e.persisted) resumeCoverFillOnOpen();
+    });
+    // Every tab with queued rows looks about every 4 s and takes over when the runner is gone
+    // (no lock, or a stale one). Never while the queue is paused (429 / repeated errors), and
+    // never before the start time that protects the import's Undo window.
+    setInterval(() => {
+      if (coverFillRunning || coverFillTimer) return;
+      const q = readCoverQueue();
+      const wait = q.startAt - Date.now();
+      if (!q.ids.length || q.paused || (wait > 0 && wait <= COVER_FILL_START_MS)) return;
+      if (coverLockStale(readCoverLock()) || ownsCoverLock()) startCoverFill(0);
+    }, 4000);
+  }
+
   function releaseCoverLock() {
     clearInterval(coverLockBeat);
     coverLockBeat = null;
@@ -7834,11 +7872,7 @@
     coverFillRunning = true; // set first so a second start in this tab can't slip in during the lock check
     if (!(await acquireCoverLock())) {
       coverFillRunning = false;
-      // Another tab is running the queue. Look again later; if that tab pauses the queue, stay quiet.
-      setTimeout(() => {
-        if (readCoverQueue().ids.length && !readCoverQueue().paused) startCoverFill(0);
-      }, COVER_LOCK_STALE_MS / 2);
-      return;
+      return; // another tab is running the queue; the 4 s look-again takes over if it goes away
     }
     let fails = 0;
     const failed = new Set();
@@ -7859,6 +7893,20 @@
           q.ids = q.ids.filter((x) => x !== id); // deleted, undone, or already has a cover
           writeCoverQueue(q);
           continue;
+        }
+        // Same pacing across a takeover: never closer than the usual gap to the last lookup, from any tab.
+        let lastReq = 0;
+        try {
+          lastReq = Number(localStorage.getItem(COVER_LAST_STORAGE)) || 0;
+        } catch {
+          lastReq = 0;
+        }
+        const gapWait = lastReq + COVER_FILL_DELAY_MS - Date.now();
+        if (gapWait > 0 && gapWait <= COVER_FILL_DELAY_MS) await coverFillSleep(gapWait);
+        try {
+          localStorage.setItem(COVER_LAST_STORAGE, String(Date.now()));
+        } catch {
+          /* ignore */
         }
         let res;
         try {
@@ -8053,6 +8101,7 @@
     bindImport();
     bindClz();
     bindCoverQueue();
+    bindCoverLockLifecycle();
     renderComicFooterCredit();
     fillAppVersionLine();
     window.addEventListener("storage", onStorageEvent);
