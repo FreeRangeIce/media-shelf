@@ -4902,7 +4902,7 @@
         `<div class="comic-name-row">` +
         `<button type="button" class="comic-cover comic-name${on ? " is-selected" : ""}" data-comic-cover="${i}" aria-pressed="${on}" title="${escapeHtml(label)}">` +
         `<span class="comic-cover-label">${escapeHtml(label)}</span>` +
-        (c.variant ? `<span class="comic-name-variant">Variant</span>` : "") +
+        (c.variant && !/\bvariant\b/i.test(label) ? `<span class="comic-name-variant">Variant</span>` : "") /* no chip where the name already says it */ +
         `</button>` +
         (href
           ? `<a class="comic-cover-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(`${label}: ${comicSourceFor(c.sourceId).issueLinkText}`)}">${escapeHtml(comicSourceFor(c.sourceId).issueLinkShort)}</a>`

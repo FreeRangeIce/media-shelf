@@ -2797,8 +2797,19 @@ body.modal-open {
 /* The pictured tile's comics.org link: the names-only rows' link, under the tile (not on
    it), --space-1 below it, its own 44px tap area. */
 .comic-cover-link.comic-photo-link {
-  align-self: flex-start;
+  align-self: flex-end; /* right edge of its row, like the names-only rows' links */
   margin-top: var(--space-1);
+}
+
+/* A lone pictured tile: its row is the full list width, so its link lines up with the names-only
+   rows' links. The tile keeps its 140px size. */
+.comic-photo-item:only-child {
+  flex: 1 1 100%;
+  width: auto;
+}
+.comic-photo-item:only-child .comic-cover.comic-photo {
+  width: 140px;
+  max-width: 100%;
 }
 
 .comic-name-row {
@@ -2851,7 +2862,9 @@ body.modal-open {
   align-self: stretch;
   min-height: var(--tap);
   white-space: nowrap;
-  font-size: var(--fs-xs);
+  justify-content: flex-end;
+  min-width: var(--tap); /* a 44px tap area each, never overlapping the tile or another link */
+  font-size: 13px;
   line-height: var(--lh-tight);
   color: var(--text-muted);
   text-decoration: underline;
