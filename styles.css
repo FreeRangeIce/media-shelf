@@ -3074,6 +3074,10 @@ body.modal-open {
   align-items: center;
   gap: 0.3em; /* the same space before every dot */
 }
+/* The dot of a segment that ends its row (set by syncCoverQueueDots): kept in the text, not shown. */
+.cq-dot.cq-dot-end {
+  visibility: hidden;
+}
 .cover-queue-link {
   appearance: none;
   background: none;

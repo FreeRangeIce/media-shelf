@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Bump it with the service worker cache each release: it must match sw.js's CACHE name
-  // (media-shelf-v36), which the tests check.
-  const APP_VERSION = 36;
+  // (media-shelf-v37), which the tests check.
+  const APP_VERSION = 37;
   const STORAGE_KEY = "media-tracker-v1";
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
   const RAWG_KEY_STORAGE = "media-shelf-rawg-key";
@@ -7990,6 +7990,7 @@
     // the copied / read-out text "12 filled · 14 need a cover · 3 no match · 9 skipped".
     const seg = (inner, dot = true) => `<span class="cq-seg">${inner}${dot ? ' <span class="cq-dot">·</span>' : ""}</span>`;
     $("#cover-queue-line").innerHTML = [seg(`${q.filled} filled`), seg(needHtml), seg(`${q.none} no match`), seg(`${q.skipped} skipped`, false)].join(" ");
+    syncCoverQueueDots();
     const note = $("#cover-queue-note");
     let msg = "";
     if (coverFillRunning) msg = `Finding covers, ${q.ids.length} left`;
@@ -7999,6 +8000,27 @@
     note.hidden = !msg;
     $("#btn-cover-resume").hidden = coverFillRunning || !(q.ids.length && q.paused);
     $("#btn-cover-show-all").hidden = !filterNeedsCover;
+  }
+
+  /** A dot shows only between two visible segments on the same row: a segment that ends its row
+   * (the next visible one wrapped below it, or there is none) keeps its dot in the text (copy /
+   * read-out unchanged) but hides it. Visibility, not display, so hiding never changes the wrap. */
+  function syncCoverQueueDots() {
+    const line = $("#cover-queue-line");
+    if (!line) return;
+    const segs = [...line.querySelectorAll(".cq-seg")].filter((e) => e.getClientRects().length);
+    segs.forEach((seg, i) => {
+      const dot = seg.querySelector(".cq-dot");
+      if (!dot) return;
+      const next = segs[i + 1];
+      const ends = !next || next.getBoundingClientRect().top > seg.getBoundingClientRect().top + 1;
+      dot.classList.toggle("cq-dot-end", ends);
+    });
+  }
+  if (typeof ResizeObserver === "function") {
+    const ro = new ResizeObserver(() => syncCoverQueueDots());
+    const line = document.getElementById("cover-queue-line");
+    if (line) ro.observe(line);
   }
 
   async function pickCoverFor(id) {
