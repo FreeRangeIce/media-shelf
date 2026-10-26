@@ -21,7 +21,7 @@
   /** Relay endpoint for BGG / GameUPC lookups. Empty = not connected (no network calls). */
   const LOOKUP_RELAY_URL = "";
   const LOOKUP_NOT_CONNECTED =
-    "BoardGameGeek lookup isn’t connected yet. Fill in the details by hand; you can add a BGG id later."; // PENDING BEREAN
+    "BoardGameGeek lookup isn’t connected yet. Fill in the details by hand; you can add a BGG id later."; // Berean cleared
   const SUBTYPES = ["board", "card", "dice", "miniatures", "rpg", "expansion"];
   const SUBTYPE_LABELS = { board: "Board", card: "Card", dice: "Dice", miniatures: "Miniatures", rpg: "RPG", expansion: "Expansion" };
   const STATUSES = ["owned", "want"];
@@ -304,7 +304,7 @@
       $(".empty-title", empty).textContent = filtered ? "No matches" : "No tabletop games yet";
       $(".empty-hint", empty).textContent = filtered
         ? "Try a different filter or search."
-        : "Add the board, card, dice, miniatures and RPG games on your shelf. Expansions sit under their base game."; // PENDING BEREAN
+        : "Add the board, card, dice, miniatures and RPG games on your shelf. Linked expansions sit under their base game."; // Berean cleared
       $("#tt-empty-add").hidden = filtered;
     }
   }
@@ -414,7 +414,7 @@
         F("tt-dup-text").textContent =
           dup.by === "bgg"
             ? `“${dup.match.title}” with this BGG id is already in your library. Update it instead of adding a second copy?`
-            : `You already have “${dup.match.title}”. Editions and reprints can share a title. Update that entry, or add this as a separate copy?`; // PENDING BEREAN
+            : `You already have “${dup.match.title}”. Editions and reprints can share a title. Update that entry, or add this as a separate copy?`; // Berean cleared
         F("tt-dup").hidden = false;
         F("tt-dup-update").focus();
         return;
@@ -485,7 +485,7 @@
       render();
       host.renderStats && host.renderStats();
     };
-    const desc = n ? `Its ${n === 1 ? "expansion stays" : `${n} expansions stay`} in your library on ${n === 1 ? "its" : "their"} own.` : "This cannot be undone."; // PENDING BEREAN
+    const desc = n ? `Its ${n === 1 ? "expansion stays" : `${n} expansions stay`} in your library on ${n === 1 ? "its" : "their"} own. This cannot be undone.` : "This cannot be undone."; // Berean cleared
     if (host.confirm) host.confirm(`Delete “${e.title}”?`, desc, go, "Delete");
     else go();
   }
