@@ -332,7 +332,7 @@ async function addViaForm(page, fields) {
     check("restore (0 items, 3 games): Replace warns", (await page.textContent("#confirm-ok")).trim() === "Replace" && /Replace swaps everything here for the backup and can’t be undone/.test(desc), desc);
     await page.click("#confirm-alt"); // Merge
     await page.waitForSelector("#tt-match-modal:not([hidden])");
-    check("0-media device: merge asks about the hand-entered match (1 of 1)", (await page.textContent("#tt-match-progress")) === "1 of 1" && (await page.isHidden("#tt-match-rest")));
+    check("0-media device: merge asks about the hand-entered match; one match hides 'N of M' and the rest button", (await page.isHidden("#tt-match-progress")) && (await page.isHidden("#tt-match-rest")));
     await page.click("#tt-match-keep");
     let s = await ttStore(page);
     const toast = await page.textContent("#toast");
@@ -396,9 +396,18 @@ async function addViaForm(page, fields) {
     check("Skip button reads 'Skip backup copy'", (await page.textContent("#tt-match-skip")).trim() === "Skip backup copy");
     check("prompt: Keep both is the filled primary; Update and Skip are outlines, Skip not danger", /btn-primary/.test(p1.primary) && p1.outlines.every((c) => /btn-outline/.test(c) && !/danger/.test(c)));
     check("nothing written while the prompt is open", JSON.stringify(await ttStore(page)) === JSON.stringify(before.tt) && (await page.evaluate(() => localStorage.getItem("media-tracker-v1"))) === before.items);
-    for (const w of [1440, 390, 320]) { await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 }); await vshot(page, `match-1of3-rest-${w}`); await vshot(page, `match-bold-differences-${w}`); }
+    for (const w of [1440, 390, 320]) { await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 }); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab"); await vshot(page, `match-1of3-rest-${w}`); await vshot(page, `match-bold-differences-${w}`); }
     const lay = async () => page.evaluate(() => { const s = [...document.querySelectorAll(".tt-match-side")].map((x) => x.getBoundingClientRect()); const b = ["tt-match-keep", "tt-match-update", "tt-match-skip", "tt-match-rest"].map((id) => document.getElementById(id).getBoundingClientRect()); return { cols: Math.abs(s[0].top - s[1].top) < 2, stackedShelfTop: s[0].bottom <= s[1].top, oneRow: Math.abs(b[0].top - b[2].top) < 2, primaryTop: b[0].top < b[1].top && b[1].top < b[2].top, fullW: Math.round(b[0].width) === Math.round(b[2].width), minH: Math.min(...b.map((r) => r.height)), docW: document.documentElement.scrollWidth }; });
     await page.setViewportSize({ width: 1440, height: 900 }); const L1 = await lay();
+    const fb = async () => page.evaluate(() => { document.getElementById("tt-match-keep").focus(); const r = ["tt-match-keep", "tt-match-update", "tt-match-skip"].map((id) => document.getElementById(id).getBoundingClientRect()); const cs = getComputedStyle(document.getElementById("tt-match-keep")); return { w: r.map((x) => Math.round(x.width)), h: r.map((x) => Math.round(x.height)), focused: document.activeElement.id, tf: cs.transform, ol: cs.outlineWidth + " " + cs.outlineStyle, off: cs.outlineOffset, sh: cs.boxShadow }; });
+    for (const w of [390, 320]) {
+      await page.setViewportSize({ width: w, height: 844 });
+      const B = await fb();
+      check(`${w}: Keep both focused — same width as the others, all 44px, no transform, 2px outline at 2px offset`, B.focused === "tt-match-keep" && new Set(B.w).size === 1 && B.h.every((h) => h === 44) && B.tf === "none" && B.ol === "2px solid" && B.off === "2px" && B.sh === "none", JSON.stringify(B));
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const B14 = await fb();
+    check("1440: focused Keep both same height as the others, no transform", new Set(B14.h).size === 1 && B14.tf === "none", JSON.stringify(B14));
     check("1440: two columns, buttons in one row", L1.cols && L1.oneRow, JSON.stringify(L1));
     await page.setViewportSize({ width: 320, height: 844 }); const L3 = await lay();
     check("320: stacked (shelf on top), buttons full width, primary on top, 44px targets, no sideways scroll", L3.stackedShelfTop && L3.primaryTop && L3.fullW && L3.minH >= 44 && L3.docW === 320, JSON.stringify(L3));
@@ -451,7 +460,7 @@ async function addViaForm(page, fields) {
     await page.setInputFiles("#import-file", { name: "m.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ app: "freerangemedia", version: 3, exportedAt: T0, items: [], tabletop: { v: 1, entries: [E({ id: "i1", title: "Wingspan", subtype: "board", bggId: "266192", designer: "Elizabeth Hargrave", year: "2019", players: "1–5", playTime: "70" })] } })) });
     await page.click("#confirm-alt");
     await page.waitForSelector("#tt-match-modal:not([hidden])");
-    for (const w of [1440, 390, 320]) { await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 }); await vshot(page, `match-one-${w}`); }
+    for (const w of [1440, 390, 320]) { await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 }); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab"); await vshot(page, `match-one-${w}`); }
     await page.click("#tt-match-close");
     await ctx.close();
   }
@@ -463,6 +472,7 @@ async function addViaForm(page, fields) {
     await page.click("#confirm-alt");
     await page.waitForSelector("#tt-match-modal:not([hidden])");
     check("30 matches: '1 of 30'", (await page.textContent("#tt-match-progress")) === "1 of 30");
+    check("2+ matches: 'N of M' visible", await page.isVisible("#tt-match-progress"));
     await page.click("#tt-match-skip");
     await page.click("#tt-match-rest");
     await page.waitForSelector("#tt-match-modal[hidden]", { state: "attached" });

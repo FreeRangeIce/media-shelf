@@ -618,6 +618,7 @@
         const a = m.existing, b = m.incoming;
         const ta = Date.parse(a.dateUpdated), tb = Date.parse(b.dateUpdated);
         F("tt-match-progress").textContent = MATCH_COPY.progress(i + 1, matches.length);
+        F("tt-match-progress").hidden = matches.length < 2; // "N of M" only from 2 matches up
         F("tt-match-pair").innerHTML =
           matchSide(a, b, list, inc, MATCH_COPY.here, ta > tb) + matchSide(b, a, inc, list, MATCH_COPY.backup, tb > ta);
         F("tt-match-rest").hidden = matches.length - i < 2;

@@ -3490,10 +3490,32 @@ body.modal-open {
   display: none;
 }
 
-.tt-match-rest:focus-visible,
-.tt-match-actions .btn:focus-visible {
+.tt-match-rest:focus-visible {
   outline: none;
   box-shadow: var(--focus);
+}
+
+/* Prompt buttons: focus is an outline drawn outside the box (no ring shadow, no transform),
+   so a focused button keeps exactly the size of the others. */
+.tt-match-actions .btn,
+.tt-match-actions .btn:hover,
+.tt-match-actions .btn:focus,
+.tt-match-actions .btn:active {
+  transform: none;
+}
+
+.tt-match-actions .btn:focus {
+  box-shadow: none;
+}
+
+.tt-match-actions .btn:focus-visible {
+  box-shadow: none;
+  outline: 2px solid #c46a3a;
+  outline-offset: 2px;
+}
+
+.tt-match-progress[hidden] {
+  display: none;
 }
 
 @media (max-width: 479px) {
