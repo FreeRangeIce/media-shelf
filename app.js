@@ -110,6 +110,7 @@
     comic: ["comic", "comics"],
     tabletop: ["tabletop", "tabletop"],
     item: ["item", "items"],
+    tabletop_game: ["tabletop game", "tabletop games"],
     want: ["want", "want"],
     owned: ["owned", "owned"],
     in_progress: ["in progress", "in progress"],
@@ -2571,17 +2572,17 @@
       }
       const when = formatBackupDate(parsed.exportedAt);
       // Counts on both sides name items and Tabletop games separately.
-      const both = (nItems, nGames) => `${countLabel(nItems, "item")} and ${countLabel(nGames, "game")}`;
-      const fromLine = `This backup has ${both(incoming.length, ttIncoming.length)}${when ? ` (created ${when})` : ""}.`; // PENDING BEREAN
+      const both = (nItems, nGames) => `${countLabel(nItems, "item")} and ${countLabel(nGames, "tabletop_game")}`;
+      const fromLine = `This backup has ${both(incoming.length, ttIncoming.length)}${when ? ` (created ${when})` : ""}.`; // Berean cleared
       const ttHere = TT ? TT.count() : 0;
       // Merge is offered when this browser has anything at all: media items OR Tabletop games.
       const hasCurrent = items.length > 0 || ttHere > 0;
-      const hereLine = `This browser has ${both(items.length, ttHere)}.`; // PENDING BEREAN
+      const hereLine = `This browser has ${both(items.length, ttHere)}.`; // Berean cleared
       const replaceLine = parsed.tabletop
-        ? "Replace swaps everything here for the backup and can’t be undone." // PENDING BEREAN
-        : "Replace swaps your items for the backup and can’t be undone; your games stay."; // PENDING BEREAN
+        ? "Replace swaps everything here for the backup and can’t be undone." // Berean cleared
+        : "Replace swaps your items for the backup and can’t be undone; your tabletop games stay."; // Berean cleared
       const desc = hasCurrent
-        ? `${fromLine} ${hereLine} Merge keeps what’s here and adds anything new (the newer copy wins when both have the same one). ${replaceLine}` // PENDING BEREAN
+        ? `${fromLine} ${hereLine} Merge keeps what’s here and adds anything new (the newer copy wins when both have the same one). ${replaceLine}` // Berean cleared
         : `${fromLine} Restore it to this browser?`;
       const doReplace = () => {
         const ok = commitItems(() => incoming.slice(), "restore");
@@ -2593,7 +2594,7 @@
         render();
         showToast(
           TT && parsed.tabletop
-            ? `Restored ${both(items.length, TT.count())}` // PENDING BEREAN
+            ? `Restored ${both(items.length, TT.count())}` // Berean cleared
             : `Restored ${countLabel(items.length, "item")}`
         );
       };
@@ -2625,7 +2626,7 @@
         const titles = [...new Set(handMatches.map((m) => m.title))];
         showToast(
           titles.length
-            ? `${base}. Kept both copies of ${titles.length === 1 ? "a hand-entered game" : `${titles.length} hand-entered games`} you already had: ${titles.join(", ")}` // PENDING BEREAN
+            ? `${base}. Kept both copies of ${titles.length === 1 ? "a hand-entered tabletop game" : `${titles.length} hand-entered tabletop games`} you already had: ${titles.join(", ")}` // Berean cleared
             : base
         );
       };

@@ -325,17 +325,17 @@ async function addViaForm(page, fields) {
     const desc = await page.textContent("#confirm-desc");
     const altVisible = await page.isVisible("#confirm-alt");
     check("restore (0 items, 3 games): Merge is offered", altVisible && (await page.textContent("#confirm-alt")).trim() === "Merge");
-    check("restore (0 items, 3 games): prompt names both counts", /This browser has 0 items and 3 games\./.test(desc), desc);
+    check("restore (0 items, 3 games): prompt names both counts", /This browser has 0 items and 3 tabletop games\./.test(desc), desc);
     check("restore (0 items, 3 games): Replace warns", (await page.textContent("#confirm-ok")).trim() === "Replace" && /Replace swaps everything here for the backup and can’t be undone/.test(desc), desc);
     await page.click("#confirm-alt"); // Merge
     let s = await ttStore(page);
     const toast = await page.textContent("#toast");
     check("merge kept all 3 games and kept both hand-entered copies", s.length === 4 && ["tt-a", "tt-b", "tt-c", "tt-x"].every((id) => s.some((e) => e.id === id)), s.map((e) => e.id).join(","));
-    check("merge toast names the hand-entered match", /Kept both copies of a hand-entered game you already had: Homebrew Quest/.test(toast), toast);
+    check("merge toast names the hand-entered match", /Kept both copies of a hand-entered tabletop game you already had: Homebrew Quest/.test(toast), toast);
     await page.setInputFiles("#import-file", { name: "b2.json", mimeType: "application/json", buffer: bk(2) });
     await page.click("#confirm-ok"); // Replace
     const t2 = await page.textContent("#toast");
-    check("restore toast counts items and games", /^Restored 1 item and 1 game$/.test(t2.trim()), t2);
+    check("restore toast counts items and games", /^Restored 1 item and 1 tabletop game$/.test(t2.trim()), t2);
     check("no page errors (restore 0 items)", !errors.length, errors.join("|"));
     await ctx.close();
   }
