@@ -113,5 +113,44 @@ t("Lookup not connected: no relay configured", () => {
   assert.strictEqual(T.lookupConnected(), false);
   assert.match(T.LOOKUP_NOT_CONNECTED, /BoardGameGeek lookup isn’t connected yet/);
 });
+t("merge: hand-entered match (no BGG id, other local id, same title+subtype) keeps both and is reported", () => {
+  const here = [base({ id: "h1", bggId: "", title: "Homebrew Quest" })];
+  const inc = [base({ id: "h2", bggId: "", title: "homebrew  quest", dateUpdated: at(3) })];
+  const r = T.mergeRestore(here, inc);
+  assert.strictEqual(r.list.length, 2);
+  assert.strictEqual(r.added, 1);
+  assert.deepStrictEqual(r.handMatches.map((m) => [m.title, m.existingId, m.incomingId, m.action]), [["homebrew  quest".trim(), "h1", "h2", "keep-both"]].map((x) => [inc[0].title, ...x.slice(1)]));
+});
+t("merge: different subtype or a BGG id is not a hand-entered match", () => {
+  const here = [base({ id: "h1", bggId: "", title: "Root" })];
+  const r = T.mergeRestore(here, [base({ id: "h2", bggId: "", title: "Root", subtype: "card" }), base({ id: "h3", bggId: "237182", title: "Root" })]);
+  assert.strictEqual(r.handMatches.length, 0);
+  assert.strictEqual(r.list.length, 3);
+});
+t("merge: hand-match policy hook can switch to merge or skip later", () => {
+  const here = [base({ id: "h1", bggId: "", title: "Homebrew Quest" })];
+  const inc = [base({ id: "h2", bggId: "", title: "Homebrew Quest", status: "want", dateUpdated: at(3) })];
+  const m = T.mergeRestore(here, inc, { onHandMatch: () => T.HAND_MATCH.MERGE });
+  assert.deepStrictEqual([m.list.length, m.list[0].id, m.list[0].status, m.handMatches[0].action], [1, "h1", "want", "merge"]);
+  const k = T.mergeRestore(here, inc, { onHandMatch: () => T.HAND_MATCH.SKIP });
+  assert.deepStrictEqual([k.list.length, k.list[0].status, k.handMatches[0].action], [1, "owned", "skip"]);
+});
+t("changing a base's BGG id carries expansions linked by BGG id", () => {
+  let list = T.upsert([], base({ id: "b1" }));
+  list = T.upsert(list, exp({ id: "e1" }));
+  list = T.upsert(list, exp({ id: "e2", title: "Oceania" }));
+  list = T.upsert(list, exp({ id: "other", parentBggId: "999" }));
+  list = T.upsert(list, { ...list.find((e) => e.id === "b1"), bggId: "300000" });
+  const b = list.find((e) => e.id === "b1");
+  assert.deepStrictEqual(under(list, b).sort(), ["e1", "e2"]);
+  assert.strictEqual(list.find((e) => e.id === "e1").parentBggId, "300000");
+  assert.strictEqual(list.find((e) => e.id === "other").parentBggId, "999");
+});
+t("clearing a base's BGG id keeps its expansions linked (by local id)", () => {
+  let list = T.upsert([], base({ id: "b1" }));
+  list = T.upsert(list, exp({ id: "e1" }));
+  list = T.upsert(list, { ...list.find((e) => e.id === "b1"), bggId: "" });
+  assert.deepStrictEqual(under(list, list.find((e) => e.id === "b1")), ["e1"]);
+});
 console.log(`\n${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);

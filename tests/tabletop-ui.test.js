@@ -224,6 +224,51 @@ async function addViaForm(page, fields) {
     await ctx.close();
   }
 
+  // Restore on a device with 0 media items and 3 games: Merge offered, Replace warns, counts named
+  {
+    const GAMES = [
+      E({ id: "tt-a", title: "Wingspan", subtype: "board", bggId: "266192" }),
+      E({ id: "tt-b", title: "Homebrew Quest", subtype: "board" }),
+      E({ id: "tt-c", title: "European Expansion", subtype: "expansion", parentId: "tt-a", parentBggId: "266192", status: "want" }),
+    ];
+    const bk = (n) => Buffer.from(JSON.stringify({ app: "freerangemedia", version: 3, exportedAt: T0, items: [{ ...media.items[2], id: `m${n}` }], tabletop: { v: 1, entries: [E({ id: "tt-x", title: "Homebrew Quest", subtype: "board", status: "want", dateUpdated: "2026-10-05T10:00:00.000Z" })] } }));
+    const { page, ctx, errors } = await open(browser, { store: { version: 1, savedAt: T0, items: [] }, tt: GAMES });
+    await page.setInputFiles("#import-file", { name: "b.json", mimeType: "application/json", buffer: bk(1) });
+    await page.waitForSelector("#confirm-modal:not([hidden]), #confirm-panel", { state: "visible" });
+    const desc = await page.textContent("#confirm-desc");
+    const altVisible = await page.isVisible("#confirm-alt");
+    check("restore (0 items, 3 games): Merge is offered", altVisible && (await page.textContent("#confirm-alt")).trim() === "Merge");
+    check("restore (0 items, 3 games): prompt names both counts", /This browser has 0 items and 3 games\./.test(desc), desc);
+    check("restore (0 items, 3 games): Replace warns", (await page.textContent("#confirm-ok")).trim() === "Replace" && /Replace swaps everything here for the backup and can’t be undone/.test(desc), desc);
+    await page.click("#confirm-alt"); // Merge
+    let s = await ttStore(page);
+    const toast = await page.textContent("#toast");
+    check("merge kept all 3 games and kept both hand-entered copies", s.length === 4 && ["tt-a", "tt-b", "tt-c", "tt-x"].every((id) => s.some((e) => e.id === id)), s.map((e) => e.id).join(","));
+    check("merge toast names the hand-entered match", /Kept both copies of a hand-entered game you already had: Homebrew Quest/.test(toast), toast);
+    await page.setInputFiles("#import-file", { name: "b2.json", mimeType: "application/json", buffer: bk(2) });
+    await page.click("#confirm-ok"); // Replace
+    const t2 = await page.textContent("#toast");
+    check("restore toast counts items and games", /^Restored 1 item and 1 game$/.test(t2.trim()), t2);
+    check("no page errors (restore 0 items)", !errors.length, errors.join("|"));
+    await ctx.close();
+  }
+
+  // Editing a base's BGG id keeps its BGG-linked expansions
+  {
+    const { page, ctx, errors } = await open(browser, { tt: SHELF });
+    await tab(page, "tabletop");
+    await page.click('article[data-tt-open="b2"]');
+    await page.click("#tt-detail-edit");
+    await page.fill("#tt-bggId", "999999");
+    await page.click("#tt-save");
+    await page.waitForSelector("#tt-form-modal[hidden]", { state: "attached" });
+    const s = await ttStore(page);
+    const rows = await page.evaluate(() => { const li = [...document.querySelectorAll("#tabletop-list > li")].find((l) => l.querySelector(".item-title").textContent === "Wingspan"); return li.querySelectorAll(".tt-exp-row").length; });
+    check("editing a base's BGG id carries its expansions", rows === 2 && s.filter((e) => e.parentBggId === "999999").length === 2, String(rows));
+    check("no page errors (bgg id edit)", !errors.length, errors.join("|"));
+    await ctx.close();
+  }
+
   // Games tab unchanged vs origin/main
   if (MAIN) {
     const out = [];

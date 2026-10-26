@@ -2570,11 +2570,18 @@
         return;
       }
       const when = formatBackupDate(parsed.exportedAt);
-      const n = incoming.length + ttIncoming.length;
-      const fromLine = `This backup has ${countLabel(n, "item")}${when ? ` (created ${when})` : ""}.`;
-      const hasCurrent = items.length > 0;
+      // Counts on both sides name items and Tabletop games separately.
+      const both = (nItems, nGames) => `${countLabel(nItems, "item")} and ${countLabel(nGames, "game")}`;
+      const fromLine = `This backup has ${both(incoming.length, ttIncoming.length)}${when ? ` (created ${when})` : ""}.`; // PENDING BEREAN
+      const ttHere = TT ? TT.count() : 0;
+      // Merge is offered when this browser has anything at all: media items OR Tabletop games.
+      const hasCurrent = items.length > 0 || ttHere > 0;
+      const hereLine = `This browser has ${both(items.length, ttHere)}.`; // PENDING BEREAN
+      const replaceLine = parsed.tabletop
+        ? "Replace swaps everything here for the backup and can’t be undone." // PENDING BEREAN
+        : "Replace swaps your items for the backup and can’t be undone; your games stay."; // PENDING BEREAN
       const desc = hasCurrent
-        ? `${fromLine} Merge keeps your current ${countLabel(items.length, "item")} and adds anything new (the newer copy wins when both have the same item). Replace swaps your whole library for the backup.`
+        ? `${fromLine} ${hereLine} Merge keeps what’s here and adds anything new (the newer copy wins when both have the same one). ${replaceLine}` // PENDING BEREAN
         : `${fromLine} Restore it to this browser?`;
       const doReplace = () => {
         const ok = commitItems(() => incoming.slice(), "restore");
@@ -2584,10 +2591,15 @@
         if (TT && parsed.tabletop) TT.restore(parsed.tabletop, "replace");
         restoreCoverQueue(parsed.coverQueueIds, true);
         render();
-        showToast(`Restored ${countLabel(items.length, "item")}`);
+        showToast(
+          TT && parsed.tabletop
+            ? `Restored ${both(items.length, TT.count())}` // PENDING BEREAN
+            : `Restored ${countLabel(items.length, "item")}`
+        );
       };
       const doMerge = () => {
         let res = { added: 0, updated: 0 };
+        let handMatches = [];
         const ok = commitItems((list) => {
           res = mergeItems(list, incoming);
           return res.items;
@@ -2599,14 +2611,22 @@
           if (t) {
             res.added += t.added;
             res.updated += t.updated;
+            handMatches = t.handMatches || [];
           }
         }
         restoreCoverQueue(parsed.coverQueueIds, false);
         render();
-        showToast(
+        const base =
           res.added || res.updated
             ? `Merged — ${res.added} added, ${res.updated} updated`
-            : "Merged — already up to date"
+            : "Merged — already up to date";
+        // Hand-entered games (no BGG id) that match one here by title and type are kept
+        // twice for now, never merged or dropped silently: name them.
+        const titles = [...new Set(handMatches.map((m) => m.title))];
+        showToast(
+          titles.length
+            ? `${base}. Kept both copies of ${titles.length === 1 ? "a hand-entered game" : `${titles.length} hand-entered games`} you already had: ${titles.join(", ")}` // PENDING BEREAN
+            : base
         );
       };
       if (hasCurrent) {

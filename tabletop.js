@@ -163,8 +163,23 @@
       }
     }
     const i = list.findIndex((x) => x.id === e.id);
-    const next = i < 0 ? list.concat(e) : list.map((x, j) => (j === i ? e : x));
+    let next = i < 0 ? list.concat(e) : list.map((x, j) => (j === i ? e : x));
+    if (i >= 0) next = carryExpansions(list, list[i], next, e);
     return linkBggId(next, e.id);
+  }
+
+  /**
+   * A base's BGG id was edited: expansions that resolved to it before keep resolving to it.
+   * Their parentBggId follows the new id (or is cleared, with the local id kept, when the base
+   * loses its BGG id), so a link made by BGG id is never silently cut.
+   */
+  function carryExpansions(prevList, before, next, after) {
+    if (!isBase(before) || !isBase(after) || before.bggId === after.bggId) return next;
+    const linked = new Set(expansionsOf(prevList, before).map((x) => x.id));
+    if (!linked.size) return next;
+    return next.map((x) =>
+      linked.has(x.id) ? { ...x, parentBggId: after.bggId, parentId: x.parentId || after.id, dateUpdated: nowIso() } : x
+    );
   }
 
   /** Delete one entry. Expansions of a deleted base stay (they keep parentBggId / parentTitle). */
@@ -178,17 +193,44 @@
   }
 
   /**
+   * What to do with a hand-entered match: an incoming entry with no BGG id and a different
+   * local id, but the same title and subtype as one already here (also with no BGG id).
+   * Interim rule (undecided): keep both and report it, never merge or drop silently.
+   * To ask per title later, pass `opts.onHandMatch(existing, incoming)` returning one of
+   * HAND_MATCH ("keep-both" | "merge" | "skip").
+   */
+  const HAND_MATCH = { KEEP_BOTH: "keep-both", MERGE: "merge", SKIP: "skip" };
+  const defaultHandMatch = () => HAND_MATCH.KEEP_BOTH;
+
+  /**
    * Restore/merge `incoming` into `current`. Same local id, or same BGG id, is one entry
    * (newer dateUpdated wins). Incoming local-id links are remapped to the surviving entry.
+   * Returns handMatches: [{ title, subtype, existingId, incomingId, action }].
    */
-  function mergeRestore(current, incoming) {
+  function mergeRestore(current, incoming, opts = {}) {
+    const onHandMatch = typeof opts.onHandMatch === "function" ? opts.onHandMatch : defaultHandMatch;
     const out = current.map((e) => ({ ...e }));
+    const existingHand = out.filter((e) => !e.bggId);
     const remap = new Map();
+    const handMatches = [];
     let added = 0;
     let updated = 0;
     incoming.map(normalize).forEach((inc) => {
       let i = out.findIndex((e) => e.id === inc.id);
       if (i < 0 && inc.bggId) i = out.findIndex((e) => e.bggId === inc.bggId);
+      if (i < 0 && !inc.bggId) {
+        const m = existingHand.find((e) => e.subtype === inc.subtype && normTitle(e.title) === normTitle(inc.title));
+        if (m) {
+          const asked = onHandMatch(m, inc);
+          const action = Object.values(HAND_MATCH).includes(asked) ? asked : HAND_MATCH.KEEP_BOTH;
+          handMatches.push({ title: inc.title, subtype: inc.subtype, existingId: m.id, incomingId: inc.id, action });
+          if (action === HAND_MATCH.SKIP) {
+            remap.set(inc.id, m.id);
+            return;
+          }
+          if (action === HAND_MATCH.MERGE) i = out.findIndex((e) => e.id === m.id);
+        }
+      }
       if (i < 0) {
         out.push(inc);
         added += 1;
@@ -202,7 +244,7 @@
     });
     let list = out.map((e) => (e.parentId && remap.has(e.parentId) ? { ...e, parentId: remap.get(e.parentId) } : e));
     list.filter((e) => e.bggId).forEach((e) => (list = linkBggId(list, e.id)));
-    return { list, added, updated };
+    return { list, added, updated, handMatches };
   }
 
   function parseBackupBlock(data) {
@@ -211,7 +253,7 @@
     return block.entries.filter((r) => r && typeof r === "object" && r.title).map(normalize);
   }
 
-  const core = { STORE_KEY, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), LOOKUP_NOT_CONNECTED };
+  const core = { STORE_KEY, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), LOOKUP_NOT_CONNECTED };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
   if (typeof document === "undefined") return;
 
@@ -551,7 +593,7 @@
     backupBlock: () => ({ v: 1, entries: load().map((e) => ({ ...e })) }),
     /** Restore: "replace" swaps the tabletop shelf, "merge" folds in by id / BGG id. */
     restore(incoming, mode) {
-      let res = { added: incoming.length, updated: 0 };
+      let res = { added: incoming.length, updated: 0, handMatches: [] };
       const ok = commit((list) => {
         if (mode === "replace") return mergeRestore([], incoming).list;
         res = mergeRestore(list, incoming);
