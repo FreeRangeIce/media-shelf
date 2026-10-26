@@ -59,7 +59,7 @@ async function shot(page, name) {
   if (!SHOT_DIR) return;
   await page.waitForTimeout(200);
   await page.screenshot({ path: `${SHOT_DIR}/${name}.png`, fullPage: false });
-  footerLog.push({ name, ...(await page.evaluate(() => { const f = [...document.querySelectorAll(".footer-credit")].find((x) => /Board game data from BoardGameGeek/.test(x.textContent)); if (!f) return { inDom: false }; const r = f.getBoundingClientRect(); return { inDom: true, rendered: r.height > 0, inView: r.bottom > 0 && r.top < innerHeight }; })) });
+  footerLog.push({ name, ...(await page.evaluate(() => { const f = document.querySelector(".footer-credits"); if (!f) return { inDom: false }; const r = f.getBoundingClientRect(); return { inDom: true, rendered: r.height > 0, inView: r.bottom > 0 && r.top < innerHeight }; })) });
 }
 const V3 = SHOTS ? `${SHOTS}/v3` : "";
 async function vshot(page, name) { if (!V3) return; fs.mkdirSync(V3, { recursive: true }); await page.waitForTimeout(150); await page.screenshot({ path: `${V3}/${name}.png`, fullPage: false }); }
@@ -556,6 +556,49 @@ async function addViaForm(page, fields) {
     await ctx.close();
   }
 
+  // Lookup credits removed until Lookup is connected (Micah): not served, not rendered, not in the a11y tree
+  {
+    const GONE = ["Board game data from " + "BoardGameGeek", "Barcode matching by " + "GameUPC"]; // split so this file never matches a grep
+    const { page, ctx, errors } = await open(browser, { tt: SHELF });
+    const files = ["index.html", "app.js", "tabletop.js", "styles.css", "sw.js", "manifest.webmanifest"];
+    const hits = [];
+    for (const f of files) { const body = await (await page.request.get(`${ORIGIN}/${f}`)).text(); GONE.forEach((g) => { if (body.includes(g)) hits.push(`${f}: ${g}`); }); }
+    check("served HTML/JS/CSS: zero hits for both lookup credit strings", hits.length === 0, hits.join("; "));
+    for (const t of ["all", "book", "game", "movie", "music", "comic", "tabletop"]) {
+      await tab(page, t);
+      const txt = await page.evaluate(() => document.documentElement.outerHTML + "\n" + document.body.innerText);
+      const ax = await page.locator("body").ariaSnapshot(); // accessibility tree as Playwright exposes it
+      check(`tab ${t}: neither credit in DOM or accessibility tree`, GONE.every((g) => !txt.includes(g) && !ax.includes(g)));
+    }
+    await page.click("#btn-settings");
+    const st = await page.evaluate(() => document.body.innerText);
+    check("Settings open: neither credit shown", GONE.every((g) => !st.includes(g)));
+    await page.click("#settings-close");
+    check("lookup credits gate is false today (not connected, no record)", await page.evaluate(() => window.FRMTabletop.lookupCreditsAllowed() === false && window.FRMTabletop.lookupConnected() === false));
+    check("Lookup message unchanged", /BoardGameGeek lookup isn’t connected yet\. Fill in the details by hand; you can add a BGG id later\./.test(await page.evaluate(() => window.FRMTabletop.LOOKUP_NOT_CONNECTED)));
+    const foot = await page.evaluate(() => { const c = document.querySelector(".footer-credits"); const kids = [...c.children]; return { html: c.innerHTML, seps: kids.filter((k, i) => k.classList.contains("footer-sep") && (!kids[i + 1] || kids[i + 1].classList.contains("footer-sep"))).length, empty: kids.filter((k) => k.classList.contains("footer-credit") && !k.id && !k.textContent.trim()).length }; });
+    check("footer: no doubled/trailing separator or empty credit", foot.seps === 0 && foot.empty === 0, JSON.stringify(foot));
+    if (MAIN) {
+      const m = await open(browser, { origin: MAIN, tt: SHELF });
+      const mh = await m.page.evaluate(() => document.querySelector(".footer-credits").innerHTML);
+      check("other footer credits identical to origin/main", mh === foot.html);
+      await m.ctx.close();
+    }
+    if (SHOTS) {
+      fs.mkdirSync(SHOTS, { recursive: true });
+      for (const w of [375, 390, 1440]) {
+        await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 812 });
+        await page.$eval(".site-footer", (f) => f.scrollIntoView({ block: "end" }));
+        await page.waitForTimeout(150);
+        const vis = await page.evaluate(() => { const a = [...document.querySelectorAll(".footer-credit")].find((x) => /MusicBrainz/.test(x.textContent)).getBoundingClientRect(); const b = document.getElementById("footer-comic-credit").getBoundingClientRect(); return a.top >= 0 && b.bottom <= innerHeight; });
+        check(`footer shot ${w}: MusicBrainz through comics credit in view`, vis);
+        await page.screenshot({ path: `${SHOTS}/footer-${w}.png`, fullPage: false });
+      }
+    }
+    check("no page errors (credits)", !errors.length, errors.join("|"));
+    await ctx.close();
+  }
+
   // Games tab unchanged vs origin/main
   if (MAIN) {
     const out = [];
@@ -569,7 +612,6 @@ async function addViaForm(page, fields) {
   }
   if (SHOT_DIR) {
     fs.writeFileSync(`${SHOT_DIR}/footer-check.json`, JSON.stringify(footerLog, null, 1));
-    check("footer 'Board game data from BoardGameGeek' rendered on every shot's page", footerLog.every((x) => x.inDom && x.rendered), JSON.stringify(footerLog.filter((x) => !(x.inDom && x.rendered))));
   }
   await browser.close();
   console.log(`\n${pass}/${pass + fail} passed`);

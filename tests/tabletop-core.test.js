@@ -111,6 +111,7 @@ t("restore on another device with manual links (no BGG ids) survives", () => {
 });
 t("Lookup not connected: no relay configured", () => {
   assert.strictEqual(T.lookupConnected(), false);
+  assert.strictEqual(T.lookupCreditsAllowed(), false);
   assert.match(T.LOOKUP_NOT_CONNECTED, /BoardGameGeek lookup isn’t connected yet/);
 });
 t("merge: hand-entered match (no BGG id, other local id, same title+subtype) keeps both and is reported", () => {

@@ -20,6 +20,15 @@
   const STORE_KEY = "media-tracker-v1:tabletop";
   /** Relay endpoint for BGG / GameUPC lookups. Empty = not connected (no network calls). */
   const LOOKUP_RELAY_URL = "";
+  /**
+   * Lookup data credits (BGG, GameUPC) are not in the page at all while Lookup is off (Micah:
+   * no preview). Nothing sets lookupReturnedRecord today: no lookup exists, so no record.
+   * TODO(lookup): in the same commit that turns Lookup on, add the credits back to the footer
+   * with BoardGameGeek's official linked "Powered by BGG" logo, rendered only when
+   * lookupCreditsAllowed() is true (Lookup connected AND a real lookup returned a record).
+   */
+  const lookupReturnedRecord = false;
+  const lookupCreditsAllowed = () => Boolean(LOOKUP_RELAY_URL) && lookupReturnedRecord;
   const LOOKUP_NOT_CONNECTED =
     "BoardGameGeek lookup isn’t connected yet. Fill in the details by hand; you can add a BGG id later."; // Berean cleared
   const SUBTYPES = ["board", "card", "dice", "miniatures", "rpg", "expansion"];
@@ -271,7 +280,7 @@
     return block.entries.filter((r) => r && typeof r === "object" && r.title).map(normalize);
   }
 
-  const core = { STORE_KEY, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), LOOKUP_NOT_CONNECTED };
+  const core = { STORE_KEY, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed, LOOKUP_NOT_CONNECTED };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
   if (typeof document === "undefined") return;
 
