@@ -5573,6 +5573,29 @@
     }
   }
 
+  /** Tab strip (phones): a 32px fade on each side that still has hidden tabs. */
+  function updateTabFades() {
+    const n = $(".type-tabs");
+    if (!n) return;
+    const max = n.scrollWidth - n.clientWidth;
+    n.classList.toggle("has-more-start", max > 1 && n.scrollLeft > 1);
+    n.classList.toggle("has-more-end", max > 1 && n.scrollLeft < max - 1);
+  }
+
+  /** Scroll the strip (only the strip, never the page) so the active tab sits 16px clear of either edge. */
+  function revealActiveTab() {
+    const n = $(".type-tabs");
+    const btn = n && n.querySelector(".chip.active");
+    if (btn && n.scrollWidth > n.clientWidth) {
+      const inset = 16;
+      const nr = n.getBoundingClientRect();
+      const br = btn.getBoundingClientRect();
+      if (br.left < nr.left + inset) n.scrollLeft -= nr.left + inset - br.left;
+      else if (br.right > nr.right - inset) n.scrollLeft += br.right - (nr.right - inset);
+    }
+    updateTabFades();
+  }
+
   function bind() {
     $$(".type-tabs .chip").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -5584,10 +5607,16 @@
           b.setAttribute("aria-selected", on ? "true" : "false");
         });
         // Phones: the strip scrolls sideways; keep the picked tab in view.
-        if (btn.scrollIntoView) btn.scrollIntoView({ block: "nearest", inline: "nearest" });
+        revealActiveTab();
         render();
       });
     });
+    const strip = $(".type-tabs");
+    if (strip) {
+      strip.addEventListener("scroll", updateTabFades, { passive: true });
+      window.addEventListener("resize", () => revealActiveTab());
+      revealActiveTab();
+    }
 
     els.statusFilter.addEventListener("change", () => {
       filterStatus = els.statusFilter.value;
@@ -8108,6 +8137,7 @@
         b.classList.toggle("active", on);
         b.setAttribute("aria-selected", on ? "true" : "false");
       });
+      revealActiveTab();
       render();
       const first = $(".btn-pick-cover");
       (first || $("#btn-cover-show-all")).focus();

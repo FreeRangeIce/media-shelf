@@ -619,6 +619,10 @@ body {
   pointer-events: none;
 }
 
+.type-tabs-fade-start {
+  display: none; /* phones only (below) */
+}
+
 .chip {
   appearance: none;
   border: 1px solid var(--border);
@@ -661,7 +665,7 @@ body {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    scroll-padding-inline: 0 2rem;
+    scroll-padding-inline: 16px;
     gap: 0;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -682,11 +686,35 @@ body {
     content: "";
     flex: 0 0 2rem;
     position: sticky;
+    z-index: 1;
     right: 0;
     margin-left: -2rem;
     background: linear-gradient(to right, rgba(255, 253, 248, 0), #fffdf8 100%);
     border-radius: 0 calc(var(--radius-sm) - 1px) calc(var(--radius-sm) - 1px) 0;
     pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  /* Same fade on the left edge once tabs are scrolled out that way (app.js toggles the
+     has-more-start / has-more-end classes on scroll). */
+  .type-tabs-fade-start {
+    display: block;
+    flex: 0 0 2rem;
+    position: sticky;
+    z-index: 1;
+    left: 0;
+    margin-right: -2rem;
+    background: linear-gradient(to left, rgba(255, 253, 248, 0), #fffdf8 100%);
+    border-radius: calc(var(--radius-sm) - 1px) 0 0 calc(var(--radius-sm) - 1px);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .type-tabs.has-more-end::after,
+  .type-tabs.has-more-start .type-tabs-fade-start {
+    opacity: 1;
   }
 
   .type-tabs .chip {
@@ -706,11 +734,11 @@ body {
     box-shadow: inset 1px 0 0 var(--border);
   }
 
-  .type-tabs .chip:first-child {
+  .type-tabs .chip:first-of-type {
     border-radius: calc(var(--radius-sm) - 1px) 0 0 calc(var(--radius-sm) - 1px);
   }
 
-  .type-tabs .chip:last-child {
+  .type-tabs .chip:last-of-type {
     border-radius: 0 calc(var(--radius-sm) - 1px) calc(var(--radius-sm) - 1px) 0;
   }
 
@@ -3296,4 +3324,48 @@ body.modal-open {
 
 .tabletop-view[hidden] {
   display: none;
+}
+
+/* Tabletop status badges, the same on the card, the expansion row and the sheet:
+   Owned filled magenta, Want a magenta outline. 1.5px border on both so they match in size. */
+.badge.tt-status {
+  border: 1.5px solid #8c1d5a;
+  padding: calc(var(--space-1) - 1.5px) calc(var(--space-2) - 1.5px);
+}
+
+.badge.tt-status.owned {
+  background: #8c1d5a;
+  color: #ffffff;
+}
+
+.badge.tt-status.want {
+  background: transparent;
+  color: #8c1d5a;
+}
+
+/* Expansion rows sit on the oak, where magenta text on a clear fill would fail contrast:
+   the Want outline keeps a paper backing there (Owned is already filled). */
+.tt-list .tt-exp-row .badge.tt-status.want {
+  background: #fffdf8;
+}
+
+.tt-list .tt-exp-row .badge.tt-status.owned {
+  background: #8c1d5a;
+}
+
+/* Subtype chip (Board, RPG, Expansion…): same pink tint, squared to 4px. */
+.badge-type.tabletop {
+  border-radius: 4px;
+}
+
+/* Sheet: BGG id is a quiet reference line under the description. */
+.tt-detail-line.tt-bgg-id {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Lookup isn't connected: looks unavailable, stays focusable, explained by the helper line. */
+#tt-lookup[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
 }

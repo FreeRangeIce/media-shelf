@@ -46,6 +46,7 @@
 
   <div class="toolbar">
     <nav class="type-tabs" role="tablist" aria-label="Media type">
+      <span class="type-tabs-fade-start" aria-hidden="true"></span>
       <button type="button" class="chip active" data-type="all" role="tab" aria-selected="true">All</button>
       <button type="button" class="chip" data-type="book" role="tab" aria-selected="false">Books</button>
       <button type="button" class="chip" data-type="game" role="tab" aria-selected="false">Games</button>
@@ -435,7 +436,7 @@
           <p class="field-error" id="tt-title-error" hidden>Add a title.</p>
         </div>
         <div class="form-row tt-lookup-row">
-          <button type="button" class="btn btn-ghost" id="tt-lookup">Look up on BoardGameGeek</button>
+          <button type="button" class="btn btn-ghost" id="tt-lookup" aria-disabled="true" aria-describedby="tt-lookup-status">Look up on BoardGameGeek</button>
           <p class="field-hint tt-lookup-status" id="tt-lookup-status" role="status" aria-live="polite" hidden></p>
         </div>
         <div class="form-grid tt-two">

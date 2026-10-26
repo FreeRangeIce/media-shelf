@@ -52,7 +52,18 @@ async function open(browser, { width = 390, height = 1400, tt = null, store = me
 }
 const tab = (page, t) => page.click(`.type-tabs .chip[data-type="${t}"]`);
 const ttStore = (page) => page.evaluate(() => JSON.parse(localStorage.getItem("media-tracker-v1:tabletop") || "[]"));
-async function shot(page, name) { if (!SHOTS) return; await page.waitForTimeout(150); const modal = await page.$(".modal:not([hidden])"); await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: !modal }); }
+// v2: viewport-height captures (never full page), so the sticky header can't land on cards.
+const SHOT_DIR = SHOTS ? `${SHOTS}/v2` : "";
+const footerLog = [];
+async function shot(page, name) {
+  if (!SHOT_DIR) return;
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: `${SHOT_DIR}/${name}.png`, fullPage: false });
+  footerLog.push({ name, ...(await page.evaluate(() => { const f = [...document.querySelectorAll(".footer-credit")].find((x) => /Board game data from BoardGameGeek/.test(x.textContent)); if (!f) return { inDom: false }; const r = f.getBoundingClientRect(); return { inDom: true, rendered: r.height > 0, inView: r.bottom > 0 && r.top < innerHeight }; })) });
+}
+// Relative luminance contrast (WCAG 2.x).
+const lum = (rgb) => { const [r, g, b] = rgb.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 async function addViaForm(page, fields) {
   await page.click("#btn-add");
   await page.waitForSelector("#tt-form-modal:not([hidden])");
@@ -65,7 +76,7 @@ async function addViaForm(page, fields) {
 
 (async () => {
   const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", args: ["--no-sandbox"], headless: true });
-  if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
+  if (SHOT_DIR) fs.mkdirSync(SHOT_DIR, { recursive: true });
 
   // Empty tab + tab strip
   {
@@ -83,7 +94,34 @@ async function addViaForm(page, fields) {
       });
       check(`tabs at ${w}: strip scrolls, page doesn't, 44px targets, 14px type, 32px fade`, m.scroll && m.docW === w && m.minH >= 44 && m.fs === "14px" && m.fade === "32px", JSON.stringify(m));
     }
-    for (const w of [1440, 390, 320]) { await page.setViewportSize({ width: w, height: 1000 }); await shot(page, `empty-${w}`); }
+    // Tab strip: active tab scrolled into view with a 16px inset; a fade on each side with hidden tabs.
+    for (const w of [390, 320]) {
+      await page.setViewportSize({ width: w, height: 844 });
+      await page.waitForTimeout(300);
+      const f = await page.evaluate(() => { const n = document.querySelector(".type-tabs"); const a = n.querySelector(".chip.active"); const nr = n.getBoundingClientRect(), ar = a.getBoundingClientRect(); return { start: getComputedStyle(n.querySelector(".type-tabs-fade-start")).opacity, startW: getComputedStyle(n.querySelector(".type-tabs-fade-start")).width, end: getComputedStyle(n, "::after").opacity, gapR: Math.round(nr.right - ar.right), sl: n.scrollLeft, atEnd: n.scrollLeft >= n.scrollWidth - n.clientWidth - 1 }; });
+      // Last tab: the strip is scrolled to its end, so it sits flush there (no room for a 16px inset).
+      check(`tabs at ${w}: Tabletop (last) active and in view, 32px left fade on, right fade off`, f.start === "1" && f.startW === "32px" && f.end === "0" && f.atEnd && f.gapR >= 0, JSON.stringify(f));
+      if (w === 390) await shot(page, "tabstrip-left-fade-390");
+    }
+    await tab(page, "all");
+    await page.waitForTimeout(300);
+    const f0 = await page.evaluate(() => { const n = document.querySelector(".type-tabs"); return { sl: n.scrollLeft, start: getComputedStyle(n.querySelector(".type-tabs-fade-start")).opacity, end: getComputedStyle(n, "::after").opacity }; });
+    check("tabs at 320: All active shows All, right fade only", f0.sl === 0 && f0.start === "0" && f0.end === "1", JSON.stringify(f0));
+    await page.$eval(".type-tabs", (n) => { n.scrollLeft = 60; n.dispatchEvent(new Event("scroll")); });
+    await page.waitForTimeout(250);
+    const fm = await page.evaluate(() => { const n = document.querySelector(".type-tabs"); return [getComputedStyle(n.querySelector(".type-tabs-fade-start")).opacity, getComputedStyle(n, "::after").opacity]; });
+    check("tabs: mid-scroll shows both fades (updated on scroll)", fm.join() === "1,1", fm.join());
+    await page.$eval('.type-tabs .chip[data-type="music"]', (b) => b.click()); // DOM click: Playwright would scroll it into view itself
+    await page.waitForTimeout(300);
+    const ins = await page.evaluate(() => { const n = document.querySelector(".type-tabs"); const a = n.querySelector(".chip.active"); const nr = n.getBoundingClientRect(), ar = a.getBoundingClientRect(); return { l: Math.round(ar.left - nr.left), r: Math.round(nr.right - ar.right) }; });
+    check("tabs at 320: a middle tab scrolls into view with ≥16px inset", ins.l >= 15 && ins.r >= 15, JSON.stringify(ins));
+    await page.$eval(".type-tabs", (n) => { n.scrollLeft = 0; });
+    await page.$eval('.type-tabs .chip[data-type="comic"]', (b) => b.click());
+    await page.waitForTimeout(300);
+    const ins2 = await page.evaluate(() => { const n = document.querySelector(".type-tabs"); const a = n.querySelector(".chip.active"); const nr = n.getBoundingClientRect(), ar = a.getBoundingClientRect(); return Math.round(nr.right - ar.right); });
+    check("tabs at 320: tab hidden on the right comes in with a 16px inset", ins2 >= 15 && ins2 <= 17, String(ins2));
+    await tab(page, "tabletop");
+    for (const w of [1440, 390, 320]) { await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 }); await shot(page, `empty-${w}`); }
     check("no page errors (empty)", !errors.length, errors.join("|"));
     await ctx.close();
   }
@@ -94,8 +132,12 @@ async function addViaForm(page, fields) {
     await tab(page, "tabletop");
     await page.click("#tt-empty-add");
     check("new entry form defaults to Owned", (await page.inputValue("#tt-status")) === "owned");
+    const lk = await page.evaluate(() => { const b = document.getElementById("tt-lookup"); const cs = getComputedStyle(b); const d = document.getElementById(b.getAttribute("aria-describedby") || ""); return { ad: b.getAttribute("aria-disabled"), dis: b.disabled, op: cs.opacity, cur: cs.cursor, tab: b.tabIndex, desc: d ? d.textContent : "" }; });
+    check("Lookup control: aria-disabled, 50% opacity, default cursor, still focusable and described", lk.ad === "true" && !lk.dis && lk.op === "0.5" && lk.cur === "default" && lk.tab === 0 && /isn’t connected yet/.test(lk.desc), JSON.stringify(lk));
+    await page.focus("#tt-lookup");
+    check("Lookup control takes keyboard focus", await page.evaluate(() => document.activeElement.id === "tt-lookup"));
     const before = requests.length;
-    await page.click("#tt-lookup");
+    await page.click("#tt-lookup", { force: true }); // aria-disabled: Playwright would wait for "enabled"
     const msg = await page.textContent("#tt-lookup-status");
     check("Lookup says it isn't connected", /BoardGameGeek lookup isn’t connected yet/.test(msg), msg);
     check("Lookup made no network request", requests.length === before);
@@ -149,12 +191,53 @@ async function addViaForm(page, fields) {
     const catanBadges = await page.evaluate(() => { const li = [...document.querySelectorAll("#tabletop-list > li")].find((l) => /Catan/.test(l.textContent)); return [li.querySelector(".item-card .badge-status").textContent, li.querySelector(".tt-exp-row .badge").textContent]; });
     check("Owned expansion under a Want base: both read clearly", catanBadges[0] === "Want" && catanBadges[1] === "Owned", catanBadges.join("/"));
     check("Games tab untouched by tabletop entries", (await (async () => { await tab(page, "game"); const n = await page.$$eval("#item-list > li", (l) => l.length); await tab(page, "tabletop"); return n; })()) === 2);
+    // Status badges: Owned filled, Want outline, same on card, expansion row and sheet; no blue.
+    const badgeCss = (sel) => page.$eval(sel, (b) => { const c = getComputedStyle(b); let bg = "rgb(255, 253, 248)"; for (let n = b; n; n = n.parentElement) { const x = getComputedStyle(n).backgroundColor; if (x !== "rgba(0, 0, 0, 0)" && x !== "transparent") { bg = x; break; } } return { bg: c.backgroundColor, fg: c.color, bw: c.borderTopWidth, bc: c.borderTopColor, under: bg }; });
+        // Chrome snaps a 1.5px border to whole device pixels (1px at DPR 1), so the computed width
+    // is checked loosely and the authored 1.5px is read from the stylesheet.
+    const OWN = { bg: "rgb(140, 29, 90)", fg: "rgb(255, 255, 255)", bc: "rgb(140, 29, 90)" };
+    const WANT = { fg: "rgb(140, 29, 90)", bc: "rgb(140, 29, 90)" };
+    const same = (got, want) => ["1px", "1.5px"].includes(got.bw) && Object.entries(want).every(([k, v]) => got[k] === v);
+    const authored = await page.evaluate(() => { for (const sh of document.styleSheets) for (const r of sh.cssRules) if (r.selectorText === ".badge.tt-status") return r.style.borderWidth || r.style.borderTopWidth; return ""; });
+    check("status badge border authored at 1.5px", authored === "1.5px", authored);
+    const cardOwned = await badgeCss('article[data-tt-open="b2"] .badge-status');
+    const cardWant = await badgeCss('article[data-tt-open="b5"] .badge-status');
+    const rowOwned = await badgeCss('.tt-exp-row[data-tt-open="w1"] .badge-status');
+    const rowWant = await badgeCss('.tt-exp-row[data-tt-open="w2"] .badge-status');
+    await page.click('article[data-tt-open="b2"]');
+    const sheetOwned = await badgeCss("#tt-detail-body .tt-detail-badges .badge-status");
+    const sheetWantRow = await badgeCss('#tt-detail-body .tt-exp-row[data-tt-open="w2"] .badge-status');
+    await page.click("#tt-detail-close");
+    await page.click('article[data-tt-open="b5"]');
+    const sheetWant = await badgeCss("#tt-detail-body .tt-detail-badges .badge-status");
+    await page.click("#tt-detail-close");
+    check("Owned badge filled #8c1d5a / white on card, expansion row and sheet", [cardOwned, rowOwned, sheetOwned].every((x) => same(x, OWN)), JSON.stringify([cardOwned, rowOwned, sheetOwned]));
+    check("Want badge is a 1.5px #8c1d5a outline with #8c1d5a text, transparent on paper", [cardWant, rowWant, sheetWant, sheetWantRow].every((x) => same(x, WANT)) && [cardWant, sheetWant, sheetWantRow].every((x) => x.bg === "rgba(0, 0, 0, 0)"), JSON.stringify([cardWant, rowWant, sheetWant, sheetWantRow]));
+    const blue = [cardOwned, cardWant, rowOwned, rowWant, sheetOwned, sheetWant].some((x) => [x.bg, x.fg, x.bc].some((c) => { const [r, g, b] = c.match(/\d+/g).map(Number); return b > r + 20 && b > g; }));
+    check("no blue in Tabletop status badges", !blue);
+    const ratios = [["Owned (white on #8c1d5a)", OWN.fg, OWN.bg], ["Want on card paper", cardWant.fg, cardWant.under], ["Want in sheet", sheetWant.fg, sheetWant.under], ["Want on oak row (paper backing)", rowWant.fg, rowWant.bg]].map(([n, a, b]) => [n, contrast(a, b)]);
+    console.log("      contrast: " + ratios.map(([n, r]) => `${n} ${r.toFixed(2)}:1`).join(", "));
+    check("badge text contrast ≥ 4.5:1 everywhere", ratios.every(([, r]) => r >= 4.5), ratios.map(([n, r]) => `${n} ${r.toFixed(2)}`).join("; "));
+    const chip = await page.$eval('article[data-tt-open="b2"] .badge-type', (b) => ({ r: getComputedStyle(b).borderRadius, bg: getComputedStyle(b).backgroundColor }));
+    check("subtype chip: 4px radius, pink tint kept", chip.r === "4px" && chip.bg === "rgba(214, 58, 140, 0.28)", JSON.stringify(chip));
+    const metaB2 = await page.$eval('article[data-tt-open="b2"] .item-meta', (m) => m.textContent);
+    check("non-breaking spaces in '1–5 players' and '70 min'", /1\u2060–\u20605\u00a0players/.test(metaB2) && /70\u00a0min/.test(metaB2), JSON.stringify(metaB2));
+    check("lone expansion with no creator/year has no '—' line", (await page.$$eval('article[data-tt-open="lonew"] .item-meta', (m) => m.length)) === 0 && !(await page.textContent('article[data-tt-open="lonew"]')).includes("—"));
+    await page.click('article[data-tt-open="lonew"]');
+    check("sheet with no creator/year has no '—' line", (await page.$$eval("#tt-detail-body .item-meta", (m) => m.length)) === 0 && !(await page.textContent("#tt-detail-body")).includes("—"));
+    await page.click("#tt-detail-close");
+    await page.click('article[data-tt-open="b2"]');
+    const bggLine = await page.evaluate(() => { const ps = [...document.querySelectorAll("#tt-detail-body > *")]; const i = ps.findIndex((p) => /^BGG id 266192$/.test(p.textContent)); const c = getComputedStyle(ps[i]); return { last: i === ps.length - 1, fs: c.fontSize, color: c.color }; });
+    check("sheet: 'BGG id N' last, 13px, muted", bggLine.last && bggLine.fs === "13px" && bggLine.color === "rgb(92, 83, 72)", JSON.stringify(bggLine));
+    await page.click("#tt-detail-close");
     for (const w of [1440, 390, 320]) {
       await page.setViewportSize({ width: w, height: 1000 });
       const ov = await page.evaluate(() => document.documentElement.scrollWidth);
       check(`shelf at ${w}: no sideways page scroll`, ov === w, String(ov));
-      await shot(page, `shelf-grouped-${w}`);
       await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 });
+      await page.$eval("#tabletop-list", (e) => window.scrollTo(0, e.getBoundingClientRect().top + scrollY - 140));
+      await shot(page, `shelf-grouped-${w}`);
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.click('[data-tt-open="b2"]');
       await page.waitForSelector("#tt-detail-modal:not([hidden])");
       await shot(page, `opened-base-2exp-${w}`);
@@ -168,6 +251,10 @@ async function addViaForm(page, fields) {
       await page.click('article[data-tt-open="lone"]');
       await shot(page, `opened-lone-expansion-${w}`);
       await page.click("#tt-detail-close");
+      // Footer credit companion: the viewport shots above stop short of the page footer.
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await shot(page, `footer-credit-${w}`);
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.setViewportSize({ width: w, height: 1000 });
     }
     await page.setViewportSize({ width: 390, height: 1400 });
@@ -279,6 +366,10 @@ async function addViaForm(page, fields) {
       await ctx.close();
     }
     check("Games tab markup identical to origin/main", out[0] === out[1]);
+  }
+  if (SHOT_DIR) {
+    fs.writeFileSync(`${SHOT_DIR}/footer-check.json`, JSON.stringify(footerLog, null, 1));
+    check("footer 'Board game data from BoardGameGeek' rendered on every shot's page", footerLog.every((x) => x.inDom && x.rendered), JSON.stringify(footerLog.filter((x) => !(x.inDom && x.rendered))));
   }
   await browser.close();
   console.log(`\n${pass}/${pass + fail} passed`);

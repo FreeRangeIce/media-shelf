@@ -288,8 +288,17 @@
   let active = false;
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  const meta = (e) => [e.designer, e.year, e.players && `${e.players} players`, e.playTime && `${e.playTime} min`].filter(Boolean).join(" · ") || "—";
-  const statusBadge = (e) => `<span class="badge badge-status ${e.status}">${STATUS_LABELS[e.status]}</span>`;
+  /** Creator · year · players · time; non-breaking inside "1–5 players" and "90 min". "" when all empty. */
+  const NB = "\u00a0";
+  const WJ = "\u2060"; // word joiner: no line break at the dash in "1–5"
+  const metaText = (e) =>
+    [e.designer, e.year, e.players && `${e.players.replace(/\s*([–-])\s*/g, `${WJ}$1${WJ}`)}${NB}players`, e.playTime && `${e.playTime}${NB}min`]
+      .filter(Boolean)
+      .join(" · ");
+  const meta = (e) => metaText(e) || "—";
+  /** Lone expansions and the sheet drop the line entirely when it would only be "—". */
+  const metaLine = (e) => (metaText(e) ? `<p class="item-meta">${esc(metaText(e))}</p>` : "");
+  const statusBadge = (e) => `<span class="badge badge-status tt-status ${e.status}">${STATUS_LABELS[e.status]}</span>`;
   const subtypeBadge = (e) => `<span class="badge badge-type tabletop">${SUBTYPE_LABELS[e.subtype]}</span>`;
 
   function cover(e) {
@@ -319,7 +328,7 @@
     <div class="item-body"><div class="item-top"><div>
       ${lone ? `<p class="tt-kicker">Expansion</p>` : ""}
       <h3 class="item-title">${esc(e.title)}</h3>
-      <p class="item-meta">${esc(meta(e))}</p>
+      ${lone ? metaLine(e) : `<p class="item-meta">${esc(meta(e))}</p>`}
       ${exps.length ? `<p class="tt-exp-count">${exps.length} ${exps.length === 1 ? "expansion" : "expansions"}</p>` : ""}
     </div>
     <div class="item-badges">${lone ? "" : subtypeBadge(e)}${statusBadge(e)}</div></div></div>
@@ -404,6 +413,9 @@
       const el = F(`tt-${k}`);
       if (el) el.value = entry ? e[k] || "" : "";
     });
+    // Lookup isn't connected: the control stays focusable (aria-disabled, not disabled) and
+    // is described by the helper line, which also shows when it's pressed.
+    F("tt-lookup-status").textContent = LOOKUP_NOT_CONNECTED;
     F("tt-lookup-status").hidden = true;
     F("tt-dup").hidden = true;
     F("tt-title-error").hidden = true;
@@ -488,8 +500,8 @@
     F("tt-detail-title").textContent = e.title;
     const rows = [];
     rows.push(`<div class="tt-detail-badges">${subtypeBadge(e)}${statusBadge(e)}</div>`);
-    rows.push(`<p class="item-meta">${esc(meta(e))}</p>`);
-    if (e.bggId) rows.push(`<p class="tt-detail-line">BGG id ${esc(e.bggId)}</p>`);
+    const ml = metaLine(e);
+    if (ml) rows.push(ml);
     if (e.barcode) rows.push(`<p class="tt-detail-line">Barcode ${esc(e.barcode)}</p>`);
     if (e.subtype === "expansion") {
       const p = resolveParent(entries, e);
@@ -509,6 +521,7 @@
       );
     }
     if (e.notes) rows.push(`<p class="item-notes">${esc(e.notes)}</p>`);
+    if (e.bggId) rows.push(`<p class="tt-detail-line tt-bgg-id">BGG id ${esc(e.bggId)}</p>`);
     F("tt-detail-body").innerHTML = rows.join("");
     F("tt-detail-edit").dataset.id = e.id;
     F("tt-detail-delete").dataset.id = e.id;
