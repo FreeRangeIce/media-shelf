@@ -3369,3 +3369,139 @@ body.modal-open {
   opacity: 0.5;
   cursor: default;
 }
+
+/* ---------- Tabletop merge: same-title prompt (one match at a time) ---------- */
+.tt-match-panel {
+  max-width: 760px;
+}
+
+.tt-match-progress {
+  margin: 0 0 var(--space-1);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.tt-match-lede {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-sm);
+}
+
+/* Phones: stacked, this shelf on top. Wider: two columns side by side. */
+.tt-match-pair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+@media (min-width: 600px) {
+  .tt-match-pair {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.tt-match-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  min-width: 0;
+}
+
+.tt-match-label {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.tt-match-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: var(--fw-medium);
+  overflow-wrap: anywhere;
+}
+
+.tt-match-side .item-meta,
+.tt-match-parent {
+  margin: 0;
+}
+
+.tt-match-parent {
+  font-size: var(--fs-sm);
+}
+
+/* A value that differs from the other copy: bold only, never a colour. */
+.tt-match-side b.tt-diff {
+  font-weight: 700;
+  color: inherit;
+}
+
+.tt-match-side .badge.tt-diff {
+  font-weight: 800;
+}
+
+/* The newer copy: a quiet line, no colour cue. */
+.tt-match-updated {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.tt-match-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tt-match-actions .btn {
+  min-height: var(--tap);
+}
+
+/* Update existing / Skip: neutral outlines, never the danger style. */
+.btn.btn-outline {
+  background: transparent;
+  border: 1px solid var(--text-muted); /* 7:1 on paper: the outline itself reads as a button */
+  color: var(--text);
+}
+
+.tt-match-rest {
+  appearance: none;
+  display: block;
+  min-height: var(--tap);
+  margin-top: var(--space-2);
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.tt-match-rest[hidden] {
+  display: none;
+}
+
+.tt-match-rest:focus-visible,
+.tt-match-actions .btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+@media (max-width: 479px) {
+  .tt-match-actions {
+    flex-direction: column;
+  }
+
+  .tt-match-actions .btn {
+    width: 100%;
+  }
+}
