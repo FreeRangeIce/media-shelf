@@ -121,11 +121,39 @@ t("merge: hand-entered match (no BGG id, other local id, same title+subtype) kee
   assert.strictEqual(r.added, 1);
   assert.deepStrictEqual(r.handMatches.map((m) => [m.title, m.existingId, m.incomingId, m.action]), [["homebrew  quest".trim(), "h1", "h2", "keep-both"]].map((x) => [inc[0].title, ...x.slice(1)]));
 });
-t("merge: different subtype or a BGG id is not a hand-entered match", () => {
-  const here = [base({ id: "h1", bggId: "", title: "Root" })];
-  const r = T.mergeRestore(here, [base({ id: "h2", bggId: "", title: "Root", subtype: "card" }), base({ id: "h3", bggId: "237182", title: "Root" })]);
+t("merge: different subtype, or two different BGG ids, is not a hand match", () => {
+  const here = [base({ id: "h1", bggId: "", title: "Root" }), base({ id: "g1", bggId: "111", title: "Azul" })];
+  const r = T.mergeRestore(here, [base({ id: "h2", bggId: "", title: "Root", subtype: "card" }), base({ id: "g2", bggId: "222", title: "Azul" })]);
   assert.strictEqual(r.handMatches.length, 0);
-  assert.strictEqual(r.list.length, 3);
+  assert.strictEqual(r.list.length, 4);
+});
+t("merge: hand-entered here + BGG id incoming (same title/subtype) is a hand match", () => {
+  const here = [base({ id: "h1", bggId: "", title: "Wingspan" })];
+  const r = T.mergeRestore(here, [base({ id: "x1", title: "Wingspan" })], { answers: {} });
+  assert.deepStrictEqual([r.handMatches.length, r.list.length, r.added], [1, 1, 0]); // unanswered = Skip, never silently added
+  const u = T.mergeRestore(here, [base({ id: "x1", title: "Wingspan" })], { answers: { x1: "merge" } });
+  assert.deepStrictEqual([u.list.length, u.list[0].id, u.list[0].bggId], [1, "h1", "266192"]);
+});
+t("merge: BGG id here + hand-entered incoming is a hand match", () => {
+  const here = [base({ id: "b1", title: "Wingspan" })];
+  const r = T.mergeRestore(here, [base({ id: "x1", bggId: "", title: "Wingspan", status: "want" })], { answers: { x1: "merge" } });
+  assert.deepStrictEqual([r.handMatches.length, r.list.length, r.list[0].bggId, r.list[0].status], [1, 1, "266192", "want"]);
+  const k = T.mergeRestore(here, [base({ id: "x1", bggId: "", title: "Wingspan" })], { answers: { x1: "keep-both" } });
+  assert.strictEqual(k.list.length, 2);
+});
+t("merge Update: empty restored fields keep old values; restored expansions relink to the existing base", () => {
+  const here = [base({ id: "h1", bggId: "", title: "Homebrew", designer: "Me", year: "2020" })];
+  const inc = [base({ id: "h2", bggId: "", title: "Homebrew", designer: "", year: "2021" }), exp({ id: "e9", parentBggId: "", parentId: "h2", title: "Homebrew Exp" })];
+  const r = T.mergeRestore(here, inc, { answers: { h2: "merge" } });
+  const b = r.list.find((e) => e.id === "h1");
+  assert.deepStrictEqual([r.list.length, b.designer, b.year], [2, "Me", "2021"]);
+  assert.strictEqual(T.resolveParent(r.list, r.list.find((e) => e.id === "e9")).id, "h1");
+});
+t("merge Skip: restored expansions linked by local id relink to the existing base", () => {
+  const here = [base({ id: "h1", bggId: "", title: "Homebrew" })];
+  const inc = [base({ id: "h2", bggId: "", title: "Homebrew" }), exp({ id: "e9", parentBggId: "", parentId: "h2", title: "Homebrew Exp" })];
+  const r = T.mergeRestore(here, inc, { answers: { h2: "skip" } });
+  assert.deepStrictEqual([r.list.length, T.resolveParent(r.list, r.list.find((e) => e.id === "e9")).id], [2, "h1"]);
 });
 t("merge: hand-match policy hook can switch to merge or skip later", () => {
   const here = [base({ id: "h1", bggId: "", title: "Homebrew Quest" })];

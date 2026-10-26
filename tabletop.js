@@ -208,9 +208,15 @@
    * Returns handMatches: [{ title, subtype, existingId, incomingId, action }].
    */
   function mergeRestore(current, incoming, opts = {}) {
-    const onHandMatch = typeof opts.onHandMatch === "function" ? opts.onHandMatch : defaultHandMatch;
+    const answers = opts.answers || null; // { [incomingId]: HAND_MATCH value } from the per-item prompt
+    const onHandMatch =
+      typeof opts.onHandMatch === "function"
+        ? opts.onHandMatch
+        : answers
+          ? (m, inc) => answers[inc.id] || HAND_MATCH.SKIP
+          : defaultHandMatch;
     const out = current.map((e) => ({ ...e }));
-    const existingHand = out.filter((e) => !e.bggId);
+    const here = out.slice(); // only entries already on this device can be a hand match
     const remap = new Map();
     const handMatches = [];
     let added = 0;
@@ -218,8 +224,12 @@
     incoming.map(normalize).forEach((inc) => {
       let i = out.findIndex((e) => e.id === inc.id);
       if (i < 0 && inc.bggId) i = out.findIndex((e) => e.bggId === inc.bggId);
-      if (i < 0 && !inc.bggId) {
-        const m = existingHand.find((e) => e.subtype === inc.subtype && normTitle(e.title) === normTitle(inc.title));
+      // Hand match: same title + subtype where at least one side has no BGG id (hand-entered on
+      // one device). Mirrors findDuplicate: two different BGG ids are never a match.
+      if (i < 0) {
+        const m = here.find(
+          (e) => e.subtype === inc.subtype && normTitle(e.title) === normTitle(inc.title) && !(e.bggId && inc.bggId)
+        );
         if (m) {
           const asked = onHandMatch(m, inc);
           const action = Object.values(HAND_MATCH).includes(asked) ? asked : HAND_MATCH.KEEP_BOTH;
@@ -228,7 +238,15 @@
             remap.set(inc.id, m.id);
             return;
           }
-          if (action === HAND_MATCH.MERGE) i = out.findIndex((e) => e.id === m.id);
+          if (action === HAND_MATCH.MERGE) {
+            // Update existing: the add-time overwrite rule (an empty restored field keeps the
+            // old value); the existing id stays and local-id links to the restored one follow it.
+            const j = out.findIndex((e) => e.id === m.id);
+            out[j] = { ...mergeUpdate(out[j], inc), id: m.id, dateAdded: out[j].dateAdded };
+            remap.set(inc.id, m.id);
+            updated += 1;
+            return;
+          }
         }
       }
       if (i < 0) {
@@ -602,14 +620,21 @@
     isActive: () => active,
     openAdd: () => openForm(null),
     count: () => load().length,
+    /** Hand matches a merge of `incoming` would raise, without writing anything. */
+    previewHandMatches(incoming) {
+      const list = load();
+      const r = mergeRestore(list, incoming, { onHandMatch: () => HAND_MATCH.SKIP });
+      const byId = new Map(incoming.map((e) => [e.id, normalize(e)]));
+      return r.handMatches.map((m) => ({ ...m, existing: list.find((e) => e.id === m.existingId), incoming: byId.get(m.incomingId) }));
+    },
     entries: () => load().slice(),
     backupBlock: () => ({ v: 1, entries: load().map((e) => ({ ...e })) }),
     /** Restore: "replace" swaps the tabletop shelf, "merge" folds in by id / BGG id. */
-    restore(incoming, mode) {
+    restore(incoming, mode, opts) {
       let res = { added: incoming.length, updated: 0, handMatches: [] };
       const ok = commit((list) => {
         if (mode === "replace") return mergeRestore([], incoming).list;
-        res = mergeRestore(list, incoming);
+        res = mergeRestore(list, incoming, opts);
         return res.list;
       });
       if (active) render();
