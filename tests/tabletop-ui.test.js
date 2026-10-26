@@ -389,6 +389,7 @@ async function addViaForm(page, fields) {
     const before = { tt: await ttStore(page), items: await page.evaluate(() => localStorage.getItem("media-tracker-v1")) };
     await page.focus("#btn-settings");
     await startMerge(page, bk(INC, [{ ...media.items[2], id: "newbook" }]));
+    check("normal first-pass prompt: no 'another tab' note", await page.isHidden("#tt-match-late"));
     check("prompt: focus moves into it (primary)", await page.evaluate(() => document.activeElement.id === "tt-match-keep"));
     const p1 = await page.evaluate(() => ({ prog: document.getElementById("tt-match-progress").textContent, labels: [...document.querySelectorAll(".tt-match-label")].map((x) => x.textContent), rest: !document.getElementById("tt-match-rest").hidden, bold: [...document.querySelectorAll(".tt-match-side b.tt-diff, .tt-match-side .badge.tt-diff")].map((b) => b.textContent), upd: [...document.querySelectorAll(".tt-match-side")].map((x) => (x.querySelector(".tt-match-updated") || {}).textContent || ""), primary: document.getElementById("tt-match-keep").className, outlines: ["tt-match-update", "tt-match-skip"].map((id) => document.getElementById(id).className), nameFs: getComputedStyle(document.querySelector(".tt-match-name")).fontSize, updFs: getComputedStyle(document.querySelector(".tt-match-updated")).fontSize }));
     check("prompt: '1 of 3', shelf then backup, 'Keep both for the rest' shown", p1.prog === "1 of 3" && p1.labels.join("|") === "On this shelf|From backup" && p1.rest, JSON.stringify(p1));
@@ -491,16 +492,20 @@ async function addViaForm(page, fields) {
     await page.click("#confirm-alt");
     await page.waitForSelector("#tt-match-modal:not([hidden])");
     check("race: starts with 1 match (Game A)", /Game A/.test(await page.textContent("#tt-match-pair")) && (await page.isHidden("#tt-match-progress")));
+    check("first-pass match: no 'another tab' note", await page.isHidden("#tt-match-late"));
     await page.evaluate((az) => { const k = "media-tracker-v1:tabletop"; const l = JSON.parse(localStorage.getItem(k)); l.push(az); localStorage.setItem(k, JSON.stringify(l)); }, AZ("hAz"));
     await page.click("#tt-match-keep");
     await page.waitForTimeout(150);
     const reopened = await page.isVisible("#tt-match-modal") && /Azul/.test(await page.textContent("#tt-match-pair"));
     check("race: Azul added mid-prompt is asked before anything is written, '2 of 2'", reopened && (await page.textContent("#tt-match-progress")) === "2 of 2" && !(await ttStore(page)).some((e) => e.id === "iA"));
+    const late = await page.evaluate(() => { const n = document.getElementById("tt-match-late"); const u = getComputedStyle(n); const kids = [...document.getElementById("tt-match-panel").querySelectorAll("p, .tt-match-pair")]; return { vis: !n.hidden && n.offsetHeight > 0, text: n.textContent, fs: u.fontSize, color: u.color, before: kids.indexOf(n) < kids.indexOf(document.getElementById("tt-match-pair")) && kids.indexOf(n) >= 0, upd: (() => { const x = document.querySelector(".tt-match-updated"); return x ? getComputedStyle(x).color : u.color; })() }; });
+    check("re-asked match: muted 13px note before the pair, same color as 'Updated'", late.vis && late.text === "This one was added to your shelf while you were answering." && late.fs === "13px" && late.color === late.upd && late.color === "rgb(92, 83, 72)" && late.before, JSON.stringify(late));
+    if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); for (const w of [375, 1440]) { await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 812 }); await page.waitForTimeout(150); await page.screenshot({ path: `${SHOTS}/azul-reask-late-note-${w}.png`, fullPage: false }); } await page.setViewportSize({ width: 390, height: 1400 }); }
     if (reopened) await page.click("#tt-match-skip");
     await page.waitForSelector("#tt-match-modal[hidden]", { state: "attached" });
     const st = await ttStore(page);
     const toast = (await page.textContent("#toast")).trim();
-    check("race: Skip on Azul keeps one Azul (ours); toast from the result", st.filter((e) => e.title === "Azul").map((e) => e.id).join() === "hAz" && toast === "Merged — 1 added, 0 updated. Same-title tabletop games: 1 kept both, 1 skipped", toast);
+    check("race: Skip on Azul keeps one Azul (ours); toast from the result", st.filter((e) => e.title === "Azul").map((e) => e.id).join() === "hAz" && toast === "Merged — 1 added. Same-title tabletop games: 1 kept both, 1 skipped", toast);
     check("no page errors (race)", !errors.length, errors.join("|"));
     await ctx.close();
   }
@@ -514,8 +519,29 @@ async function addViaForm(page, fields) {
     const st = await ttStore(page);
     const toast = (await page.textContent("#toast")).trim();
     check("safety net: unasked match keeps both copies", st.filter((e) => e.title === "Azul").length === 2 && (await page.isHidden("#tt-match-modal")));
-    check("safety net: toast counts it as kept both (from the merge result)", toast === "Merged — 1 added, 0 updated. Same-title tabletop games: 1 kept both", toast);
+    check("safety net: toast counts it as kept both (from the merge result)", toast === "Merged — 1 added. Same-title tabletop games: 1 kept both", toast);
     check("no page errors (safety net)", !errors.length, errors.join("|"));
+    await ctx.close();
+  }
+
+  // Toast first clause: only non-zero parts
+  {
+    const { page, ctx } = await open(browser, { tt: [E({ id: "u1", title: "Azul", subtype: "board", bggId: "230802" }), E({ id: "u2", title: "Root", subtype: "board", bggId: "237182" })] });
+    const later = "2026-10-09T10:00:00.000Z";
+    await page.setInputFiles("#import-file", { name: "m.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ app: "freerangemedia", version: 3, exportedAt: T0, items: [], tabletop: { v: 1, entries: [E({ id: "u1", title: "Azul", subtype: "board", bggId: "230802", status: "want", dateUpdated: later }), E({ id: "u2", title: "Root", subtype: "board", bggId: "237182", status: "want", dateUpdated: later })] } })) });
+    await page.click("#confirm-alt"); await page.waitForTimeout(200);
+    const t1 = (await page.textContent("#toast")).trim();
+    check("toast: updates only -> 'Merged — 2 updated'", t1 === "Merged — 2 updated", t1);
+    const books = ["x1", "x2", "x3"].map((id) => ({ ...media.items[2], id, title: `Book ${id}` }));
+    await page.setInputFiles("#import-file", { name: "m2.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ app: "freerangemedia", version: 3, exportedAt: T0, items: books })) });
+    await page.click("#confirm-alt"); await page.waitForTimeout(200);
+    const t2 = (await page.textContent("#toast")).trim();
+    check("toast: media only -> 'Merged — 3 added'", t2 === "Merged — 3 added", t2);
+    await page.setInputFiles("#import-file", { name: "m3.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ app: "freerangemedia", version: 3, exportedAt: T0, items: books })) });
+    await page.click("#confirm-alt"); await page.waitForTimeout(200);
+    const t3 = (await page.textContent("#toast")).trim();
+    check("toast: nothing new -> 'Merged — already up to date'", t3 === "Merged — already up to date", t3);
+    console.log("      toasts: " + [t1, t2, t3].join(" | "));
     await ctx.close();
   }
 
@@ -526,7 +552,7 @@ async function addViaForm(page, fields) {
     await page.click("#confirm-alt");
     await page.waitForTimeout(200);
     const toast = (await page.textContent("#toast")).trim();
-    check("no matches: toast has no same-title sentence", toast === "Merged — 1 added, 0 updated" && (await page.isHidden("#tt-match-modal")), toast);
+    check("no matches: toast has no same-title sentence", toast === "Merged — 1 added" && (await page.isHidden("#tt-match-modal")), toast);
     await ctx.close();
   }
 

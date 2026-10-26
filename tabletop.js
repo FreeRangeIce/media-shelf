@@ -561,6 +561,7 @@
     close: "Cancel merge", // PENDING BEREAN
     updated: (d) => `Updated ${d}`, // PENDING BEREAN
     expansionOf: (t) => `Expansion of ${t}`, // PENDING BEREAN
+    late: "This one was added to your shelf while you were answering.", // Berean cleared
   };
   const shortDate = (iso) => {
     const d = new Date(iso);
@@ -613,6 +614,8 @@
       F("tt-match-update").textContent = MATCH_COPY.update;
       F("tt-match-skip").textContent = MATCH_COPY.skip;
       F("tt-match-rest").textContent = MATCH_COPY.rest;
+      F("tt-match-late").textContent = MATCH_COPY.late;
+      F("tt-match-late").hidden = !opts.late; // only on matches re-asked after the commit-time re-check
       F("tt-match-close").setAttribute("aria-label", MATCH_COPY.close);
       const show = () => {
         const m = matches[i];

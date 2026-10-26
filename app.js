@@ -2613,7 +2613,8 @@
             ? TT.previewHandMatches(parsed.tabletop).filter((m) => !(m.incomingId in answers))
             : [];
           if (!pending.length) break;
-          const got = await TT.askHandMatches(pending, parsed.tabletop, { done: asked });
+          // asked > 0: these turned up at the re-check (another tab added them), so the prompt says so.
+          const got = await TT.askHandMatches(pending, parsed.tabletop, { done: asked, late: asked > 0 });
           if (!got) {
             showToast("Merge cancelled. Nothing was changed."); // PENDING BEREAN
             return;
@@ -2638,10 +2639,9 @@
         }
         restoreCoverQueue(parsed.coverQueueIds, false);
         render();
-        const base =
-          res.added || res.updated
-            ? `Merged — ${res.added} added, ${res.updated} updated`
-            : "Merged — already up to date";
+        // Only the non-zero parts of added / updated; both zero keeps "already up to date".
+        const merged = [res.added && `${res.added} added`, res.updated && `${res.updated} updated`].filter(Boolean);
+        const base = merged.length ? `Merged — ${merged.join(", ")}` : "Merged — already up to date"; // Berean cleared
         // Counted from the merge result, not from the answers.
         const n = (a) => done.filter((m) => m.action === a).length;
         // Zero counts are left out; with none at all the second sentence is dropped.

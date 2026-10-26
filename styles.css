@@ -3527,3 +3527,14 @@ body.modal-open {
     width: 100%;
   }
 }
+
+/* Re-asked match (another tab added it): same muted 13px as the 'Updated' line. */
+.tt-match-late {
+  margin: 0 0 var(--space-2);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.tt-match-late[hidden] {
+  display: none;
+}
