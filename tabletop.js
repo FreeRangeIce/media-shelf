@@ -556,7 +556,7 @@
     backup: "From backup", // PENDING BEREAN
     keep: "Keep both", // PENDING BEREAN
     update: "Update existing", // PENDING BEREAN
-    skip: "Skip", // PENDING BEREAN
+    skip: "Skip backup copy", // Berean cleared
     rest: "Keep both for the rest", // PENDING BEREAN
     close: "Cancel merge", // PENDING BEREAN
     updated: (d) => `Updated ${d}`, // PENDING BEREAN

@@ -337,7 +337,7 @@ async function addViaForm(page, fields) {
     let s = await ttStore(page);
     const toast = await page.textContent("#toast");
     check("merge kept all 3 games and kept both hand-entered copies", s.length === 4 && ["tt-a", "tt-b", "tt-c", "tt-x"].every((id) => s.some((e) => e.id === id)), s.map((e) => e.id).join(","));
-    check("merge toast counts kept / updated / skipped", /Same-title tabletop games: 1 kept both, 0 updated, 0 skipped/.test(toast), toast);
+    check("merge toast counts kept / updated / skipped", /Same-title tabletop games: 1 kept both$/.test(toast), toast);
     await page.setInputFiles("#import-file", { name: "b2.json", mimeType: "application/json", buffer: bk(2) });
     await page.click("#confirm-ok"); // Replace
     const t2 = await page.textContent("#toast");
@@ -393,6 +393,7 @@ async function addViaForm(page, fields) {
     const p1 = await page.evaluate(() => ({ prog: document.getElementById("tt-match-progress").textContent, labels: [...document.querySelectorAll(".tt-match-label")].map((x) => x.textContent), rest: !document.getElementById("tt-match-rest").hidden, bold: [...document.querySelectorAll(".tt-match-side b.tt-diff, .tt-match-side .badge.tt-diff")].map((b) => b.textContent), upd: [...document.querySelectorAll(".tt-match-side")].map((x) => (x.querySelector(".tt-match-updated") || {}).textContent || ""), primary: document.getElementById("tt-match-keep").className, outlines: ["tt-match-update", "tt-match-skip"].map((id) => document.getElementById(id).className), nameFs: getComputedStyle(document.querySelector(".tt-match-name")).fontSize, updFs: getComputedStyle(document.querySelector(".tt-match-updated")).fontSize }));
     check("prompt: '1 of 3', shelf then backup, 'Keep both for the rest' shown", p1.prog === "1 of 3" && p1.labels.join("|") === "On this shelf|From backup" && p1.rest, JSON.stringify(p1));
     check("prompt: differing values in bold (year, status), newer copy marked 'Updated <date>' 13px", p1.bold.includes("2020") && p1.bold.includes("2021") && p1.bold.includes("Want") && p1.upd[0] === "" && p1.upd[1] === "Updated Oct 9, 2026" && p1.updFs === "13px" && p1.nameFs === "16px", JSON.stringify(p1));
+    check("Skip button reads 'Skip backup copy'", (await page.textContent("#tt-match-skip")).trim() === "Skip backup copy");
     check("prompt: Keep both is the filled primary; Update and Skip are outlines, Skip not danger", /btn-primary/.test(p1.primary) && p1.outlines.every((c) => /btn-outline/.test(c) && !/danger/.test(c)));
     check("nothing written while the prompt is open", JSON.stringify(await ttStore(page)) === JSON.stringify(before.tt) && (await page.evaluate(() => localStorage.getItem("media-tracker-v1"))) === before.items);
     for (const w of [1440, 390, 320]) { await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 }); await vshot(page, `match-1of3-rest-${w}`); await vshot(page, `match-bold-differences-${w}`); }
@@ -419,7 +420,7 @@ async function addViaForm(page, fields) {
     check("after Update: shelf expansion and restored expansion both under the base (local id)", T_parent(s, "h1x") === "h1" && T_parent(s, "i1x") === "h1");
     check("Keep both: two Wingspans", s.filter((e) => e.title === "Wingspan").length === 2);
     check("Skip: one Root, unchanged, restored expansion relinked to it", s.filter((e) => e.title === "Root").length === 1 && g("h3").status === "owned" && T_parent(s, "i3x") === "h3");
-    check("final toast: 1 kept both, 1 updated, 1 skipped", /1 kept both, 1 updated, 1 skipped/.test(toast), toast);
+    check("final toast: 1 kept both, 1 updated, 1 skipped", /Same-title tabletop games: 1 kept both, 1 updated, 1 skipped$/.test(toast), toast);
     check("media items merged after the last answer", (await page.evaluate(() => JSON.parse(localStorage.getItem("media-tracker-v1")).items.some((i) => i.id === "newbook"))));
     check("no page errors (match prompt)", !errors.length, errors.join("|"));
     await ctx.close();
@@ -466,8 +467,19 @@ async function addViaForm(page, fields) {
     await page.click("#tt-match-rest");
     await page.waitForSelector("#tt-match-modal[hidden]", { state: "attached" });
     const toast = await page.textContent("#toast");
-    check("30 matches: Skip then 'Keep both for the rest' = 29 kept, 1 skipped", (await ttStore(page)).length === 59 && /29 kept both, 0 updated, 1 skipped/.test(toast), toast);
+    check("30 matches: Skip then 'Keep both for the rest' = 29 kept, 1 skipped", (await ttStore(page)).length === 59 && /Same-title tabletop games: 29 kept both, 1 skipped$/.test(toast), toast);
     check("no page errors (30 matches)", !errors.length, errors.join("|"));
+    await ctx.close();
+  }
+
+  // No same-title matches: the toast has no second sentence
+  {
+    const { page, ctx } = await open(browser, { tt: [E({ id: "h1", title: "Azul", subtype: "board", bggId: "230802" })] });
+    await page.setInputFiles("#import-file", { name: "m.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ app: "freerangemedia", version: 3, exportedAt: T0, items: [], tabletop: { v: 1, entries: [E({ id: "i9", title: "Cascadia", subtype: "board" })] } })) });
+    await page.click("#confirm-alt");
+    await page.waitForTimeout(200);
+    const toast = (await page.textContent("#toast")).trim();
+    check("no matches: toast has no same-title sentence", toast === "Merged — 1 added, 0 updated" && (await page.isHidden("#tt-match-modal")), toast);
     await ctx.close();
   }
 

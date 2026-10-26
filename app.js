@@ -2636,9 +2636,11 @@
           return;
         }
         const n = (a) => Object.values(answers).filter((x) => x === a).length;
-        showToast(
-          `${base}. Same-title tabletop games: ${n("keep-both")} kept both, ${n("merge")} updated, ${n("skip")} skipped` // PENDING BEREAN
-        );
+        // Zero counts are left out; with none at all the second sentence is dropped.
+        const parts = [[n("keep-both"), "kept both"], [n("merge"), "updated"], [n("skip"), "skipped"]]
+          .filter(([c]) => c > 0)
+          .map(([c, w]) => `${c} ${w}`);
+        showToast(parts.length ? `${base}. Same-title tabletop games: ${parts.join(", ")}` : base); // Berean cleared
       };
       if (hasCurrent) {
         openConfirm("Restore backup", desc, doReplace, "Replace", {
