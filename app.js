@@ -5,7 +5,7 @@
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Bump it with the service worker cache each release: it must match sw.js's CACHE name
   // (media-shelf-v37), which the tests check.
-  const APP_VERSION = 37;
+  const APP_VERSION = 38;
   const STORAGE_KEY = "media-tracker-v1";
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
   const RAWG_KEY_STORAGE = "media-shelf-rawg-key";
@@ -108,6 +108,7 @@
     movie: ["movie", "movies"],
     music: ["music", "music"], // stats strip: lowercase like "0 movies" (the tab and type label stay "Music")
     comic: ["comic", "comics"],
+    tabletop: ["tabletop", "tabletop"],
     item: ["item", "items"],
     want: ["want", "want"],
     owned: ["owned", "owned"],
@@ -2037,6 +2038,7 @@
       pill("movie", byType.movie, "movie"),
       pill("music", byType.music, "music"),
       pill("comic", byType.comic, "comic"),
+      pill("tabletop", TT ? TT.count() : 0, "tabletop"),
       pill("", byStatus.want, "want"),
       pill("", byStatus.owned, "owned"),
       pill("", byStatus.in_progress, "in_progress"),
@@ -2196,9 +2198,23 @@
       .join("");
   }
 
+  /** Tabletop tab (tabletop.js): its own shelf replaces the media list while it is active. */
+  const TT = typeof window !== "undefined" && window.FRMTabletop ? window.FRMTabletop : null;
+  function ttActive() {
+    return Boolean(TT) && filterType === "tabletop";
+  }
+
   function render() {
     renderStats();
-    renderList();
+    if (TT) TT.show(ttActive());
+    if (ttActive()) {
+      els.list.hidden = true;
+      els.empty.hidden = true;
+      els.seedBanner.hidden = true;
+    } else {
+      els.list.hidden = false;
+      renderList();
+    }
     updateBackupUi();
     renderCoverQueueUi();
   }
@@ -2309,6 +2325,8 @@
     // Comics still waiting for their cover lookup (CLZ cover fill). Optional; old readers ignore it.
     const queued = readCoverQueue().ids;
     if (queued.length) payload.coverQueue = { v: 1, ids: queued.slice() };
+    // Tabletop entries (tabletop.js). Optional block; older readers ignore it.
+    if (TT) payload.tabletop = TT.backupBlock();
     return payload;
   }
 
@@ -2486,6 +2504,8 @@
       arr = data.items;
       exportedAt = data.exportedAt || data.savedAt || "";
     }
+    const tabletop = TT ? TT.parseBackupBlock(data) : null; // null: an older backup with no tabletop block
+    if (!Array.isArray(arr) && tabletop) arr = [];
     if (!Array.isArray(arr)) throw new Error("No items found in that file.");
     const valid = arr.filter(
       (r) => r && typeof r === "object" && !Array.isArray(r) && (r.title || r.type)
@@ -2501,7 +2521,7 @@
     });
     // Optional queue of comics awaiting a cover lookup (absent in every older backup).
     const qids = data && !Array.isArray(data) && data.coverQueue && Array.isArray(data.coverQueue.ids) ? data.coverQueue.ids.map(String) : [];
-    return { items: [...byId.values()], exportedAt, coverQueueIds: qids };
+    return { items: [...byId.values()], exportedAt, coverQueueIds: qids, tabletop };
   }
 
   /** Merge: add unknown ids; for shared ids keep the newer dateUpdated. */
@@ -2544,12 +2564,13 @@
         return;
       }
       const incoming = parsed.items;
-      if (!incoming.length) {
+      const ttIncoming = parsed.tabletop || [];
+      if (!incoming.length && !ttIncoming.length) {
         showToast("That backup has no items — nothing to restore");
         return;
       }
       const when = formatBackupDate(parsed.exportedAt);
-      const n = incoming.length;
+      const n = incoming.length + ttIncoming.length;
       const fromLine = `This backup has ${countLabel(n, "item")}${when ? ` (created ${when})` : ""}.`;
       const hasCurrent = items.length > 0;
       const desc = hasCurrent
@@ -2559,6 +2580,8 @@
         const ok = commitItems(() => incoming.slice(), "restore");
         closeConfirm();
         if (!ok) return;
+        // A backup with no tabletop block leaves the tabletop shelf as it is.
+        if (TT && parsed.tabletop) TT.restore(parsed.tabletop, "replace");
         restoreCoverQueue(parsed.coverQueueIds, true);
         render();
         showToast(`Restored ${countLabel(items.length, "item")}`);
@@ -2571,6 +2594,13 @@
         }, "restore");
         closeConfirm();
         if (!ok) return;
+        if (TT && parsed.tabletop) {
+          const t = TT.restore(parsed.tabletop, "merge");
+          if (t) {
+            res.added += t.added;
+            res.updated += t.updated;
+          }
+        }
         restoreCoverQueue(parsed.coverQueueIds, false);
         render();
         showToast(
@@ -5533,6 +5563,8 @@
           b.classList.toggle("active", on);
           b.setAttribute("aria-selected", on ? "true" : "false");
         });
+        // Phones: the strip scrolls sideways; keep the picked tab in view.
+        if (btn.scrollIntoView) btn.scrollIntoView({ block: "nearest", inline: "nearest" });
         render();
       });
     });
@@ -5555,7 +5587,7 @@
       }, 200);
     });
 
-    $("#btn-add").addEventListener("click", () => openModal(null));
+    $("#btn-add").addEventListener("click", () => (ttActive() ? TT.openAdd() : openModal(null)));
     $("#btn-empty-add").addEventListener("click", () => openModal(null));
     $("#btn-clear-seed").addEventListener("click", clearSeeds);
     $("#btn-settings").addEventListener("click", () => openSettingsModal());
@@ -8127,6 +8159,17 @@
     renderComicFooterCredit();
     fillAppVersionLine();
     window.addEventListener("storage", onStorageEvent);
+    if (TT) {
+      TT.init({
+        toast: (m) => showToast(m),
+        confirm: (t, d, ok, label) => openConfirm(t, d, ok, label),
+        closeConfirm: () => closeConfirm(),
+        renderStats: () => renderStats(),
+        search: () => (els.search ? els.search.value : ""),
+        status: () => filterStatus,
+        sort: () => (els.sortSelect ? els.sortSelect.value : "title"),
+      });
+    }
     updateFormatOptions();
     await seedIfEmpty();
     render();

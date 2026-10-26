@@ -52,6 +52,7 @@
       <button type="button" class="chip" data-type="movie" role="tab" aria-selected="false">Movies</button>
       <button type="button" class="chip" data-type="music" role="tab" aria-selected="false">Music</button>
       <button type="button" class="chip" data-type="comic" role="tab" aria-selected="false">Comics</button>
+      <button type="button" class="chip" data-type="tabletop" role="tab" aria-selected="false">Tabletop</button>
     </nav>
 
     <div class="filters-row">
@@ -108,6 +109,15 @@
       </div>
     </section>
     <ul id="item-list" class="item-list" aria-live="polite"></ul>
+    <!-- Tabletop tab (tabletop.js): its own shelf, own storage key, own sheets. -->
+    <section id="tabletop-view" class="tabletop-view" aria-label="Tabletop games" hidden>
+      <ul id="tabletop-list" class="item-list tt-list"></ul>
+      <div id="tabletop-empty" class="empty-state" hidden>
+        <p class="empty-title">No tabletop games yet</p>
+        <p class="empty-hint"></p>
+        <button type="button" class="btn btn-primary" id="tt-empty-add">+ Add a tabletop game</button>
+      </div>
+    </section>
     <div id="empty-state" class="empty-state" hidden>
       <p class="empty-title">Nothing on this shelf yet</p>
       <p class="empty-hint">Add a book, game, movie, or album to get started.</p>
@@ -117,7 +127,7 @@
 
   <footer class="site-footer">
     <p>Your library is saved in this browser (<code>localStorage</code>). Back up, or Export in Settings, to keep a copy. Hosted on GitHub Pages.</p>
-    <p class="footer-credits"><span class="footer-credit">Game data from <a href="https://rawg.io" target="_blank" rel="noopener noreferrer">RAWG</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Movie data from <a href="https://www.omdbapi.com" target="_blank" rel="noopener noreferrer">OMDb</a> (<a class="nowrap" href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>)</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Music data from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Covers from the <a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer">Cover Art Archive</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit" id="footer-comic-credit"></span></p>
+    <p class="footer-credits"><span class="footer-credit">Game data from <a href="https://rawg.io" target="_blank" rel="noopener noreferrer">RAWG</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Movie data from <a href="https://www.omdbapi.com" target="_blank" rel="noopener noreferrer">OMDb</a> (<a class="nowrap" href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>)</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Music data from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Covers from the <a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer">Cover Art Archive</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit"><!-- PENDING BEREAN: wording. TODO: add BGG's official linked "Powered by BGG" logo (file not in repo yet; never draw or fake it). -->Game data from <a href="https://boardgamegeek.com" target="_blank" rel="noopener noreferrer">BoardGameGeek</a>.</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit"><!-- PENDING BEREAN -->Barcode matching by GameUPC (<a href="https://gameupc.com" target="_blank" rel="noopener noreferrer">gameupc.com</a>).</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit" id="footer-comic-credit"></span></p>
     <!-- "App version v<APP_VERSION>" (cleared, Berean, Oct 11), same line as in Settings, filled by fillAppVersionLine() -->
     <p class="footer-version" id="footer-version"></p>
   </footer>
@@ -409,6 +419,88 @@
     </div>
   </div>
 
+  <!-- Tabletop: add / edit sheet -->
+  <div id="tt-form-modal" class="modal" hidden aria-hidden="true">
+    <div class="modal-backdrop" data-tt-close="tt-form-modal"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="tt-form-title">
+      <div class="modal-header">
+        <h2 id="tt-form-title">Add tabletop game</h2>
+        <button type="button" class="btn-icon" data-tt-close="tt-form-modal" aria-label="Close">&times;</button>
+      </div>
+      <form id="tt-form" class="item-form" novalidate>
+        <input type="hidden" id="tt-id" />
+        <div class="form-row">
+          <label for="tt-title">Title <span class="req">*</span></label>
+          <input type="text" id="tt-title" maxlength="200" autocomplete="off" aria-describedby="tt-title-error" />
+          <p class="field-error" id="tt-title-error" hidden>Add a title.</p>
+        </div>
+        <div class="form-row tt-lookup-row">
+          <button type="button" class="btn btn-ghost" id="tt-lookup">Look up on BoardGameGeek</button>
+          <p class="field-hint tt-lookup-status" id="tt-lookup-status" role="status" aria-live="polite" hidden></p>
+        </div>
+        <div class="form-grid tt-two">
+          <div class="form-row">
+            <label for="tt-subtype">Kind</label>
+            <select id="tt-subtype">
+              <option value="board">Board</option><option value="card">Card</option><option value="dice">Dice</option>
+              <option value="miniatures">Miniatures</option><option value="rpg">RPG</option><option value="expansion">Expansion</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="tt-status">Status</label>
+            <select id="tt-status"><option value="owned">Owned</option><option value="want">Want</option></select>
+          </div>
+        </div>
+        <div class="form-row" id="tt-parent-row" hidden>
+          <label for="tt-parent">Base game</label>
+          <select id="tt-parent"></select>
+          <p class="field-hint">Pick it if it’s in your library. If not, the expansion still saves and moves under its base when you add it.</p>
+        </div>
+        <div class="form-row" id="tt-parent-bgg-row" hidden>
+          <label for="tt-parentBggId">Base game BGG id (optional)</label>
+          <input type="text" id="tt-parentBggId" inputmode="numeric" maxlength="12" autocomplete="off" />
+        </div>
+        <div class="form-grid tt-two">
+          <div class="form-row"><label for="tt-designer">Designer</label><input type="text" id="tt-designer" maxlength="200" /></div>
+          <div class="form-row"><label for="tt-year">Year</label><input type="text" id="tt-year" inputmode="numeric" maxlength="4" /></div>
+          <div class="form-row"><label for="tt-players">Players</label><input type="text" id="tt-players" maxlength="20" placeholder="2–4" /></div>
+          <div class="form-row"><label for="tt-playTime">Play time (minutes)</label><input type="text" id="tt-playTime" maxlength="20" placeholder="60" /></div>
+          <div class="form-row"><label for="tt-bggId">BGG id (optional)</label><input type="text" id="tt-bggId" inputmode="numeric" maxlength="12" autocomplete="off" /></div>
+          <div class="form-row"><label for="tt-barcode">Barcode (optional)</label><input type="text" id="tt-barcode" inputmode="numeric" maxlength="32" autocomplete="off" /></div>
+        </div>
+        <div class="form-row"><label for="tt-coverUrl">Cover image URL</label><input type="url" id="tt-coverUrl" maxlength="500" /></div>
+        <div class="form-row"><label for="tt-notes">Notes</label><textarea id="tt-notes" rows="3" maxlength="2000"></textarea></div>
+        <div class="tt-dup" id="tt-dup" role="alert" hidden>
+          <p id="tt-dup-text"></p>
+          <div class="form-actions-right">
+            <button type="button" class="btn btn-ghost" id="tt-dup-add">Add separate copy</button>
+            <button type="button" class="btn btn-primary" id="tt-dup-update">Update existing</button>
+          </div>
+        </div>
+        <div class="form-actions-right">
+          <button type="button" class="btn btn-ghost" data-tt-close="tt-form-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="tt-save">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Tabletop: detail sheet (a base lists its expansions; an expansion shows its base) -->
+  <div id="tt-detail-modal" class="modal" hidden aria-hidden="true">
+    <div class="modal-backdrop" data-tt-close="tt-detail-modal"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="tt-detail-title">
+      <div class="modal-header">
+        <h2 id="tt-detail-title"></h2>
+        <button type="button" class="btn-icon" id="tt-detail-close" data-tt-close="tt-detail-modal" aria-label="Close">&times;</button>
+      </div>
+      <div id="tt-detail-body" class="tt-detail-body"></div>
+      <div class="form-actions-right">
+        <button type="button" class="btn btn-ghost tt-delete" id="tt-detail-delete">Delete</button>
+        <button type="button" class="btn btn-primary" id="tt-detail-edit">Edit</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Confirm dialog -->
   <div id="confirm" class="modal" hidden aria-hidden="true">
     <div class="modal-backdrop" data-confirm-cancel="true"></div>
@@ -691,6 +783,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
+  <script src="./tabletop.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 </html>

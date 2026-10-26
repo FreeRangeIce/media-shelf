@@ -1,0 +1,564 @@
+/* FreeRangeMedia — Tabletop tab (physical board, card, dice, miniatures and RPG games).
+ *
+ * Kept apart from the media items in app.js: entries live under their own storage key
+ * (STORE_KEY) and ride in backups as an optional `tabletop` block, so an older app.js that
+ * restores a newer backup simply ignores them (it never turns a game into a book), and an
+ * old backup without the block restores as before.
+ *
+ * Links: an Expansion stores its base by BGG id (parentBggId) AND by local id (parentId).
+ * The base is resolved on every render: BGG id first, local id as the fallback when either
+ * side has no BGG id. When an entry later gets a BGG id, links pointing at it by local id
+ * are rewritten to carry that BGG id too (linkBggId). Deleting a base never deletes its
+ * expansions; they stand alone and keep the BGG id, so re-adding the base relinks them.
+ *
+ * Lookup: BoardGameGeek lookup is NOT connected. No network call is ever made from here;
+ * the Lookup button only says so (LOOKUP_RELAY_URL is empty). See relay/tabletop-worker.js.
+ */
+(function (root) {
+  "use strict";
+
+  const STORE_KEY = "media-tracker-v1:tabletop";
+  /** Relay endpoint for BGG / GameUPC lookups. Empty = not connected (no network calls). */
+  const LOOKUP_RELAY_URL = "";
+  const LOOKUP_NOT_CONNECTED =
+    "BoardGameGeek lookup isn’t connected yet. Fill in the details by hand; you can add a BGG id later."; // PENDING BEREAN
+  const SUBTYPES = ["board", "card", "dice", "miniatures", "rpg", "expansion"];
+  const SUBTYPE_LABELS = { board: "Board", card: "Card", dice: "Dice", miniatures: "Miniatures", rpg: "RPG", expansion: "Expansion" };
+  const STATUSES = ["owned", "want"];
+  const STATUS_LABELS = { owned: "Owned", want: "Want" };
+  const VISIBLE_EXPANSIONS = 3;
+
+  /* ---------------- core (pure; tested in node) ---------------- */
+
+  const str = (v) => (v == null ? "" : String(v).trim());
+  /** BGG uses 0 for unknown numbers: 0, "0" and "" are empty. */
+  const bggNum = (v) => {
+    const s = str(v);
+    return s === "" || s === "0" ? "" : s;
+  };
+  const normTitle = (t) => str(t).toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/\s+/g, " ");
+  let idSeq = 0;
+  const newId = () => `tt-${Date.now().toString(36)}-${(idSeq++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const nowIso = () => new Date().toISOString();
+
+  function normalize(raw) {
+    const r = raw && typeof raw === "object" ? raw : {};
+    const subtype = SUBTYPES.includes(r.subtype) ? r.subtype : "board";
+    const e = {
+      id: str(r.id) || newId(),
+      title: str(r.title),
+      subtype,
+      status: STATUSES.includes(r.status) ? r.status : "owned", // new entries default to Owned
+      bggId: bggNum(r.bggId),
+      bggType: str(r.bggType), // boardgame | boardgameexpansion | rpgitem (as BGG reports it)
+      bggIsExpansion: r.bggIsExpansion === true,
+      year: bggNum(r.year),
+      designer: str(r.designer),
+      players: str(r.players),
+      playTime: str(r.playTime),
+      coverUrl: str(r.coverUrl),
+      barcode: str(r.barcode),
+      notes: str(r.notes),
+      parentId: subtype === "expansion" ? str(r.parentId) : "",
+      parentBggId: subtype === "expansion" ? bggNum(r.parentBggId) : "",
+      parentTitle: subtype === "expansion" ? str(r.parentTitle) : "",
+      dateAdded: str(r.dateAdded) || nowIso(),
+      dateUpdated: str(r.dateUpdated) || str(r.dateAdded) || nowIso(),
+    };
+    return e;
+  }
+
+  const isBase = (e) => e && e.subtype !== "expansion";
+
+  /** The base an expansion belongs to, or null. BGG id first; local id when either side has none. */
+  function resolveParent(list, exp) {
+    if (!exp || exp.subtype !== "expansion") return null;
+    if (exp.parentBggId) {
+      const byBgg = list.find((b) => isBase(b) && b.bggId && b.bggId === exp.parentBggId);
+      if (byBgg) return byBgg;
+    }
+    if (exp.parentId) {
+      const byId = list.find((b) => isBase(b) && b.id === exp.parentId);
+      if (byId && (!byId.bggId || !exp.parentBggId || byId.bggId === exp.parentBggId)) return byId;
+    }
+    return null;
+  }
+
+  /** Shelf groups: [{ entry, expansions: [] }], bases with their expansions, lone expansions alone. */
+  function groupShelf(list, sort = "title") {
+    const cmp = (a, b) =>
+      sort === "updated"
+        ? String(b.dateUpdated).localeCompare(String(a.dateUpdated))
+        : normTitle(a.title).localeCompare(normTitle(b.title));
+    const under = new Map();
+    const loose = [];
+    list.forEach((e) => {
+      if (e.subtype !== "expansion") return;
+      const p = resolveParent(list, e);
+      if (p) {
+        if (!under.has(p.id)) under.set(p.id, []);
+        under.get(p.id).push(e);
+      } else loose.push(e);
+    });
+    const groups = list
+      .filter(isBase)
+      .map((b) => ({ entry: b, expansions: (under.get(b.id) || []).sort(cmp) }))
+      .concat(loose.map((e) => ({ entry: e, expansions: [] })));
+    return groups.sort((a, b) => cmp(a.entry, b.entry));
+  }
+
+  function expansionsOf(list, base) {
+    return list.filter((e) => e.subtype === "expansion" && resolveParent(list, e) === base);
+  }
+
+  /** Duplicate check: by BGG id first (ids are unique across BGG thing types), then by title. */
+  function findDuplicate(list, entry) {
+    const others = list.filter((e) => e.id !== entry.id);
+    if (entry.bggId) {
+      const m = others.find((e) => e.bggId === entry.bggId);
+      if (m) return { by: "bgg", match: m };
+    }
+    const t = normTitle(entry.title);
+    if (t) {
+      const m = others.find((e) => normTitle(e.title) === t && !(entry.bggId && e.bggId && e.bggId !== entry.bggId));
+      if (m) return { by: "title", match: m };
+    }
+    return null;
+  }
+
+  const KEEP_FIELDS = ["title", "bggId", "bggType", "year", "designer", "players", "playTime", "coverUrl", "barcode", "notes", "parentId", "parentBggId", "parentTitle"];
+  /** Update `old` with `incoming`: an empty (or BGG 0) incoming field keeps the old value. */
+  function mergeUpdate(old, incoming) {
+    const out = { ...old };
+    KEEP_FIELDS.forEach((k) => {
+      const v = ["bggId", "year", "parentBggId"].includes(k) ? bggNum(incoming[k]) : str(incoming[k]);
+      if (v) out[k] = v;
+    });
+    if (SUBTYPES.includes(incoming.subtype)) out.subtype = incoming.subtype;
+    if (STATUSES.includes(incoming.status)) out.status = incoming.status;
+    if (incoming.bggIsExpansion === true) out.bggIsExpansion = true;
+    out.dateUpdated = nowIso();
+    return normalize(out);
+  }
+
+  /** After `id` gained a BGG id: expansions linked to it by local id now carry that BGG id too. */
+  function linkBggId(list, id) {
+    const base = list.find((e) => e.id === id);
+    if (!base || !base.bggId) return list;
+    return list.map((e) =>
+      e.subtype === "expansion" && e.parentId === id && e.parentBggId !== base.bggId
+        ? { ...e, parentBggId: base.bggId, dateUpdated: nowIso() }
+        : e
+    );
+  }
+
+  /** Save (add or replace by id), then refresh links. */
+  function upsert(list, entry) {
+    const e = normalize(entry);
+    if (e.subtype === "expansion" && e.parentId) {
+      const p = list.find((b) => b.id === e.parentId);
+      if (p) {
+        if (p.bggId && !e.parentBggId) e.parentBggId = p.bggId;
+        if (!e.parentTitle) e.parentTitle = p.title;
+      }
+    }
+    const i = list.findIndex((x) => x.id === e.id);
+    const next = i < 0 ? list.concat(e) : list.map((x, j) => (j === i ? e : x));
+    return linkBggId(next, e.id);
+  }
+
+  /** Delete one entry. Expansions of a deleted base stay (they keep parentBggId / parentTitle). */
+  function remove(list, id) {
+    return list.filter((e) => e.id !== id);
+  }
+
+  /** Barcode with no GameUPC match: keep the code on the entry; next step is name search. */
+  function applyBarcodeMiss(entry, code) {
+    return { entry: { ...entry, barcode: str(code) || str(entry.barcode) }, next: "name-search" };
+  }
+
+  /**
+   * Restore/merge `incoming` into `current`. Same local id, or same BGG id, is one entry
+   * (newer dateUpdated wins). Incoming local-id links are remapped to the surviving entry.
+   */
+  function mergeRestore(current, incoming) {
+    const out = current.map((e) => ({ ...e }));
+    const remap = new Map();
+    let added = 0;
+    let updated = 0;
+    incoming.map(normalize).forEach((inc) => {
+      let i = out.findIndex((e) => e.id === inc.id);
+      if (i < 0 && inc.bggId) i = out.findIndex((e) => e.bggId === inc.bggId);
+      if (i < 0) {
+        out.push(inc);
+        added += 1;
+        return;
+      }
+      remap.set(inc.id, out[i].id);
+      if (Date.parse(inc.dateUpdated) > Date.parse(out[i].dateUpdated)) {
+        out[i] = { ...inc, id: out[i].id };
+        updated += 1;
+      }
+    });
+    let list = out.map((e) => (e.parentId && remap.has(e.parentId) ? { ...e, parentId: remap.get(e.parentId) } : e));
+    list.filter((e) => e.bggId).forEach((e) => (list = linkBggId(list, e.id)));
+    return { list, added, updated };
+  }
+
+  function parseBackupBlock(data) {
+    const block = data && typeof data === "object" && !Array.isArray(data) ? data.tabletop : null;
+    if (!block || !Array.isArray(block.entries)) return null; // older backups: no tabletop block
+    return block.entries.filter((r) => r && typeof r === "object" && r.title).map(normalize);
+  }
+
+  const core = { STORE_KEY, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), LOOKUP_NOT_CONNECTED };
+  if (typeof module !== "undefined" && module.exports) module.exports = core;
+  if (typeof document === "undefined") return;
+
+  /* ---------------- storage (same pattern as app.js: re-read before every write) ---------------- */
+
+  let entries = [];
+  function load() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORE_KEY) || "[]");
+      entries = Array.isArray(raw) ? raw.map(normalize) : [];
+    } catch {
+      entries = [];
+    }
+    return entries;
+  }
+  function commit(mutate) {
+    load(); // another tab may have written since we last read
+    const next = mutate(entries.slice());
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(next));
+      entries = next;
+      return true;
+    } catch {
+      host.toast && host.toast("Couldn’t save — storage may be full");
+      return false;
+    }
+  }
+
+  /* ---------------- UI ---------------- */
+
+  let host = {};
+  let active = false;
+  const $ = (s, r = document) => r.querySelector(s);
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const meta = (e) => [e.designer, e.year, e.players && `${e.players} players`, e.playTime && `${e.playTime} min`].filter(Boolean).join(" · ") || "—";
+  const statusBadge = (e) => `<span class="badge badge-status ${e.status}">${STATUS_LABELS[e.status]}</span>`;
+  const subtypeBadge = (e) => `<span class="badge badge-type tabletop">${SUBTYPE_LABELS[e.subtype]}</span>`;
+
+  function cover(e) {
+    const inner = e.coverUrl
+      ? `<img class="item-cover" src="${esc(e.coverUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" />`
+      : `<div class="item-cover-placeholder tabletop" aria-hidden="true">Tabletop</div>`;
+    return `<div class="item-cover-col" data-type="tabletop">${inner}</div>`;
+  }
+
+  function cardHtml(g) {
+    const e = g.entry;
+    const lone = e.subtype === "expansion";
+    const exps = g.expansions;
+    const shown = exps.slice(0, VISIBLE_EXPANSIONS);
+    const more = exps.length - shown.length;
+    const expList = exps.length
+      ? `<ul class="tt-exp-list" aria-label="${esc(`Expansions of ${e.title}`)}">${shown
+          .map(
+            (x) =>
+              `<li><button type="button" class="tt-exp-row" data-tt-open="${esc(x.id)}" aria-label="${esc(`${x.title}, expansion, ${STATUS_LABELS[x.status]}`)}"><span class="tt-exp-title">${esc(x.title)}</span>${statusBadge(x)}</button></li>`
+          )
+          .join("")}${more > 0 ? `<li><button type="button" class="tt-exp-more" data-tt-open="${esc(e.id)}">+ ${more} more</button></li>` : ""}</ul>`
+      : "";
+    return `<li class="tt-group">
+  <article class="item-card tt-card" tabindex="0" role="button" data-tt-open="${esc(e.id)}" aria-label="${esc(`Open ${e.title}`)}">
+    ${cover(e)}
+    <div class="item-body"><div class="item-top"><div>
+      ${lone ? `<p class="tt-kicker">Expansion</p>` : ""}
+      <h3 class="item-title">${esc(e.title)}</h3>
+      <p class="item-meta">${esc(meta(e))}</p>
+      ${exps.length ? `<p class="tt-exp-count">${exps.length} ${exps.length === 1 ? "expansion" : "expansions"}</p>` : ""}
+    </div>
+    <div class="item-badges">${lone ? "" : subtypeBadge(e)}${statusBadge(e)}</div></div></div>
+  </article>${expList}
+</li>`;
+  }
+
+  function render() {
+    const view = $("#tabletop-view");
+    if (!view) return;
+    load();
+    const q = normTitle(host.search ? host.search() : "");
+    const status = host.status ? host.status() : "all";
+    let list = entries;
+    const groups = groupShelf(list, host.sort && host.sort() === "updated" ? "updated" : "title").filter((g) => {
+      const hit = (e) => (!q || [e.title, e.designer, e.notes].some((s) => normTitle(s).includes(q))) && (status === "all" || e.status === status);
+      return hit(g.entry) || g.expansions.some(hit);
+    });
+    $("#tabletop-list").innerHTML = groups.map(cardHtml).join("");
+    const empty = $("#tabletop-empty");
+    empty.hidden = groups.length > 0;
+    if (!groups.length) {
+      const filtered = entries.length > 0;
+      $(".empty-title", empty).textContent = filtered ? "No matches" : "No tabletop games yet";
+      $(".empty-hint", empty).textContent = filtered
+        ? "Try a different filter or search."
+        : "Add the board, card, dice, miniatures and RPG games on your shelf. Expansions sit under their base game."; // PENDING BEREAN
+      $("#tt-empty-add").hidden = filtered;
+    }
+  }
+
+  function show(on) {
+    active = on;
+    $("#tabletop-view").hidden = !on;
+    if (on) render();
+  }
+
+  /* ----- form ----- */
+  const F = (id) => document.getElementById(id);
+  let returnFocus = null;
+  let pendingDup = null;
+
+  function openModal(id) {
+    const m = F(id);
+    returnFocus = returnFocus || document.activeElement;
+    m.hidden = false;
+    m.setAttribute("aria-hidden", "false");
+  }
+  function closeModal(id) {
+    const m = F(id);
+    m.hidden = true;
+    m.setAttribute("aria-hidden", "true");
+    if (F("tt-form-modal").hidden && F("tt-detail-modal").hidden && returnFocus) {
+      try { returnFocus.focus(); } catch {}
+      returnFocus = null;
+    }
+  }
+
+  function fillParentOptions(selfId, current) {
+    const sel = F("tt-parent");
+    const bases = entries.filter((e) => isBase(e) && e.id !== selfId).sort((a, b) => normTitle(a.title).localeCompare(normTitle(b.title)));
+    sel.innerHTML = `<option value="">Not in my library</option>` + bases.map((b) => `<option value="${esc(b.id)}"${b.id === current ? " selected" : ""}>${esc(b.title)}</option>`).join("");
+  }
+
+  function syncExpansionRows() {
+    const isExp = F("tt-subtype").value === "expansion";
+    F("tt-parent-row").hidden = !isExp;
+    F("tt-parent-bgg-row").hidden = !isExp;
+  }
+
+  function openForm(entry, prefill) {
+    load();
+    const e = entry || normalize({ ...(prefill || {}), id: "" });
+    pendingDup = null;
+    F("tt-form-title").textContent = entry ? "Edit tabletop game" : "Add tabletop game";
+    F("tt-id").value = entry ? entry.id : "";
+    F("tt-title").value = e.title || "";
+    F("tt-subtype").value = e.subtype;
+    F("tt-status").value = entry ? e.status : "owned";
+    fillParentOptions(entry && entry.id, entry ? (resolveParent(entries, entry) || {}).id || "" : "");
+    ["bggId", "year", "designer", "players", "playTime", "coverUrl", "barcode", "notes", "parentBggId"].forEach((k) => {
+      const el = F(`tt-${k}`);
+      if (el) el.value = entry ? e[k] || "" : "";
+    });
+    F("tt-lookup-status").hidden = true;
+    F("tt-dup").hidden = true;
+    F("tt-title-error").hidden = true;
+    syncExpansionRows();
+    closeModal("tt-detail-modal");
+    openModal("tt-form-modal");
+    F("tt-title").focus();
+  }
+
+  function readForm() {
+    const v = (k) => F(`tt-${k}`).value;
+    const parentId = v("subtype") === "expansion" ? v("parent") : "";
+    const parent = parentId ? entries.find((e) => e.id === parentId) : null;
+    const existing = entries.find((e) => e.id === v("id"));
+    return {
+      ...(existing || {}),
+      id: v("id"),
+      title: v("title"),
+      subtype: v("subtype"),
+      status: v("status"),
+      bggId: v("bggId"),
+      year: v("year"),
+      designer: v("designer"),
+      players: v("players"),
+      playTime: v("playTime"),
+      coverUrl: v("coverUrl"),
+      barcode: v("barcode"),
+      notes: v("notes"),
+      parentId,
+      parentBggId: parent && parent.bggId ? parent.bggId : v("parentBggId"),
+      parentTitle: parent ? parent.title : existing && !parentId ? existing.parentTitle : "",
+      dateUpdated: nowIso(),
+    };
+  }
+
+  function saveForm(mode) {
+    const data = readForm();
+    if (!str(data.title)) {
+      F("tt-title-error").hidden = false;
+      F("tt-title").setAttribute("aria-invalid", "true");
+      F("tt-title").focus();
+      return;
+    }
+    F("tt-title").removeAttribute("aria-invalid");
+    load();
+    if (!mode) {
+      const dup = findDuplicate(entries, normalize({ ...data, id: data.id || "__new__" }));
+      if (dup) {
+        pendingDup = dup;
+        F("tt-dup-text").textContent =
+          dup.by === "bgg"
+            ? `“${dup.match.title}” with this BGG id is already in your library. Update it instead of adding a second copy?`
+            : `You already have “${dup.match.title}”. Editions and reprints can share a title. Update that entry, or add this as a separate copy?`; // PENDING BEREAN
+        F("tt-dup").hidden = false;
+        F("tt-dup-update").focus();
+        return;
+      }
+    }
+    let savedId = data.id;
+    const ok = commit((list) => {
+      if (mode === "update" && pendingDup) {
+        const merged = mergeUpdate(list.find((e) => e.id === pendingDup.match.id) || pendingDup.match, data);
+        savedId = merged.id;
+        return upsert(list, merged);
+      }
+      const e = normalize({ ...data, id: data.id || newId(), dateAdded: data.dateAdded || nowIso() });
+      savedId = e.id;
+      return upsert(list, e);
+    });
+    if (!ok) return;
+    closeModal("tt-form-modal");
+    render();
+    host.renderStats && host.renderStats();
+    host.toast && host.toast(mode === "update" ? "Updated" : "Saved");
+  }
+
+  /* ----- detail ----- */
+  function openDetail(id) {
+    load();
+    const e = entries.find((x) => x.id === id);
+    if (!e) return;
+    F("tt-detail-title").textContent = e.title;
+    const rows = [];
+    rows.push(`<div class="tt-detail-badges">${subtypeBadge(e)}${statusBadge(e)}</div>`);
+    rows.push(`<p class="item-meta">${esc(meta(e))}</p>`);
+    if (e.bggId) rows.push(`<p class="tt-detail-line">BGG id ${esc(e.bggId)}</p>`);
+    if (e.barcode) rows.push(`<p class="tt-detail-line">Barcode ${esc(e.barcode)}</p>`);
+    if (e.subtype === "expansion") {
+      const p = resolveParent(entries, e);
+      rows.push(`<h3 class="tt-detail-h">Base game</h3>`);
+      rows.push(
+        p
+          ? `<ul class="tt-exp-list tt-exp-list-open"><li><button type="button" class="tt-exp-row" data-tt-open="${esc(p.id)}"><span class="tt-exp-title">${esc(p.title)}</span>${statusBadge(p)}</button></li></ul>`
+          : `<p class="tt-detail-line tt-muted">${e.parentTitle || e.parentBggId ? `${esc(e.parentTitle || `BGG id ${e.parentBggId}`)}, not in your library` : "Not in your library"}</p>`
+      );
+    } else {
+      const exps = expansionsOf(entries, e).sort((a, b) => normTitle(a.title).localeCompare(normTitle(b.title)));
+      rows.push(`<h3 class="tt-detail-h">Expansions</h3>`);
+      rows.push(
+        exps.length
+          ? `<ul class="tt-exp-list tt-exp-list-open">${exps.map((x) => `<li><button type="button" class="tt-exp-row" data-tt-open="${esc(x.id)}"><span class="tt-exp-title">${esc(x.title)}</span>${statusBadge(x)}</button></li>`).join("")}</ul>`
+          : `<p class="tt-detail-line tt-muted">None in your library</p>`
+      );
+    }
+    if (e.notes) rows.push(`<p class="item-notes">${esc(e.notes)}</p>`);
+    F("tt-detail-body").innerHTML = rows.join("");
+    F("tt-detail-edit").dataset.id = e.id;
+    F("tt-detail-delete").dataset.id = e.id;
+    openModal("tt-detail-modal");
+    F("tt-detail-close").focus();
+  }
+
+  function deleteEntry(id) {
+    const e = entries.find((x) => x.id === id);
+    if (!e) return;
+    const n = isBase(e) ? expansionsOf(entries, e).length : 0;
+    const go = () => {
+      if (!commit((list) => remove(list, id))) return;
+      host.closeConfirm && host.closeConfirm();
+      closeModal("tt-detail-modal");
+      render();
+      host.renderStats && host.renderStats();
+    };
+    const desc = n ? `Its ${n === 1 ? "expansion stays" : `${n} expansions stay`} in your library on ${n === 1 ? "its" : "their"} own.` : "This cannot be undone."; // PENDING BEREAN
+    if (host.confirm) host.confirm(`Delete “${e.title}”?`, desc, go, "Delete");
+    else go();
+  }
+
+  function bind() {
+    document.addEventListener("click", (ev) => {
+      const t = ev.target.closest("[data-tt-open]");
+      if (t && (t.closest("#tabletop-view") || t.closest("#tt-detail-modal"))) {
+        ev.preventDefault();
+        openDetail(t.dataset.ttOpen);
+      }
+    });
+    $("#tabletop-list").addEventListener("keydown", (ev) => {
+      if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches("article[data-tt-open]")) {
+        ev.preventDefault();
+        openDetail(ev.target.dataset.ttOpen);
+      }
+    });
+    F("tt-empty-add").addEventListener("click", () => openForm(null));
+    F("tt-subtype").addEventListener("change", syncExpansionRows);
+    F("tt-form").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      saveForm(null);
+    });
+    F("tt-dup-update").addEventListener("click", () => saveForm("update"));
+    F("tt-dup-add").addEventListener("click", () => saveForm("add"));
+    F("tt-lookup").addEventListener("click", () => {
+      // Never a network call while LOOKUP_RELAY_URL is empty.
+      const s = F("tt-lookup-status");
+      s.textContent = LOOKUP_NOT_CONNECTED;
+      s.hidden = false;
+    });
+    document.querySelectorAll("[data-tt-close]").forEach((b) => b.addEventListener("click", () => closeModal(b.dataset.ttClose)));
+    F("tt-detail-edit").addEventListener("click", (ev) => openForm(entries.find((e) => e.id === ev.currentTarget.dataset.id)));
+    F("tt-detail-delete").addEventListener("click", (ev) => deleteEntry(ev.currentTarget.dataset.id));
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape") return;
+      if (!F("tt-form-modal").hidden) closeModal("tt-form-modal");
+      else if (!F("tt-detail-modal").hidden) closeModal("tt-detail-modal");
+    });
+    window.addEventListener("storage", (ev) => {
+      if (ev.key === STORE_KEY || ev.key === null) {
+        load();
+        if (active) render();
+        host.renderStats && host.renderStats();
+      }
+    });
+  }
+
+  root.FRMTabletop = {
+    ...core,
+    init(h) {
+      host = h || {};
+      load();
+      bind();
+    },
+    show,
+    render,
+    isActive: () => active,
+    openAdd: () => openForm(null),
+    count: () => load().length,
+    entries: () => load().slice(),
+    backupBlock: () => ({ v: 1, entries: load().map((e) => ({ ...e })) }),
+    /** Restore: "replace" swaps the tabletop shelf, "merge" folds in by id / BGG id. */
+    restore(incoming, mode) {
+      let res = { added: incoming.length, updated: 0 };
+      const ok = commit((list) => {
+        if (mode === "replace") return mergeRestore([], incoming).list;
+        res = mergeRestore(list, incoming);
+        return res.list;
+      });
+      if (active) render();
+      return ok ? res : null;
+    },
+  };
+})(typeof window !== "undefined" ? window : globalThis);

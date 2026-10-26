@@ -48,6 +48,9 @@
   --comic: #1d5486; /* 5.6:1 on its chip tint over paper */
   --comic-stripe: #2f8fdc;
   --comic-dim: rgba(47, 143, 220, 0.28);
+  --tabletop: #8c1d5a; /* 5.7:1 on its chip tint over paper, 8.5:1 on paper */
+  --tabletop-stripe: #d63a8c;
+  --tabletop-dim: rgba(214, 58, 140, 0.28);
 
   /* Status + feedback (text darkened for the light card) */
   --want: #345f86;
@@ -651,9 +654,14 @@ body {
    segment so the container doesn't clip it. */
 @media (max-width: 479px) {
   .type-tabs {
-    display: grid;
-    /* auto tracks: each label plus padding, then free space shared equally (six with Comics) */
-    grid-template-columns: repeat(6, auto);
+    /* Seven tabs (Tabletop added): one sideways-scrolling strip with a 32px right-edge fade
+       (the Carry Tracker fix, e308ffb), so labels and tap targets keep their full size. */
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    scroll-padding-inline: 0 2rem;
     gap: 0;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -664,10 +672,28 @@ body {
     width: 100%;
   }
 
+  .type-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Scroll hint: a fade pinned to the strip's right edge; also trailing space so the last
+     tab can scroll fully clear of it. Decorative only. */
+  .type-tabs::after {
+    content: "";
+    flex: 0 0 2rem;
+    position: sticky;
+    right: 0;
+    margin-left: -2rem;
+    background: linear-gradient(to right, rgba(255, 253, 248, 0), #fffdf8 100%);
+    border-radius: 0 calc(var(--radius-sm) - 1px) calc(var(--radius-sm) - 1px) 0;
+    pointer-events: none;
+  }
+
   .type-tabs .chip {
-    min-width: 0;
+    flex: 0 0 auto;
+    min-width: var(--tap);
     min-height: var(--tap);
-    padding: 0 var(--space-2);
+    padding: 0 var(--space-3);
     border: 0;
     border-radius: 0;
     background: #fffdf8; /* opaque even in the segmented row */
@@ -701,12 +727,7 @@ body {
 
 /* Six segments (Comics added): below 400px the labels drop to 13px with 4px padding so
    "All Books Games Movies Music Comics" fits one row at 320 without sideways scroll. */
-@media (max-width: 399px) {
-  .type-tabs .chip {
-    padding: 0 var(--space-1);
-    font-size: var(--fs-sm);
-  }
-}
+/* (The 13px / 4px squeeze below 400px is gone: the strip scrolls instead.) */
 
 .filters-row {
   display: flex;
@@ -891,6 +912,11 @@ body {
   --card-rule-hover: var(--comic);
 }
 
+.item-card:has(.item-cover-col[data-type="tabletop"]) {
+  --card-rule: var(--tabletop-stripe);
+  --card-rule-hover: var(--tabletop);
+}
+
 .item-top {
   display: flex;
   flex-wrap: wrap;
@@ -944,6 +970,7 @@ body {
 .badge-type.movie { background: var(--movie-dim); color: var(--movie); }
 .badge-type.music { background: var(--music-dim); color: var(--music); }
 .badge-type.comic { background: var(--comic-dim); color: var(--comic); }
+.badge-type.tabletop { background: var(--tabletop-dim); color: var(--tabletop); }
 
 .badge-status.want { background: rgba(52, 95, 134, 0.15); color: var(--want); }
 .badge-status.owned { background: rgba(110, 47, 85, 0.15); color: var(--owned); }
@@ -3113,4 +3140,160 @@ body.modal-open {
   min-height: var(--tap);
   margin-top: var(--space-2);
   align-self: flex-start;
+}
+
+/* ---------- Tabletop tab ---------- */
+.item-cover-placeholder.tabletop {
+  letter-spacing: 0;
+  font-size: 0.6875rem;
+}
+
+/* A lone expansion (base not in the library): small muted label above the title. */
+.tt-kicker {
+  margin: 0 0 2px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.tt-exp-count {
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* Expansions under their base: a tight list, not cards. Indented 16px with a thin rule
+   down the left in the base card's border colour; the Owned/Want badge sits right. */
+.tt-exp-list {
+  list-style: none;
+  margin: var(--space-1) 0 0 16px;
+  padding: 0;
+  border-left: 2px solid color-mix(in srgb, var(--tabletop-stripe) 75%, var(--bg-card));
+}
+
+.tt-exp-row,
+.tt-exp-more {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: #f3ead7; /* on the oak, like the stats */
+  cursor: pointer;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.tt-exp-title {
+  font-size: 15px;
+  font-weight: var(--fw-medium);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tt-exp-more {
+  font-size: var(--fs-sm);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.tt-exp-row .badge {
+  flex-shrink: 0;
+}
+
+/* Badges on the oak need their paper backing to keep contrast. */
+.tt-list .tt-exp-row .badge-status {
+  background: #fffdf8;
+}
+
+.tt-exp-row:hover .tt-exp-title {
+  text-decoration: underline;
+}
+
+.tt-exp-row:focus-visible,
+.tt-exp-more:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+/* Inside the paper detail sheet the list reads dark. */
+.tt-detail-body .tt-exp-row {
+  color: var(--text);
+}
+
+.tt-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.tt-detail-badges {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.tt-detail-h {
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+
+.tt-detail-line {
+  margin: 0;
+  font-size: var(--fs-md);
+}
+
+.tt-muted {
+  color: var(--text-muted);
+}
+
+.tt-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 var(--space-3);
+}
+
+@media (max-width: 359px) {
+  .tt-two {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tt-lookup-row .btn {
+  min-height: var(--tap);
+  align-self: flex-start;
+}
+
+.tt-lookup-status {
+  margin-top: var(--space-2);
+}
+
+.tt-dup {
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-dim);
+}
+
+.tt-dup p {
+  margin: 0 0 var(--space-2);
+}
+
+.tt-delete {
+  color: var(--danger);
+}
+
+.tabletop-view[hidden] {
+  display: none;
 }

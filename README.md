@@ -96,6 +96,15 @@ Only the cover fields, the source name/id/link of a single found cover, and the 
 - **Scan:** `html5-qrcode` from jsDelivr + device camera. The camera needs a secure page (**HTTPS** or **localhost**) and camera permission; on plain HTTP (e.g. a LAN address) the browser blocks it.
 - Cover URL can always be set manually (`coverSource: manual`); cards show a neutral placeholder when missing.
 
+## Tabletop (board, card, dice, miniatures, RPG)
+
+The Tabletop tab (`tabletop.js`) keeps physical tabletop games on their own shelf and storage key
+(`media-tracker-v1:tabletop`); backups carry them in an optional `tabletop` block that older
+backups simply lack. Expansions sit under their base game (linked by BGG id, with the local id as
+fallback). BoardGameGeek / GameUPC lookup is not connected yet: the relay source is in
+`relay/tabletop-worker.js` (not deployed; see `relay/README-tabletop.md`). Tests:
+`node tests/tabletop-core.test.js` and `tests/tabletop-ui.test.js` (Playwright).
+
 ## Features
 
 - Library with type, creator, year, status, rating, progress, notes, tags, barcode, cover
