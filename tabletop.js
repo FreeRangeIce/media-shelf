@@ -213,7 +213,7 @@
       typeof opts.onHandMatch === "function"
         ? opts.onHandMatch
         : answers
-          ? (m, inc) => answers[inc.id] || HAND_MATCH.SKIP
+          ? (m, inc) => answers[inc.id] || HAND_MATCH.KEEP_BOTH // safety net: never drop an unasked copy
           : defaultHandMatch;
     const out = current.map((e) => ({ ...e }));
     const here = out.slice(); // only entries already on this device can be a hand match
@@ -597,7 +597,8 @@
    * Ask about each hand match. Resolves { [incomingId]: action } after the last answer, or
    * null if the prompt is closed or cancelled at any point (the caller then writes nothing).
    */
-  function askHandMatches(matches, incomingList) {
+  function askHandMatches(matches, incomingList, opts = {}) {
+    const done = opts.done || 0; // answered earlier in this same merge: "N of M" continues
     return new Promise((resolve) => {
       const list = load();
       const inc = incomingList.map(normalize);
@@ -617,8 +618,8 @@
         const m = matches[i];
         const a = m.existing, b = m.incoming;
         const ta = Date.parse(a.dateUpdated), tb = Date.parse(b.dateUpdated);
-        F("tt-match-progress").textContent = MATCH_COPY.progress(i + 1, matches.length);
-        F("tt-match-progress").hidden = matches.length < 2; // "N of M" only from 2 matches up
+        F("tt-match-progress").textContent = MATCH_COPY.progress(done + i + 1, done + matches.length);
+        F("tt-match-progress").hidden = done + matches.length < 2; // "N of M" only from 2 matches up
         F("tt-match-pair").innerHTML =
           matchSide(a, b, list, inc, MATCH_COPY.here, ta > tb) + matchSide(b, a, inc, list, MATCH_COPY.backup, tb > ta);
         F("tt-match-rest").hidden = matches.length - i < 2;

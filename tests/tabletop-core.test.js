@@ -130,7 +130,7 @@ t("merge: different subtype, or two different BGG ids, is not a hand match", () 
 t("merge: hand-entered here + BGG id incoming (same title/subtype) is a hand match", () => {
   const here = [base({ id: "h1", bggId: "", title: "Wingspan" })];
   const r = T.mergeRestore(here, [base({ id: "x1", title: "Wingspan" })], { answers: {} });
-  assert.deepStrictEqual([r.handMatches.length, r.list.length, r.added], [1, 1, 0]); // unanswered = Skip, never silently added
+  assert.deepStrictEqual([r.handMatches.length, r.list.length, r.added, r.handMatches[0].action], [1, 2, 1, "keep-both"]); // unanswered = Keep both, never silently dropped
   const u = T.mergeRestore(here, [base({ id: "x1", title: "Wingspan" })], { answers: { x1: "merge" } });
   assert.deepStrictEqual([u.list.length, u.list[0].id, u.list[0].bggId], [1, "h1", "266192"]);
 });

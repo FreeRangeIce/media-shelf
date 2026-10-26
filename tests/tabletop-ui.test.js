@@ -482,6 +482,43 @@ async function addViaForm(page, fields) {
     await ctx.close();
   }
 
+  // Race: another tab adds Azul (also in the backup) while the prompt is open -> Azul is asked too
+  {
+    const AZ = (id, o = {}) => E({ id, title: "Azul", subtype: "board", ...o });
+    const INC = [E({ id: "iA", title: "Game A", subtype: "board" }), AZ("iAz", { status: "want" })];
+    const { page, ctx, errors } = await open(browser, { tt: [E({ id: "hA", title: "Game A", subtype: "board" })] });
+    await page.setInputFiles("#import-file", { name: "m.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ app: "freerangemedia", version: 3, exportedAt: T0, items: [], tabletop: { v: 1, entries: INC } })) });
+    await page.click("#confirm-alt");
+    await page.waitForSelector("#tt-match-modal:not([hidden])");
+    check("race: starts with 1 match (Game A)", /Game A/.test(await page.textContent("#tt-match-pair")) && (await page.isHidden("#tt-match-progress")));
+    await page.evaluate((az) => { const k = "media-tracker-v1:tabletop"; const l = JSON.parse(localStorage.getItem(k)); l.push(az); localStorage.setItem(k, JSON.stringify(l)); }, AZ("hAz"));
+    await page.click("#tt-match-keep");
+    await page.waitForTimeout(150);
+    const reopened = await page.isVisible("#tt-match-modal") && /Azul/.test(await page.textContent("#tt-match-pair"));
+    check("race: Azul added mid-prompt is asked before anything is written, '2 of 2'", reopened && (await page.textContent("#tt-match-progress")) === "2 of 2" && !(await ttStore(page)).some((e) => e.id === "iA"));
+    if (reopened) await page.click("#tt-match-skip");
+    await page.waitForSelector("#tt-match-modal[hidden]", { state: "attached" });
+    const st = await ttStore(page);
+    const toast = (await page.textContent("#toast")).trim();
+    check("race: Skip on Azul keeps one Azul (ours); toast from the result", st.filter((e) => e.title === "Azul").map((e) => e.id).join() === "hAz" && toast === "Merged — 1 added, 0 updated. Same-title tabletop games: 1 kept both, 1 skipped", toast);
+    check("no page errors (race)", !errors.length, errors.join("|"));
+    await ctx.close();
+  }
+  // Safety net: a match the prompt never asked defaults to Keep both, and the toast counts it
+  {
+    const { page, ctx, errors } = await open(browser, { tt: [E({ id: "hAz", title: "Azul", subtype: "board" })] });
+    await page.evaluate(() => { window.FRMTabletop.previewHandMatches = () => []; }); // force: prompt never sees the match
+    await page.setInputFiles("#import-file", { name: "m.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ app: "freerangemedia", version: 3, exportedAt: T0, items: [], tabletop: { v: 1, entries: [E({ id: "iAz", title: "Azul", subtype: "board", status: "want" })] } })) });
+    await page.click("#confirm-alt");
+    await page.waitForTimeout(200);
+    const st = await ttStore(page);
+    const toast = (await page.textContent("#toast")).trim();
+    check("safety net: unasked match keeps both copies", st.filter((e) => e.title === "Azul").length === 2 && (await page.isHidden("#tt-match-modal")));
+    check("safety net: toast counts it as kept both (from the merge result)", toast === "Merged — 1 added, 0 updated. Same-title tabletop games: 1 kept both", toast);
+    check("no page errors (safety net)", !errors.length, errors.join("|"));
+    await ctx.close();
+  }
+
   // No same-title matches: the toast has no second sentence
   {
     const { page, ctx } = await open(browser, { tt: [E({ id: "h1", title: "Azul", subtype: "board", bggId: "230802" })] });

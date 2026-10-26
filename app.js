@@ -2602,27 +2602,38 @@
         // Hand matches (same title + kind, at least one side hand-entered) are asked about one
         // at a time BEFORE anything is written. Closing or cancelling the prompt at any point
         // cancels the whole merge: items and the tabletop shelf stay exactly as they were.
-        let answers = null;
-        const matches = TT && parsed.tabletop ? TT.previewHandMatches(parsed.tabletop) : [];
+        // Another tab may add a matching game while the prompt is open, so right before writing
+        // the matches are recomputed against the shelf as stored now; any never answered are
+        // asked too (same queue, "N of M" continues) until none are left.
+        const answers = {};
+        let asked = 0;
         closeConfirm();
-        if (matches.length) {
-          answers = await TT.askHandMatches(matches, parsed.tabletop);
-          if (!answers) {
+        for (;;) {
+          const pending = TT && parsed.tabletop
+            ? TT.previewHandMatches(parsed.tabletop).filter((m) => !(m.incomingId in answers))
+            : [];
+          if (!pending.length) break;
+          const got = await TT.askHandMatches(pending, parsed.tabletop, { done: asked });
+          if (!got) {
             showToast("Merge cancelled. Nothing was changed."); // PENDING BEREAN
             return;
           }
+          Object.assign(answers, got);
+          asked += pending.length;
         }
         let res = { added: 0, updated: 0 };
+        let done = []; // what the merge actually did with each same-title match
         const ok = commitItems((list) => {
           res = mergeItems(list, incoming);
           return res.items;
         }, "restore");
         if (!ok) return;
         if (TT && parsed.tabletop) {
-          const t = TT.restore(parsed.tabletop, "merge", answers ? { answers } : undefined);
+          const t = TT.restore(parsed.tabletop, "merge", { answers });
           if (t) {
             res.added += t.added;
             res.updated += t.updated;
+            done = t.handMatches || [];
           }
         }
         restoreCoverQueue(parsed.coverQueueIds, false);
@@ -2631,11 +2642,8 @@
           res.added || res.updated
             ? `Merged — ${res.added} added, ${res.updated} updated`
             : "Merged — already up to date";
-        if (!answers) {
-          showToast(base);
-          return;
-        }
-        const n = (a) => Object.values(answers).filter((x) => x === a).length;
+        // Counted from the merge result, not from the answers.
+        const n = (a) => done.filter((m) => m.action === a).length;
         // Zero counts are left out; with none at all the second sentence is dropped.
         const parts = [[n("keep-both"), "kept both"], [n("merge"), "updated"], [n("skip"), "skipped"]]
           .filter(([c]) => c > 0)
