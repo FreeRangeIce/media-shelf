@@ -502,6 +502,26 @@
     </div>
   </div>
 
+  <!-- Tabletop merge: one hand match at a time (copy filled by tabletop.js, PENDING BEREAN there) -->
+  <div id="tt-match-modal" class="modal" hidden aria-hidden="true">
+    <div class="modal-backdrop" data-tt-match-cancel="true"></div>
+    <div class="modal-panel tt-match-panel" id="tt-match-panel" role="dialog" aria-modal="true" aria-labelledby="tt-match-title" aria-describedby="tt-match-progress tt-match-lede">
+      <div class="modal-header">
+        <h2 id="tt-match-title" tabindex="-1"></h2>
+        <button type="button" class="btn-icon" id="tt-match-close" data-tt-match-cancel="true">&times;</button>
+      </div>
+      <p class="tt-match-progress" id="tt-match-progress" aria-live="polite"></p>
+      <p class="tt-match-lede" id="tt-match-lede"></p>
+      <div class="tt-match-pair" id="tt-match-pair"></div>
+      <div class="tt-match-actions">
+        <button type="button" class="btn btn-primary" id="tt-match-keep"></button>
+        <button type="button" class="btn btn-outline" id="tt-match-update"></button>
+        <button type="button" class="btn btn-outline" id="tt-match-skip"></button>
+      </div>
+      <button type="button" class="tt-match-rest" id="tt-match-rest" hidden></button>
+    </div>
+  </div>
+
   <!-- Confirm dialog -->
   <div id="confirm" class="modal" hidden aria-hidden="true">
     <div class="modal-backdrop" data-confirm-cancel="true"></div>

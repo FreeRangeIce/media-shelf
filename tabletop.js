@@ -547,6 +547,133 @@
     F("tt-detail-close").focus();
   }
 
+  /* ----- merge: ask about each hand match, one at a time ----- */
+  const MATCH_COPY = {
+    title: "Same game?", // PENDING BEREAN
+    lede: "The backup has a game with the same title and kind as one on this shelf. It may be a different edition.", // PENDING BEREAN
+    progress: (i, n) => `${i} of ${n}`, // PENDING BEREAN
+    here: "On this shelf", // PENDING BEREAN
+    backup: "From backup", // PENDING BEREAN
+    keep: "Keep both", // PENDING BEREAN
+    update: "Update existing", // PENDING BEREAN
+    skip: "Skip", // PENDING BEREAN
+    rest: "Keep both for the rest", // PENDING BEREAN
+    close: "Cancel merge", // PENDING BEREAN
+    updated: (d) => `Updated ${d}`, // PENDING BEREAN
+    expansionOf: (t) => `Expansion of ${t}`, // PENDING BEREAN
+  };
+  const shortDate = (iso) => {
+    const d = new Date(iso);
+    return isNaN(d) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+  const parentName = (list, e) => {
+    if (e.subtype !== "expansion") return "";
+    const p = resolveParent(list, e);
+    return p ? p.title : e.parentTitle || (e.parentBggId ? `BGG id ${e.parentBggId}` : "");
+  };
+
+  function matchSide(e, other, list, otherList, label, newer) {
+    const diff = (a, b) => normTitle(a) !== normTitle(b);
+    const B = (txt, d) => (d ? `<b class="tt-diff">${esc(txt)}</b>` : esc(txt));
+    const parts = [
+      e.designer && B(e.designer, diff(e.designer, other.designer)),
+      e.year && B(e.year, diff(e.year, other.year)),
+      e.players && B(`${e.players.replace(/\s*([–-])\s*/g, `${WJ}$1${WJ}`)}${NB}players`, diff(e.players, other.players)),
+      e.playTime && B(`${e.playTime}${NB}min`, diff(e.playTime, other.playTime)),
+    ].filter(Boolean);
+    const pn = parentName(list, e);
+    const st = (cls, d) => (d ? `${cls} tt-diff` : cls);
+    return `<section class="tt-match-side" aria-label="${esc(label)}">
+  <h3 class="tt-match-label">${esc(label)}</h3>
+  <p class="tt-match-name">${B(e.title, e.title !== other.title)}</p>
+  ${parts.length ? `<p class="item-meta">${parts.join(" · ")}</p>` : ""}
+  ${pn ? `<p class="tt-match-parent">${B(MATCH_COPY.expansionOf(pn), pn !== parentName(otherList, other))}</p>` : ""}
+  <div class="tt-detail-badges">${subtypeBadge(e).replace('class="badge', `class="${st("badge", e.subtype !== other.subtype)}`)}${statusBadge(e).replace('class="badge', `class="${st("badge", e.status !== other.status)}`)}</div>
+  ${newer ? `<p class="tt-match-updated">${esc(MATCH_COPY.updated(shortDate(e.dateUpdated)))}</p>` : ""}
+</section>`;
+  }
+
+  /**
+   * Ask about each hand match. Resolves { [incomingId]: action } after the last answer, or
+   * null if the prompt is closed or cancelled at any point (the caller then writes nothing).
+   */
+  function askHandMatches(matches, incomingList) {
+    return new Promise((resolve) => {
+      const list = load();
+      const inc = incomingList.map(normalize);
+      const answers = {};
+      let i = 0;
+      const prevFocus = document.activeElement;
+      const modal = F("tt-match-modal");
+      const panel = F("tt-match-panel");
+      F("tt-match-title").textContent = MATCH_COPY.title;
+      F("tt-match-lede").textContent = MATCH_COPY.lede;
+      F("tt-match-keep").textContent = MATCH_COPY.keep;
+      F("tt-match-update").textContent = MATCH_COPY.update;
+      F("tt-match-skip").textContent = MATCH_COPY.skip;
+      F("tt-match-rest").textContent = MATCH_COPY.rest;
+      F("tt-match-close").setAttribute("aria-label", MATCH_COPY.close);
+      const show = () => {
+        const m = matches[i];
+        const a = m.existing, b = m.incoming;
+        const ta = Date.parse(a.dateUpdated), tb = Date.parse(b.dateUpdated);
+        F("tt-match-progress").textContent = MATCH_COPY.progress(i + 1, matches.length);
+        F("tt-match-pair").innerHTML =
+          matchSide(a, b, list, inc, MATCH_COPY.here, ta > tb) + matchSide(b, a, inc, list, MATCH_COPY.backup, tb > ta);
+        F("tt-match-rest").hidden = matches.length - i < 2;
+        F("tt-match-keep").focus();
+      };
+      const finish = (result) => {
+        modal.hidden = true;
+        modal.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("modal-open");
+        cleanup();
+        try { prevFocus && prevFocus.focus && prevFocus.focus(); } catch {}
+        resolve(result);
+      };
+      const answer = (action) => {
+        answers[matches[i].incomingId] = action;
+        i += 1;
+        if (i >= matches.length) finish(answers);
+        else show();
+      };
+      const onClick = (ev) => {
+        const t = ev.target.closest("button, .modal-backdrop");
+        if (!t) return;
+        if (t.dataset.ttMatchCancel) return finish(null);
+        if (t.id === "tt-match-keep") answer(HAND_MATCH.KEEP_BOTH);
+        else if (t.id === "tt-match-update") answer(HAND_MATCH.MERGE);
+        else if (t.id === "tt-match-skip") answer(HAND_MATCH.SKIP);
+        else if (t.id === "tt-match-rest") {
+          for (; i < matches.length; i++) answers[matches[i].incomingId] = HAND_MATCH.KEEP_BOTH;
+          finish(answers);
+        }
+      };
+      const onKey = (ev) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          ev.stopPropagation();
+          finish(null);
+        } else if (ev.key === "Tab") {
+          const f = [...panel.querySelectorAll("button:not([hidden])")];
+          const first = f[0], last = f[f.length - 1];
+          if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+          else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+        }
+      };
+      const cleanup = () => {
+        modal.removeEventListener("click", onClick);
+        document.removeEventListener("keydown", onKey, true);
+      };
+      modal.addEventListener("click", onClick);
+      document.addEventListener("keydown", onKey, true);
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("modal-open");
+      show();
+    });
+  }
+
   function deleteEntry(id) {
     const e = entries.find((x) => x.id === id);
     if (!e) return;
@@ -620,6 +747,7 @@
     isActive: () => active,
     openAdd: () => openForm(null),
     count: () => load().length,
+    askHandMatches,
     /** Hand matches a merge of `incoming` would raise, without writing anything. */
     previewHandMatches(incoming) {
       const list = load();

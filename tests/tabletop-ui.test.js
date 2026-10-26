@@ -61,6 +61,9 @@ async function shot(page, name) {
   await page.screenshot({ path: `${SHOT_DIR}/${name}.png`, fullPage: false });
   footerLog.push({ name, ...(await page.evaluate(() => { const f = [...document.querySelectorAll(".footer-credit")].find((x) => /Board game data from BoardGameGeek/.test(x.textContent)); if (!f) return { inDom: false }; const r = f.getBoundingClientRect(); return { inDom: true, rendered: r.height > 0, inView: r.bottom > 0 && r.top < innerHeight }; })) });
 }
+const V3 = SHOTS ? `${SHOTS}/v3` : "";
+async function vshot(page, name) { if (!V3) return; fs.mkdirSync(V3, { recursive: true }); await page.waitForTimeout(150); await page.screenshot({ path: `${V3}/${name}.png`, fullPage: false }); }
+const T_parent = (list, id) => { const T = require("../tabletop.js"); const r = T.resolveParent(list.map(T.normalize), T.normalize(list.find((e) => e.id === id))); return r && r.id; };
 // Relative luminance contrast (WCAG 2.x).
 const lum = (rgb) => { const [r, g, b] = rgb.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
 const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
@@ -328,10 +331,13 @@ async function addViaForm(page, fields) {
     check("restore (0 items, 3 games): prompt names both counts", /This browser has 0 items and 3 tabletop games\./.test(desc), desc);
     check("restore (0 items, 3 games): Replace warns", (await page.textContent("#confirm-ok")).trim() === "Replace" && /Replace swaps everything here for the backup and can’t be undone/.test(desc), desc);
     await page.click("#confirm-alt"); // Merge
+    await page.waitForSelector("#tt-match-modal:not([hidden])");
+    check("0-media device: merge asks about the hand-entered match (1 of 1)", (await page.textContent("#tt-match-progress")) === "1 of 1" && (await page.isHidden("#tt-match-rest")));
+    await page.click("#tt-match-keep");
     let s = await ttStore(page);
     const toast = await page.textContent("#toast");
     check("merge kept all 3 games and kept both hand-entered copies", s.length === 4 && ["tt-a", "tt-b", "tt-c", "tt-x"].every((id) => s.some((e) => e.id === id)), s.map((e) => e.id).join(","));
-    check("merge toast names the hand-entered match", /Kept both copies of a hand-entered tabletop game you already had: Homebrew Quest/.test(toast), toast);
+    check("merge toast counts kept / updated / skipped", /Same-title tabletop games: 1 kept both, 0 updated, 0 skipped/.test(toast), toast);
     await page.setInputFiles("#import-file", { name: "b2.json", mimeType: "application/json", buffer: bk(2) });
     await page.click("#confirm-ok"); // Replace
     const t2 = await page.textContent("#toast");
@@ -353,6 +359,115 @@ async function addViaForm(page, fields) {
     const rows = await page.evaluate(() => { const li = [...document.querySelectorAll("#tabletop-list > li")].find((l) => l.querySelector(".item-title").textContent === "Wingspan"); return li.querySelectorAll(".tt-exp-row").length; });
     check("editing a base's BGG id carries its expansions", rows === 2 && s.filter((e) => e.parentBggId === "999999").length === 2, String(rows));
     check("no page errors (bgg id edit)", !errors.length, errors.join("|"));
+    await ctx.close();
+  }
+
+  // Same-title prompt: one hand match at a time
+  {
+    const HERE = [
+      E({ id: "h1", title: "Homebrew Quest", subtype: "board", designer: "Me", year: "2020", players: "2–4" }),
+      E({ id: "h1x", title: "Homebrew Quest: Caves", subtype: "expansion", parentId: "h1" }),
+      E({ id: "h2", title: "Wingspan", subtype: "board" }), // hand-entered here, BGG id in the backup
+      E({ id: "h3", title: "Root", subtype: "board", bggId: "237182", designer: "Cole Wehrle" }), // BGG here, hand-entered in the backup
+    ];
+    const LATER = "2026-10-09T10:00:00.000Z";
+    const INC = [
+      E({ id: "i1", title: "Homebrew Quest", subtype: "board", designer: "", year: "2021", status: "want", dateUpdated: LATER }),
+      E({ id: "i1x", title: "Homebrew Quest: Mines", subtype: "expansion", parentId: "i1" }),
+      E({ id: "i2", title: "Wingspan", subtype: "board", bggId: "266192", designer: "Elizabeth Hargrave" }),
+      E({ id: "i3", title: "Root", subtype: "board", status: "want" }),
+      E({ id: "i3x", title: "Root: Riverfolk", subtype: "expansion", parentId: "i3" }),
+    ];
+    const bk = (entries, items = []) => Buffer.from(JSON.stringify({ app: "freerangemedia", version: 3, exportedAt: T0, items, tabletop: { v: 1, entries } }));
+    const startMerge = async (page, buf) => {
+      await page.setInputFiles("#import-file", { name: "m.json", mimeType: "application/json", buffer: buf });
+      await page.click("#confirm-alt");
+      await page.waitForSelector("#tt-match-modal:not([hidden])");
+    };
+    const { page, ctx, errors } = await open(browser, { tt: HERE });
+    await tab(page, "tabletop");
+    const before = { tt: await ttStore(page), items: await page.evaluate(() => localStorage.getItem("media-tracker-v1")) };
+    await page.focus("#btn-settings");
+    await startMerge(page, bk(INC, [{ ...media.items[2], id: "newbook" }]));
+    check("prompt: focus moves into it (primary)", await page.evaluate(() => document.activeElement.id === "tt-match-keep"));
+    const p1 = await page.evaluate(() => ({ prog: document.getElementById("tt-match-progress").textContent, labels: [...document.querySelectorAll(".tt-match-label")].map((x) => x.textContent), rest: !document.getElementById("tt-match-rest").hidden, bold: [...document.querySelectorAll(".tt-match-side b.tt-diff, .tt-match-side .badge.tt-diff")].map((b) => b.textContent), upd: [...document.querySelectorAll(".tt-match-side")].map((x) => (x.querySelector(".tt-match-updated") || {}).textContent || ""), primary: document.getElementById("tt-match-keep").className, outlines: ["tt-match-update", "tt-match-skip"].map((id) => document.getElementById(id).className), nameFs: getComputedStyle(document.querySelector(".tt-match-name")).fontSize, updFs: getComputedStyle(document.querySelector(".tt-match-updated")).fontSize }));
+    check("prompt: '1 of 3', shelf then backup, 'Keep both for the rest' shown", p1.prog === "1 of 3" && p1.labels.join("|") === "On this shelf|From backup" && p1.rest, JSON.stringify(p1));
+    check("prompt: differing values in bold (year, status), newer copy marked 'Updated <date>' 13px", p1.bold.includes("2020") && p1.bold.includes("2021") && p1.bold.includes("Want") && p1.upd[0] === "" && p1.upd[1] === "Updated Oct 9, 2026" && p1.updFs === "13px" && p1.nameFs === "16px", JSON.stringify(p1));
+    check("prompt: Keep both is the filled primary; Update and Skip are outlines, Skip not danger", /btn-primary/.test(p1.primary) && p1.outlines.every((c) => /btn-outline/.test(c) && !/danger/.test(c)));
+    check("nothing written while the prompt is open", JSON.stringify(await ttStore(page)) === JSON.stringify(before.tt) && (await page.evaluate(() => localStorage.getItem("media-tracker-v1"))) === before.items);
+    for (const w of [1440, 390, 320]) { await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 }); await vshot(page, `match-1of3-rest-${w}`); await vshot(page, `match-bold-differences-${w}`); }
+    const lay = async () => page.evaluate(() => { const s = [...document.querySelectorAll(".tt-match-side")].map((x) => x.getBoundingClientRect()); const b = ["tt-match-keep", "tt-match-update", "tt-match-skip", "tt-match-rest"].map((id) => document.getElementById(id).getBoundingClientRect()); return { cols: Math.abs(s[0].top - s[1].top) < 2, stackedShelfTop: s[0].bottom <= s[1].top, oneRow: Math.abs(b[0].top - b[2].top) < 2, primaryTop: b[0].top < b[1].top && b[1].top < b[2].top, fullW: Math.round(b[0].width) === Math.round(b[2].width), minH: Math.min(...b.map((r) => r.height)), docW: document.documentElement.scrollWidth }; });
+    await page.setViewportSize({ width: 1440, height: 900 }); const L1 = await lay();
+    check("1440: two columns, buttons in one row", L1.cols && L1.oneRow, JSON.stringify(L1));
+    await page.setViewportSize({ width: 320, height: 844 }); const L3 = await lay();
+    check("320: stacked (shelf on top), buttons full width, primary on top, 44px targets, no sideways scroll", L3.stackedShelfTop && L3.primaryTop && L3.fullW && L3.minH >= 44 && L3.docW === 320, JSON.stringify(L3));
+    await page.setViewportSize({ width: 390, height: 844 });
+    check("390: stacked", (await lay()).stackedShelfTop);
+    // answer: 1 update, 2 keep, 3 skip (no auto-advance: each tap moves one)
+    await page.click("#tt-match-update");
+    check("tap moves to 2 of 3", (await page.textContent("#tt-match-progress")) === "2 of 3");
+    check("one-side BGG id (hand here, BGG incoming) is asked", /Wingspan/.test(await page.textContent("#tt-match-pair")));
+    await page.click("#tt-match-keep");
+    check("3 of 3: 'Keep both for the rest' hidden with one left", (await page.textContent("#tt-match-progress")) === "3 of 3" && (await page.isHidden("#tt-match-rest")));
+    check("one-side BGG id (BGG here, hand incoming) is asked", /Root/.test(await page.textContent("#tt-match-pair")));
+    await page.click("#tt-match-skip");
+    await page.waitForSelector("#tt-match-modal[hidden]", { state: "attached" });
+    check("focus returns after the prompt", await page.evaluate(() => document.activeElement && document.activeElement.id !== "tt-match-keep" && document.activeElement !== document.body));
+    const s = await ttStore(page); const g = (id) => s.find((e) => e.id === id);
+    const toast = await page.textContent("#toast");
+    check("Update: h1 updated in place (empty designer kept, year/status from backup), no i1", g("h1").designer === "Me" && g("h1").year === "2021" && g("h1").status === "want" && !g("i1"), JSON.stringify(g("h1")));
+    check("after Update: shelf expansion and restored expansion both under the base (local id)", T_parent(s, "h1x") === "h1" && T_parent(s, "i1x") === "h1");
+    check("Keep both: two Wingspans", s.filter((e) => e.title === "Wingspan").length === 2);
+    check("Skip: one Root, unchanged, restored expansion relinked to it", s.filter((e) => e.title === "Root").length === 1 && g("h3").status === "owned" && T_parent(s, "i3x") === "h3");
+    check("final toast: 1 kept both, 1 updated, 1 skipped", /1 kept both, 1 updated, 1 skipped/.test(toast), toast);
+    check("media items merged after the last answer", (await page.evaluate(() => JSON.parse(localStorage.getItem("media-tracker-v1")).items.some((i) => i.id === "newbook"))));
+    check("no page errors (match prompt)", !errors.length, errors.join("|"));
+    await ctx.close();
+  }
+  // Cancel mid-queue (close button and Escape): nothing written, toast
+  for (const how of ["close", "escape", "backdrop"]) {
+    const HERE = ["A", "B", "C"].map((t) => E({ id: `h${t}`, title: `Game ${t}`, subtype: "board" }));
+    const INC = ["A", "B", "C"].map((t) => E({ id: `i${t}`, title: `Game ${t}`, subtype: "board", status: "want", dateUpdated: "2026-10-09T10:00:00.000Z" }));
+    const { page, ctx } = await open(browser, { tt: HERE });
+    const before = [await page.evaluate(() => localStorage.getItem("media-tracker-v1")), await page.evaluate(() => localStorage.getItem("media-tracker-v1:tabletop"))];
+    await page.setInputFiles("#import-file", { name: "m.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ app: "freerangemedia", version: 3, exportedAt: T0, items: [{ ...media.items[2], id: "zz" }], tabletop: { v: 1, entries: INC } })) });
+    await page.click("#confirm-alt");
+    await page.waitForSelector("#tt-match-modal:not([hidden])");
+    await page.click("#tt-match-update");
+    await page.click("#tt-match-skip");
+    if (how === "close") await page.click("#tt-match-close");
+    else if (how === "escape") await page.keyboard.press("Escape");
+    else await page.mouse.click(5, 5);
+    await page.waitForSelector("#tt-match-modal[hidden]", { state: "attached" });
+    const after = [await page.evaluate(() => localStorage.getItem("media-tracker-v1")), await page.evaluate(() => localStorage.getItem("media-tracker-v1:tabletop"))];
+    const toast = await page.textContent("#toast");
+    check(`cancel mid-queue (${how}, after 2 answers): items and shelf unchanged, toast`, after[0] === before[0] && after[1] === before[1] && toast.trim() === "Merge cancelled. Nothing was changed.", toast);
+    await ctx.close();
+  }
+  // One match shots + 30 matches with "Keep both for the rest"
+  {
+    const { page, ctx } = await open(browser, { tt: [E({ id: "h1", title: "Wingspan", subtype: "board", designer: "Elizabeth Hargrave", year: "2019", players: "1–5", playTime: "70" })] });
+    await page.setInputFiles("#import-file", { name: "m.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ app: "freerangemedia", version: 3, exportedAt: T0, items: [], tabletop: { v: 1, entries: [E({ id: "i1", title: "Wingspan", subtype: "board", bggId: "266192", designer: "Elizabeth Hargrave", year: "2019", players: "1–5", playTime: "70" })] } })) });
+    await page.click("#confirm-alt");
+    await page.waitForSelector("#tt-match-modal:not([hidden])");
+    for (const w of [1440, 390, 320]) { await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 }); await vshot(page, `match-one-${w}`); }
+    await page.click("#tt-match-close");
+    await ctx.close();
+  }
+  {
+    const HERE = Array.from({ length: 30 }, (_, i) => E({ id: `h${i}`, title: `Homebrew ${i}`, subtype: "card" }));
+    const INC = HERE.map((e) => ({ ...e, id: e.id.replace("h", "i") }));
+    const { page, ctx, errors } = await open(browser, { tt: HERE });
+    await page.setInputFiles("#import-file", { name: "m.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ app: "freerangemedia", version: 3, exportedAt: T0, items: [], tabletop: { v: 1, entries: INC } })) });
+    await page.click("#confirm-alt");
+    await page.waitForSelector("#tt-match-modal:not([hidden])");
+    check("30 matches: '1 of 30'", (await page.textContent("#tt-match-progress")) === "1 of 30");
+    await page.click("#tt-match-skip");
+    await page.click("#tt-match-rest");
+    await page.waitForSelector("#tt-match-modal[hidden]", { state: "attached" });
+    const toast = await page.textContent("#toast");
+    check("30 matches: Skip then 'Keep both for the rest' = 29 kept, 1 skipped", (await ttStore(page)).length === 59 && /29 kept both, 0 updated, 1 skipped/.test(toast), toast);
+    check("no page errors (30 matches)", !errors.length, errors.join("|"));
     await ctx.close();
   }
 

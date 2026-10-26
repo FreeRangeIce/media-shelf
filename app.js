@@ -2598,21 +2598,31 @@
             : `Restored ${countLabel(items.length, "item")}`
         );
       };
-      const doMerge = () => {
+      const doMerge = async () => {
+        // Hand matches (same title + kind, at least one side hand-entered) are asked about one
+        // at a time BEFORE anything is written. Closing or cancelling the prompt at any point
+        // cancels the whole merge: items and the tabletop shelf stay exactly as they were.
+        let answers = null;
+        const matches = TT && parsed.tabletop ? TT.previewHandMatches(parsed.tabletop) : [];
+        closeConfirm();
+        if (matches.length) {
+          answers = await TT.askHandMatches(matches, parsed.tabletop);
+          if (!answers) {
+            showToast("Merge cancelled. Nothing was changed."); // PENDING BEREAN
+            return;
+          }
+        }
         let res = { added: 0, updated: 0 };
-        let handMatches = [];
         const ok = commitItems((list) => {
           res = mergeItems(list, incoming);
           return res.items;
         }, "restore");
-        closeConfirm();
         if (!ok) return;
         if (TT && parsed.tabletop) {
-          const t = TT.restore(parsed.tabletop, "merge");
+          const t = TT.restore(parsed.tabletop, "merge", answers ? { answers } : undefined);
           if (t) {
             res.added += t.added;
             res.updated += t.updated;
-            handMatches = t.handMatches || [];
           }
         }
         restoreCoverQueue(parsed.coverQueueIds, false);
@@ -2621,13 +2631,13 @@
           res.added || res.updated
             ? `Merged — ${res.added} added, ${res.updated} updated`
             : "Merged — already up to date";
-        // Hand-entered games (no BGG id) that match one here by title and type are kept
-        // twice for now, never merged or dropped silently: name them.
-        const titles = [...new Set(handMatches.map((m) => m.title))];
+        if (!answers) {
+          showToast(base);
+          return;
+        }
+        const n = (a) => Object.values(answers).filter((x) => x === a).length;
         showToast(
-          titles.length
-            ? `${base}. Kept both copies of ${titles.length === 1 ? "a hand-entered tabletop game" : `${titles.length} hand-entered tabletop games`} you already had: ${titles.join(", ")}` // Berean cleared
-            : base
+          `${base}. Same-title tabletop games: ${n("keep-both")} kept both, ${n("merge")} updated, ${n("skip")} skipped` // PENDING BEREAN
         );
       };
       if (hasCurrent) {
