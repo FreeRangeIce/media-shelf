@@ -5,7 +5,7 @@
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Bump it with the service worker cache each release: it must match sw.js's CACHE name
   // (media-shelf-v37), which the tests check.
-  const APP_VERSION = 38;
+  const APP_VERSION = 39;
   const STORAGE_KEY = "media-tracker-v1";
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
   const RAWG_KEY_STORAGE = "media-shelf-rawg-key";
@@ -1093,7 +1093,7 @@
   }
 
   function formatBadgeText(item) {
-    return formatBadgeParts(item).join(" · ");
+    return formatBadgeParts(item).join("\u00a0· ");
   }
 
   function normalizeBarcode(raw) {
@@ -2113,10 +2113,10 @@
         // year it stays the existing lone "—".
         const creatorText =
           item.type === "comic"
-            ? [comicCreatorNames(item.writer, item.artist).join(", "), item.publisher].filter(Boolean).join(" · ")
+            ? [comicCreatorNames(item.writer, item.artist).join(", "), item.publisher].filter(Boolean).join("\u00a0· ")
             : String(item.creator || "").trim();
         const yearText = item.year != null && String(item.year).trim() !== "" ? String(item.year).trim() : "";
-        const metaText = [creatorText, yearText].filter(Boolean).join(" · ") || "—";
+        const metaText = [creatorText, yearText].filter(Boolean).join("\u00a0· ") || "—";
         const progress = item.progress
           ? `<span class="progress">${escapeHtml(item.progress)}</span>`
           : "";

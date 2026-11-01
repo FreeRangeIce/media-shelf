@@ -607,6 +607,7 @@ body {
    still #e8c99a, still centered on the category row, gone before the search field.
    No image, no second gradient. */
 .type-tabs::before {
+  display: none; /* Duo fix: glow removed entirely; the tabs sit flat (focus ring and active chip unchanged) */
   content: "";
   position: absolute;
   z-index: -1;
@@ -1284,8 +1285,10 @@ body {
   position: relative;
   width: 100%;
   max-width: 520px;
+  max-height: min(92vh, 720px, calc(100vh - var(--sheet-gap))); /* fallback without dvh */
   max-height: min(92dvh, 720px, calc(100dvh - var(--sheet-gap)));
   overflow: auto;
+  overscroll-behavior: contain;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius) var(--radius) 0 0;
@@ -1318,6 +1321,7 @@ body {
   }
 
   .modal-panel {
+    max-height: min(92vh, 720px, calc(100vh - var(--sheet-gap) - var(--space-4))); /* fallback */
     max-height: min(92dvh, 720px, calc(100dvh - var(--sheet-gap) - var(--space-4)));
     border-radius: var(--radius);
     animation: fade-scale 0.18s ease-out;
@@ -1326,6 +1330,11 @@ body {
   .modal-panel-sm,
   .modal-panel-settings {
     margin: 0;
+  }
+
+  /* Duo fix: the Add / Edit sheet is ~560px wide and centered on wide and landscape screens */
+  #modal > .modal-panel {
+    max-width: 560px;
   }
 
   .modal-panel-sm {
@@ -1529,6 +1538,7 @@ label.check input[type="checkbox"]:focus-visible {
 
 /* Save / Cancel stay visible while the sheet scrolls */
 .item-form .form-actions {
+  border-top-color: var(--border-strong); /* the 1px rule above Cancel / Save */
   position: sticky;
   bottom: calc(-1 * var(--space-6));
   z-index: 1;
@@ -1536,6 +1546,19 @@ label.check input[type="checkbox"]:focus-visible {
   padding-top: calc(var(--space-4) + var(--space-4));
   padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px)); /* above the home indicator */
   background: var(--bg-elevated);
+}
+
+/* Duo fix: the form fades out over 24px above the rule, so a field scrolling under the
+   pinned actions never reads as sliced mid-field. Decorative; never takes taps. */
+.item-form .form-actions::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 1px);
+  height: var(--space-6);
+  background: linear-gradient(to bottom, rgba(255, 253, 248, 0), var(--bg-elevated));
+  pointer-events: none;
 }
 
 .form-actions-right {
