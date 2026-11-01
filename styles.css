@@ -1536,6 +1536,12 @@ label.check input[type="checkbox"]:focus-visible {
   border-top: 1px solid var(--border);
 }
 
+/* Duo fix: a field you tab or tap into scrolls to sit above the pinned Cancel / Save bar
+   and its 24px fade (bar ~102px + fade 24px + 8px air), not underneath it. */
+#modal > .modal-panel {
+  scroll-padding-bottom: calc(8.25rem + env(safe-area-inset-bottom, 0px));
+}
+
 /* Save / Cancel stay visible while the sheet scrolls */
 .item-form .form-actions {
   border-top-color: var(--border-strong); /* the 1px rule above Cancel / Save */
