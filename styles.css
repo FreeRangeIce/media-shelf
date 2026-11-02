@@ -1755,6 +1755,7 @@ body.modal-open {
 
 .barcode-row .btn {
   flex: 0 0 auto;
+  flex-shrink: 0; /* Duo fix: Scan / Lookup never squeeze; the input (min-width: 0) gives way */
   white-space: nowrap;
 }
 
@@ -3566,6 +3567,20 @@ body.modal-open {
 
 .tt-match-late[hidden] {
   display: none;
+}
+
+/* Duo fix (v40): the Add / Edit sheet and every row in it stay inside the safe area,
+   so nothing (Lookup, the right edge of Title / Author) runs under a side inset. */
+#modal > .modal-panel {
+  max-width: min(560px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+  padding-left: max(var(--space-5), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-5), env(safe-area-inset-right, 0px));
+}
+
+#modal > .modal-panel .item-form,
+#modal > .modal-panel .item-form > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Duo fix (v40): iOS Safari zooms the page when a focused field's text is under 16px.
