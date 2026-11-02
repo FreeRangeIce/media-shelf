@@ -107,8 +107,11 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
       return { h, lk, n: o.relayReqs.length };
     };
     const a = await grab(ORIGIN), b = await grab(MAIN);
-    check("flag off: Add sheet markup identical to v39", a.h === b.h, `${a.h.length} vs ${b.h.length}`);
-    check("flag off: Lookup button says the same as v39", a.lk === b.lk, a.lk);
+    // v43 renamed the title-search message (Berean); otherwise the flag-off sheet is v39's.
+    const OLD_LK = "BoardGameGeek lookup isn’t connected yet. Fill in the details by hand; you can add a BGG id later.";
+    const NEW_LK = "Searching BoardGameGeek by title isn’t connected yet. Fill in the details by hand; you can add a BGG id later.";
+    check("flag off: Add sheet markup identical to v39 (apart from the renamed message)", a.h.split(NEW_LK).join(OLD_LK) === b.h, `${a.h.length} vs ${b.h.length}`);
+    check("flag off: Lookup button says the new title-search message (v39 said the old one)", a.lk === NEW_LK && b.lk === OLD_LK, a.lk);
     void formNow;
   }
 

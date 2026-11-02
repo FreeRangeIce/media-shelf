@@ -11,19 +11,18 @@
  * are rewritten to carry that BGG id too (linkBggId). Deleting a base never deletes its
  * expansions; they stand alone and keep the BGG id, so re-adding the base relinks them.
  *
- * Lookup: BoardGameGeek lookup is NOT connected. No network call is ever made from here;
- * the Lookup button only says so (LOOKUP_RELAY_URL is empty). See relay/tabletop-worker.js.
+ * Lookup: searching BoardGameGeek by title (LOOKUP_RELAY_URL) is not connected and makes no
+ * network call; the Lookup button only says so (LOOKUP_RELAY_URL is empty). Barcode lookup
+ * (below) does make calls, through the relay. See relay/tabletop-worker.js.
  *
- * Barcode lookup (GameUPC, via the relay): ON since v43 (Micah approved the relay, deployed at
- * frm-tabletop.freerangeice.workers.dev). With GAMEUPC_LOOKUP.enabled false the page builds no
- * barcode UI and makes no relay call, exactly as v39. See "barcode lookup" below and
- * relay/README-tabletop.md.
+ * Barcode lookup (GameUPC, via the relay): on since v43, using the relay at frm-tabletop.freerangeice.workers.dev. Setting GAMEUPC_LOOKUP.enabled to false turns it off: no barcode UI and no relay call.
+ * See "barcode lookup" below and relay/README-tabletop.md.
  */
 (function (root) {
   "use strict";
 
   const STORE_KEY = "media-tracker-v1:tabletop";
-  /** Relay endpoint for BGG / GameUPC lookups. Empty = not connected (no network calls). */
+  /** Relay endpoint for BGG title search. Empty = not connected (no title-search calls). Barcode lookup uses GAMEUPC_LOOKUP.relay. */
   const LOOKUP_RELAY_URL = "";
   /**
    * Lookup data credits: the BoardGameGeek credit (official linked "Powered by BGG" logo under
@@ -35,7 +34,7 @@
   const lookupReturnedRecord = false;
   const lookupCreditsAllowed = () => Boolean(LOOKUP_RELAY_URL) && lookupReturnedRecord;
   const LOOKUP_NOT_CONNECTED =
-    "BoardGameGeek lookup isn’t connected yet. Fill in the details by hand; you can add a BGG id later."; // Berean cleared
+    "Searching BoardGameGeek by title isn’t connected yet. Fill in the details by hand; you can add a BGG id later."; // Berean cleared
   /**
    * Barcode lookup flag. While off nothing below "barcode lookup" runs.
    * Dev only: on a loopback host (127.0.0.1 / localhost) a test may set

@@ -101,8 +101,9 @@ Only the cover fields, the source name/id/link of a single found cover, and the 
 The Tabletop tab (`tabletop.js`) keeps physical tabletop games on their own shelf and storage key
 (`media-tracker-v1:tabletop`); backups carry them in an optional `tabletop` block that older
 backups simply lack. Expansions sit under their base game (linked by BGG id, with the local id as
-fallback). BoardGameGeek / GameUPC lookup is not connected yet: the relay source is in
-`relay/tabletop-worker.js` (not deployed; see `relay/README-tabletop.md`). Tests:
+fallback). Barcode lookup (GameUPC + BoardGameGeek data, via the relay) is on: the relay is
+`relay/tabletop-worker.js`, deployed as frm-tabletop (see `relay/README-tabletop.md`). Searching
+BoardGameGeek by title isn't connected yet. Tests:
 `node tests/tabletop-core.test.js` and `tests/tabletop-ui.test.js` (Playwright).
 
 ## Features

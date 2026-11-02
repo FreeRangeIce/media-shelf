@@ -1,21 +1,17 @@
-# Tabletop lookup relay (source only — not deployed; barcode lookup behind an OFF flag)
+# Tabletop lookup relay (Cloudflare Worker frm-tabletop)
 
 `relay/tabletop-worker.js` is a Cloudflare Worker, modelled on the frm-gcd relay. The app
-does **not** call it yet: `LOOKUP_RELAY_URL` in `tabletop.js` is empty, so the Lookup button
-only says "BoardGameGeek lookup isn’t connected yet" and makes no network call.
+calls it for barcode lookup since v43 (`GAMEUPC_LOOKUP.relay` in `tabletop.js`). Searching
+BoardGameGeek by title is not wired yet (`LOOKUP_RELAY_URL` is empty), so that button only says
+so and makes no network call.
 
-## Needs before it can go live
-1. **BGG token.** Register a non-commercial application at https://boardgamegeek.com/applications
-   (BGG says approval "may be a week or more"), then create a token there. Set it with
-   `wrangler secret put BGG_API_TOKEN` (read only as `env.BGG_API_TOKEN`). Sent as `Authorization: Bearer <token>` to
-   `https://boardgamegeek.com/xmlapi2` (no `www`). Docs: https://boardgamegeek.com/using_the_xml_api
-2. **GameUPC key.** `/test` works with the public test key (`test_test_test_test_test`) but
-   is wiped periodically; `/v1` (production) needs a key by email. `wrangler secret put GAMEUPC_KEY`,
-   and `GAMEUPC_BASE = "v1"` in `[vars]` once a production key exists. Spec: https://gameupc.com/gameupc-oas.yaml
-3. Optional KV namespace bound as `TT_CACHE` (otherwise cache is per isolate, in memory).
-4. A `wrangler.toml` (name e.g. `frm-tabletop`), then set `LOOKUP_RELAY_URL` and add the host
-   to `RELAY_HOSTS` in `sw.js` so answers are never cached by the service worker.
-5. The official "Powered by BGG" logo file, linked to boardgamegeek.com (footer TODO).
+## How it was set up
+- Worker name `frm-tabletop` on the freerangeice workers.dev subdomain: https://frm-tabletop.freerangeice.workers.dev
+- KV binding `TT_CACHE`.
+- Secrets (names only, set with `wrangler secret put`): `GAMEUPC_KEY`, `BGG_API_TOKEN`.
+- Var `GAMEUPC_BASE = "v1"`.
+- Deployed with wrangler 3 (the box has Node 20).
+- Deployed Nov 2, 2026.
 
 ## Behaviour
 - Origin-locked (`ALLOWED_ORIGINS`), own CORS, GET only. Never POSTs (GameUPC `update_url` is never called).
@@ -29,10 +25,10 @@ only says "BoardGameGeek lookup isn’t connected yet" and makes no network call
   and all rpgitem field mappings are **UNVERIFIED** (nothing tested without a token).
 
 ## Barcode lookup (GameUPC v1) — design/frm-gameupc-lookup
-Page side: `GAMEUPC_LOOKUP = { enabled: false, relay: "" }` in `tabletop.js`. Off = no barcode UI
-is built and no relay request is made (identical to v39). Stays off until BGG approves the token.
-Turning it on: set `enabled: true` and `relay` to the deployed Worker URL, and add the Worker
-host to `RELAY_HOSTS` in `sw.js` (cross-origin answers are never cached there anyway).
+Page side: `GAMEUPC_LOOKUP = { enabled: true, relay: "https://frm-tabletop.freerangeice.workers.dev" }`
+in `tabletop.js` since v43; the host is in `RELAY_HOSTS` in `sw.js`, so answers are never cached
+there. Setting `enabled: false` turns it off: no barcode UI is built and no relay request is made
+(identical to v39).
 
 Three cases (GameUPC `bgg_info_status`):
 - `verified` → status `verified`: fills empty title / BGG id / year. **Never posted.**

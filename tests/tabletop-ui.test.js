@@ -142,7 +142,7 @@ async function addViaForm(page, fields) {
     const before = requests.length;
     await page.click("#tt-lookup", { force: true }); // aria-disabled: Playwright would wait for "enabled"
     const msg = await page.textContent("#tt-lookup-status");
-    check("Lookup says it isn't connected", /BoardGameGeek lookup isn’t connected yet/.test(msg), msg);
+    check("Lookup says it isn't connected", /Searching BoardGameGeek by title isn’t connected yet/.test(msg), msg);
     check("Lookup made no network request", requests.length === before);
     for (const w of [1440, 390, 320]) { await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 }); await page.$eval("#tt-lookup-status", (e) => e.scrollIntoView({ block: "center" })); await shot(page, `lookup-not-connected-${w}`); }
     await page.setViewportSize({ width: 390, height: 1400 });
@@ -575,7 +575,7 @@ async function addViaForm(page, fields) {
     check("Settings open: neither credit shown", GONE.every((g) => !st.includes(g)));
     await page.click("#settings-close");
     check("lookup credits gate is false today (not connected, no record)", await page.evaluate(() => window.FRMTabletop.lookupCreditsAllowed() === false && window.FRMTabletop.lookupConnected() === false));
-    check("Lookup message unchanged", /BoardGameGeek lookup isn’t connected yet\. Fill in the details by hand; you can add a BGG id later\./.test(await page.evaluate(() => window.FRMTabletop.LOOKUP_NOT_CONNECTED)));
+    check("Lookup message unchanged", /Searching BoardGameGeek by title isn’t connected yet\. Fill in the details by hand; you can add a BGG id later\./.test(await page.evaluate(() => window.FRMTabletop.LOOKUP_NOT_CONNECTED)));
     const foot = await page.evaluate(() => { const c = document.querySelector(".footer-credits"); const kids = [...c.children]; return { html: c.innerHTML, seps: kids.filter((k, i) => k.classList.contains("footer-sep") && (!kids[i + 1] || kids[i + 1].classList.contains("footer-sep"))).length, empty: kids.filter((k) => k.classList.contains("footer-credit") && !k.id && !k.textContent.trim()).length }; });
     check("footer: no doubled/trailing separator or empty credit", foot.seps === 0 && foot.empty === 0, JSON.stringify(foot));
     if (MAIN) {
