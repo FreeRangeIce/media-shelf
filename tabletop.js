@@ -13,6 +13,10 @@
  *
  * Lookup: BoardGameGeek lookup is NOT connected. No network call is ever made from here;
  * the Lookup button only says so (LOOKUP_RELAY_URL is empty). See relay/tabletop-worker.js.
+ *
+ * Barcode lookup (GameUPC, via the relay): OFF. GAMEUPC_LOOKUP.enabled is false, so the page
+ * builds no barcode UI and makes no relay call, exactly as v39. Turn on only after BGG approves
+ * the token (Micah). See "barcode lookup" below and relay/README-tabletop.md.
  */
 (function (root) {
   "use strict";
@@ -31,6 +35,21 @@
   const lookupCreditsAllowed = () => Boolean(LOOKUP_RELAY_URL) && lookupReturnedRecord;
   const LOOKUP_NOT_CONNECTED =
     "BoardGameGeek lookup isn’t connected yet. Fill in the details by hand; you can add a BGG id later."; // Berean cleared
+  /**
+   * Barcode lookup flag. Off by default; while off nothing below "barcode lookup" runs.
+   * Dev only: on a loopback host (127.0.0.1 / localhost) a test may set
+   * window.__FRM_TT_LOOKUP__ = { relay } before load; ignored on any other host.
+   */
+  const GAMEUPC_LOOKUP = { enabled: false, relay: "" };
+  function barcodeLookupConfig() {
+    if (GAMEUPC_LOOKUP.enabled && GAMEUPC_LOOKUP.relay) return { relay: GAMEUPC_LOOKUP.relay };
+    try {
+      const dev = root.__FRM_TT_LOOKUP__;
+      const loop = root.location && /^(127\.0\.0\.1|localhost)$/.test(root.location.hostname);
+      if (loop && dev && typeof dev.relay === "string" && /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(dev.relay)) return { relay: dev.relay };
+    } catch {}
+    return null;
+  }
   const SUBTYPES = ["board", "card", "dice", "miniatures", "rpg", "expansion"];
   const SUBTYPE_LABELS = { board: "Board", card: "Card", dice: "Dice", miniatures: "Miniatures", rpg: "RPG", expansion: "Expansion" };
   const STATUSES = ["owned", "want"];
@@ -280,7 +299,38 @@
     return block.entries.filter((r) => r && typeof r === "object" && r.title).map(normalize);
   }
 
-  const core = { STORE_KEY, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed, LOOKUP_NOT_CONNECTED };
+  /** UPC-A / EAN-13 / EAN-8 with a valid check digit (the debounce only fires on these). */
+  function validGtin(code) {
+    const d = str(code);
+    if (!/^(\d{8}|\d{12}|\d{13})$/.test(d)) return false;
+    const n = d.split("").map(Number);
+    const check = n.pop();
+    const sum = n.reverse().reduce((a, x, i) => a + x * (i % 2 === 0 ? 3 : 1), 0);
+    return (10 - (sum % 10)) % 10 === check;
+  }
+
+  /**
+   * Whether a save may send a barcode match, and which. Pure. `look` is the lookup state:
+   * { upc, status: "verified"|"choose"|"none", confirmed: { bggId } | null, answer: "send"|"skip"|null }.
+   * Never for "verified"; "choose" only for the confirmed pick still in the form; "none" only
+   * with a BGG id in the form AND an explicit "send" answer. Returns
+   * { send: { upc, bggId } } | { ask: true } | { send: null }.
+   */
+  function barcodePostDecision(look, form) {
+    const none = { send: null };
+    if (!look || !form || str(form.barcode) !== look.upc) return none;
+    const id = bggNum(form.bggId);
+    if (!/^[1-9]\d{0,8}$/.test(id)) return none; // no BGG id: nothing is posted
+    if (look.status === "choose") return look.confirmed && look.confirmed.bggId === id ? { send: { upc: look.upc, bggId: id } } : none;
+    if (look.status === "none") {
+      if (look.answer === "send" && look.confirmed && look.confirmed.bggId === id) return { send: { upc: look.upc, bggId: id } };
+      if (look.answer === "skip" && look.confirmed && look.confirmed.bggId === id) return none;
+      return { ask: true };
+    }
+    return none; // verified: never posted
+  }
+
+  const core = { STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed, LOOKUP_NOT_CONNECTED };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
   if (typeof document === "undefined") return;
 
@@ -453,6 +503,7 @@
     F("tt-lookup-status").hidden = true;
     F("tt-dup").hidden = true;
     F("tt-title-error").hidden = true;
+    resetBarcodeLookup();
     syncExpansionRows();
     closeModal("tt-detail-modal");
     openModal("tt-form-modal");
@@ -495,6 +546,14 @@
     }
     F("tt-title").removeAttribute("aria-invalid");
     load();
+    // Barcode match (lookup on only): a hand-entered game with a BGG id asks before anything
+    // is sent. Nothing is sent for a verified match or without a BGG id.
+    const post = barcodeLookupOn ? barcodePostDecision(look, data) : { send: null };
+    if (post.ask) {
+      look.pendingMode = mode;
+      showSendAsk(data);
+      return;
+    }
     if (!mode) {
       const dup = findDuplicate(entries, normalize({ ...data, id: data.id || "__new__" }));
       if (dup) {
@@ -524,6 +583,209 @@
     render();
     host.renderStats && host.renderStats();
     host.toast && host.toast(mode === "update" ? "Updated" : "Saved");
+    if (post.send) {
+      const cfg = barcodeLookupOn;
+      look = null; // sent once; a re-save never re-sends
+      // Non-blocking: the game is already saved on this device whatever happens here.
+      sendBarcodeMatch(cfg, post.send).then((ok) => { if (!ok && host.toast) host.toast(UPC_COPY.postFailed); });
+    }
+  }
+
+
+  /* ----- barcode lookup (GameUPC via the relay). Runs only when barcodeLookupConfig() is set. ----- */
+  // Every user-facing string of the barcode lookup. PENDING BEREAN (all).
+  const UPC_COPY = {
+    button: "Look up barcode",
+    loading: "Looking up barcode…",
+    found: (n) => `Found ${n}. Check the details, then save.`,
+    pickTitle: "Pick your game",
+    pickHint: "Choose the game that matches this box.",
+    noneOfThese: "None of these",
+    confirmTitle: "Is this your game?",
+    confirmWhat: (u) => `Confirm fills in this game. When you save, its BGG id is sent with barcode ${u} so this barcode can be matched next time.`,
+    confirmWrong: "If it’s wrong, choose Cancel. Nothing is sent until you confirm and save.",
+    confirm: "Confirm",
+    cancel: "Cancel",
+    picked: (n) => `${n} filled in. Its BGG id is sent with this barcode when you save.`,
+    noneTitle: "No match for this barcode",
+    noneHint: "Enter the game yourself. If you add its BGG id, you’ll be asked before it’s sent with this barcode. Without a BGG id, nothing is sent.",
+    sendTitle: "Send this barcode match?",
+    sendWhat: (t, id, u) => `${t}, BGG id ${id}, barcode ${u}.`,
+    sendWhy: "Sending helps this barcode match this game next time. If it’s wrong, choose Save only.",
+    sendYes: "Save and send",
+    sendNo: "Save only",
+    errBadCode: "That barcode doesn’t look right. Check the digits.",
+    errBusy: "Too many lookups. Try again in a minute.",
+    errFailed: "Couldn’t look up this barcode. Try again, or enter the game yourself.",
+    postFailed: "Saved. The barcode match wasn’t sent.",
+    yearLabel: (y) => (y ? `, ${y}` : ""),
+  };
+  const UPC_DEBOUNCE_MS = 600;
+  let look = null; // { upc, status, data, confirmed, answer }
+  let upcTimer = 0;
+  let upcSeq = 0;
+  const upcSession = new Map(); // upc -> relay answer (this page load)
+  const upcInflight = new Map(); // upc -> Promise
+
+  function upcFetch(cfg, upc) {
+    if (upcSession.has(upc)) return Promise.resolve(upcSession.get(upc));
+    if (upcInflight.has(upc)) return upcInflight.get(upc);
+    const p = fetch(`${cfg.relay}/barcode?upc=${encodeURIComponent(upc)}`, { headers: { Accept: "application/json" } })
+      .then(async (r) => {
+        if (r.status === 200) { const d = await r.json(); upcSession.set(upc, d); return d; }
+        throw new Error(r.status === 400 ? "bad" : r.status === 429 || r.status === 503 ? "busy" : "failed");
+      })
+      .finally(() => upcInflight.delete(upc));
+    upcInflight.set(upc, p);
+    return p;
+  }
+
+  /** The ONLY POST. Called from saveForm after a confirmed pick / a "Save and send" answer. */
+  function sendBarcodeMatch(cfg, m) {
+    return fetch(`${cfg.relay}/barcode/confirm`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(m) })
+      .then((r) => r.ok)
+      .catch(() => false);
+  }
+
+  function upcPanel() { return F("tt-upc-panel"); }
+  function upcView(html, focusSel) {
+    const p = upcPanel();
+    p.innerHTML = html;
+    p.hidden = !html;
+    // A thumbnail that fails to load becomes the plain placeholder (no broken-image icon).
+    p.querySelectorAll("img.tt-upc-thumb").forEach((img) => img.addEventListener("error", () => {
+      const ph = document.createElement("span");
+      ph.className = "tt-upc-thumb tt-upc-thumb-none";
+      ph.setAttribute("aria-hidden", "true");
+      img.replaceWith(ph);
+    }, { once: true }));
+    if (focusSel) { const el = p.querySelector(focusSel); if (el) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: "nearest" }); } }
+  }
+  const upcStatus = (msg, cls = "") => upcView(`<p class="field-hint tt-upc-msg ${cls}" role="status">${esc(msg)}</p>`);
+  const thumb = (c) => (c.thumbnail && !/blank_box_thumb/.test(c.thumbnail)
+    ? `<img class="tt-upc-thumb" src="${esc(c.thumbnail)}" alt="" loading="lazy" referrerpolicy="no-referrer" />`
+    : `<span class="tt-upc-thumb tt-upc-thumb-none" aria-hidden="true"></span>`);
+  const candRow = (c) => `${thumb(c)}<span class="tt-upc-cand-text"><span class="tt-upc-cand-name">${esc(c.name)}</span>${c.year ? `<span class="tt-upc-cand-year">${esc(c.year)}</span>` : ""}</span>`;
+
+  function fillFromCandidate(c, overwrite) {
+    const set = (k, v) => { const el = F(`tt-${k}`); if (el && v && (overwrite || !str(el.value))) el.value = v; };
+    set("title", c.name);
+    set("bggId", c.bggId);
+    set("year", c.year);
+  }
+
+  function showChoose() {
+    const cands = look.data.candidates;
+    upcView(`<h3 class="tt-upc-h" id="tt-upc-h" tabindex="-1">${esc(UPC_COPY.pickTitle)}</h3>
+<p class="field-hint">${esc(UPC_COPY.pickHint)}</p>
+<ul class="tt-upc-list" aria-labelledby="tt-upc-h">${cands.map((c, i) => `<li><button type="button" class="tt-upc-cand" data-upc-pick="${i}" aria-label="${esc(c.name + UPC_COPY.yearLabel(c.year))}">${candRow(c)}</button></li>`).join("")}</ul>
+<button type="button" class="btn btn-ghost tt-upc-secondary" data-upc-none="1">${esc(UPC_COPY.noneOfThese)}</button>`, "#tt-upc-h");
+  }
+  function showConfirmPick(i) {
+    const c = look.data.candidates[i];
+    look.pickIndex = i;
+    upcView(`<div class="tt-upc-confirm" role="group" aria-labelledby="tt-upc-h" aria-describedby="tt-upc-what tt-upc-wrong">
+<h3 class="tt-upc-h" id="tt-upc-h" tabindex="-1">${esc(UPC_COPY.confirmTitle)}</h3>
+<div class="tt-upc-cand tt-upc-cand-static">${candRow(c)}</div>
+<p class="field-hint" id="tt-upc-what">${esc(UPC_COPY.confirmWhat(look.upc))}</p>
+<p class="field-hint" id="tt-upc-wrong">${esc(UPC_COPY.confirmWrong)}</p>
+<div class="tt-upc-actions"><button type="button" class="btn btn-ghost" data-upc-cancel="1">${esc(UPC_COPY.cancel)}</button><button type="button" class="btn btn-primary" data-upc-confirm="1">${esc(UPC_COPY.confirm)}</button></div></div>`, "#tt-upc-h");
+  }
+  function showNone() {
+    look.status = "none"; // "None of these" joins the no-data path: hand entry, ask before any send
+    upcView(`<h3 class="tt-upc-h" id="tt-upc-h" tabindex="-1">${esc(UPC_COPY.noneTitle)}</h3><p class="field-hint">${esc(UPC_COPY.noneHint)}</p>`, "#tt-upc-h");
+  }
+  function showSendAsk(form) {
+    upcView(`<div class="tt-upc-confirm" role="group" aria-labelledby="tt-upc-h" aria-describedby="tt-upc-what tt-upc-wrong">
+<h3 class="tt-upc-h" id="tt-upc-h" tabindex="-1">${esc(UPC_COPY.sendTitle)}</h3>
+<p class="tt-upc-what" id="tt-upc-what">${esc(UPC_COPY.sendWhat(str(form.title), bggNum(form.bggId), look.upc))}</p>
+<p class="field-hint" id="tt-upc-wrong">${esc(UPC_COPY.sendWhy)}</p>
+<div class="tt-upc-actions"><button type="button" class="btn btn-ghost" data-upc-ask-cancel="1">${esc(UPC_COPY.cancel)}</button><button type="button" class="btn btn-ghost" data-upc-send="skip">${esc(UPC_COPY.sendNo)}</button><button type="button" class="btn btn-primary" data-upc-send="send">${esc(UPC_COPY.sendYes)}</button></div></div>`, "#tt-upc-h");
+  }
+
+  function runLookup(cfg) {
+    clearTimeout(upcTimer);
+    const upc = str(F("tt-barcode").value).replace(/[\s-]/g, "");
+    if (!/^\d{8,14}$/.test(upc)) { look = null; upcStatus(UPC_COPY.errBadCode, "tt-upc-err"); return; }
+    if (look && look.upc === upc && look.data) return; // already answered for this code
+    if (upcInflight.has(upc)) return; // one request per code at a time
+    const seq = ++upcSeq;
+    look = { upc, status: null, data: null, confirmed: null, answer: null };
+    const btn = F("tt-upc-go");
+    btn.setAttribute("aria-busy", "true");
+    upcView(`<p class="field-hint tt-upc-msg tt-upc-loading" role="status"><span class="tt-upc-spin" aria-hidden="true"></span>${esc(UPC_COPY.loading)}</p>`);
+    upcFetch(cfg, upc).then((d) => {
+      if (seq !== upcSeq) return; // a newer code was typed meanwhile
+      look.data = d;
+      look.status = d.status;
+      if (d.status === "verified" && d.candidates[0]) {
+        fillFromCandidate(d.candidates[0], false);
+        upcStatus(UPC_COPY.found(d.candidates[0].name));
+      } else if (d.status === "choose" && d.candidates.length) showChoose();
+      else showNone();
+    }).catch((err) => {
+      if (seq !== upcSeq) return;
+      look = null;
+      upcStatus(err.message === "bad" ? UPC_COPY.errBadCode : err.message === "busy" ? UPC_COPY.errBusy : UPC_COPY.errFailed, "tt-upc-err");
+    }).finally(() => { if (seq === upcSeq) btn.removeAttribute("aria-busy"); });
+  }
+
+  function setupBarcodeLookup() {
+    const cfg = barcodeLookupConfig();
+    if (!cfg) return; // flag off: no UI, no listeners, no network
+    const grid = F("tt-barcode").closest(".form-grid");
+    const row = document.createElement("div");
+    row.className = "form-row tt-upc";
+    row.id = "tt-upc";
+    row.innerHTML = `<button type="button" class="btn btn-outline tt-upc-go" id="tt-upc-go" aria-controls="tt-upc-panel">${esc(UPC_COPY.button)}</button><div class="tt-upc-panel" id="tt-upc-panel" aria-live="polite" hidden></div>`;
+    grid.after(row);
+    F("tt-barcode").setAttribute("aria-describedby", "tt-upc-panel");
+    F("tt-upc-go").addEventListener("click", () => runLookup(cfg));
+    // Debounce: a lookup fires 600 ms after typing stops, and only for a complete code with a
+    // valid check digit, so no request goes out per keystroke.
+    F("tt-barcode").addEventListener("input", () => {
+      clearTimeout(upcTimer);
+      const v = str(F("tt-barcode").value).replace(/[\s-]/g, "");
+      if (look && look.upc !== v) { look = null; upcSeq++; upcView(""); F("tt-upc-go").removeAttribute("aria-busy"); }
+      if (validGtin(v)) upcTimer = setTimeout(() => runLookup(cfg), UPC_DEBOUNCE_MS);
+    });
+    row.addEventListener("click", (ev) => {
+      const b = ev.target.closest("button");
+      if (!b || !look) return;
+      if (b.dataset.upcPick) showConfirmPick(Number(b.dataset.upcPick));
+      else if (b.dataset.upcNone) showNone();
+      else if (b.dataset.upcCancel) {
+        const i = look.pickIndex;
+        showChoose();
+        const r = upcPanel().querySelector(`[data-upc-pick="${i}"]`);
+        if (r) r.focus();
+      } else if (b.dataset.upcConfirm) {
+        const c = look.data.candidates[look.pickIndex];
+        look.confirmed = { bggId: c.bggId };
+        fillFromCandidate(c, true);
+        upcStatus(UPC_COPY.picked(c.name));
+        F("tt-title").focus();
+      } else if (b.dataset.upcSend) {
+        look.answer = b.dataset.upcSend;
+        look.confirmed = { bggId: bggNum(F("tt-bggId").value) };
+        upcView(""); // the save goes on
+        saveForm(look.pendingMode || null);
+      } else if (b.dataset.upcAskCancel) {
+        look.answer = null;
+        showNone();
+        F("tt-save").focus();
+      }
+    });
+    barcodeLookupOn = cfg;
+  }
+  let barcodeLookupOn = null;
+  function resetBarcodeLookup() {
+    if (!barcodeLookupOn) return;
+    clearTimeout(upcTimer);
+    upcSeq++;
+    look = null;
+    F("tt-upc-go").removeAttribute("aria-busy");
+    upcView("");
   }
 
   /* ----- detail ----- */
@@ -762,6 +1024,7 @@
       host = h || {};
       load();
       bind();
+      setupBarcodeLookup();
     },
     show,
     render,
