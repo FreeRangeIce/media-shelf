@@ -665,6 +665,13 @@
       img.replaceWith(ph);
     }, { once: true }));
     if (focusSel) { const el = p.querySelector(focusSel); if (el) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: "nearest" }); } }
+    // A question (Confirm card / send-ask): bring its buttons fully above the pinned bar's rule
+    // and fade (the sheet's scroll-padding-bottom covers bar + fade).
+    const q = p.querySelector(".tt-upc-confirm");
+    if (q) {
+      const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      q.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+    }
   }
   const upcStatus = (msg, cls = "") => upcView(`<p class="field-hint tt-upc-msg ${cls}" role="status">${esc(msg)}</p>`);
   const thumb = (c) => (c.thumbnail && !/blank_box_thumb/.test(c.thumbnail)

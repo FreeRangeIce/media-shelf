@@ -60,7 +60,7 @@ const base = { GAMEUPC_KEY: "k", GAMEUPC_USER_ID: "test-user-01" };
   check("default cap 10: 10x200 then 429", st.filter((s) => s === 200).length === 10 && st.slice(10).every((s) => s === 429), st.join(","));
 }
 const src = fs.readFileSync(new URL("../relay/tabletop-worker.js", import.meta.url), "utf8");
-check("no unsourced 'undo a bad actor' claim", !/bad actor/i.test(src));
-check("user_id note: required by spec, per-user limiting unknown", /user_id is required by the GameUPC spec/.test(src) && /not documented \(unknown\)/.test(src));
+check("user_id note cites the GameUPC spec URL and quotes it", src.includes("https://gameupc.com/gameupc-oas.yaml") && src.includes("we can go back and clear out any updates they've made"));
+check("no paraphrased 'bad actor' claim", !/bad actor/i.test(src));
 console.log(`\n${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);

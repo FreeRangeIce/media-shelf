@@ -3724,8 +3724,9 @@ body.modal-open {
 /* "None of these": a text button under the list, not a card (same look as .tt-match-rest). */
 .tt-upc-secondary {
   appearance: none;
-  display: block;
-  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap); /* 44px tap target; looks the same */
   margin-top: var(--space-1);
   padding: 0 var(--space-1);
   border: 0;

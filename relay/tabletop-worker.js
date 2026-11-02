@@ -7,9 +7,12 @@
 //   BGG_TOKEN    BoardGameGeek application token (boardgamegeek.com/applications)
 //   GAMEUPC_KEY  GameUPC x-api-key
 //   GAMEUPC_USER_ID  stable id (>= 8 chars) sent as {"user_id"} with a confirmed barcode match.
-//                    user_id is required by the GameUPC spec for this POST. Whether GameUPC limits
-//                    or rolls back votes per user_id is not documented (unknown). Without it,
-//                    POST /barcode/confirm is off.
+//                    Source: GameUPC OpenAPI spec, https://gameupc.com/gameupc-oas.yaml (POST
+//                    /upc/{upc}/bgg_id/{bgg_id}, requestBody: "we require app authors to include a
+//                    unique (but consistent) user_id for each user. If one of your users goes bad,
+//                    we can go back and clear out any updates they've made."; intro: "at least 8
+//                    characters"). This relay sends the one GAMEUPC_USER_ID for every confirm (a
+//                    single-user app). Without it, POST /barcode/confirm is off.
 // Vars (wrangler.toml [vars], optional):
 //   GAMEUPC_BASE "test" | "v1"   (default "test"; /test "will be wiped periodically")
 //   CONFIRM_DAILY_CAP  confirms forwarded to GameUPC per UTC day, all clients together (default 10)

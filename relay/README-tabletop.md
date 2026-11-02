@@ -53,8 +53,11 @@ Three cases (GameUPC `bgg_info_status`):
   counted confirm stays counted even if GameUPC then fails.
 - **KV `TT_CACHE` is required for confirms**: without the binding, `/barcode/confirm` answers 503 and
   never POSTs. Lookups still work (isolate memory / Cache API).
-- POST body `{"user_id": GAMEUPC_USER_ID}` (secret, >= 8 chars, stable). `user_id` is required by the
-  GameUPC spec; whether GameUPC limits or rolls back votes per `user_id` is not documented (unknown).
+- POST body `{"user_id": GAMEUPC_USER_ID}` (secret, >= 8 chars, stable; one id for every confirm).
+  The spec (https://gameupc.com/gameupc-oas.yaml, POST `/upc/{upc}/bgg_id/{bgg_id}`) requires "a
+  unique (but consistent) user_id for each user" and says "If one of your users goes bad, we can go
+  back and clear out any updates they've made."
+
 
 Cache / throttle: relay memory → KV `TT_CACHE` (if bound) → Workers Cache API. TTLs: verified 30 d,
 choose 7 d, none 12 h; a confirm drops the UPC's entry. One in-flight upstream request per UPC;

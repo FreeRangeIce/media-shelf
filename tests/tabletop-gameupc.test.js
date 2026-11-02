@@ -287,6 +287,18 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     check(`confirm refused ${st}: exactly one attempt, no retry`, posts(relayReqs).length === 1);
     await ctx.close();
   }
+  // reduced motion: the Confirm card scrolls into place at once (behavior auto), above the rule
+  {
+    const { ctx, page } = await open(browser, { lookup: true, reduced: true, width: 320, height: 700 });
+    await addForm(page);
+    await page.fill("#tt-barcode", "222222222224");
+    await page.click("#tt-upc-go");
+    await page.waitForSelector(".tt-upc-list");
+    await page.click('[data-upc-pick="0"]');
+    const q = await page.evaluate(() => { const rule = document.querySelector("#tt-form > .form-actions-right").getBoundingClientRect().top; const b = Math.max(...[...document.querySelectorAll(".tt-upc-confirm .tt-upc-actions .btn")].map((x) => x.getBoundingClientRect().bottom)); return { b: Math.round(b), rule: Math.round(rule) }; });
+    check("reduced motion 320x700: Confirm buttons above the rule immediately (no smooth scroll)", q.b <= q.rule, JSON.stringify(q));
+    await ctx.close();
+  }
   // reduced motion
   {
     const { ctx, page } = await open(browser, { lookup: true, reduced: true, relayDelay: 1500 });
@@ -311,6 +323,13 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     const btns = [...document.querySelectorAll("#tt-form > .form-actions-right > button.btn-primary, #tt-upc-panel .btn-primary")].filter((b) => b.offsetParent && getComputedStyle(b).backgroundColor !== "rgba(0, 0, 0, 0)");
     return { sticky: cs.position === "sticky", onScreen: r.bottom <= Math.min(innerHeight, pr.bottom) + 1 && r.top >= pr.top, rule: cs.borderTopWidth === "1px", fadeH: fade.content !== "none" ? fade.height : "none", saveFilled: filled, filledCount: btns.length };
   });
+  /** Question buttons (Confirm card / send-ask) end at or above the pinned bar's rule. */
+  const aboveRule = (page) => page.evaluate(() => {
+    const rule = document.querySelector("#tt-form > .form-actions-right").getBoundingClientRect().top;
+    const bottom = Math.max(...[...document.querySelectorAll(".tt-upc-confirm .tt-upc-actions .btn")].map((b) => b.getBoundingClientRect().bottom));
+    return { bottom: Math.round(bottom), rule: Math.round(rule), ok: bottom <= rule + 0.5 };
+  });
+  const QSIZES = new Set(["320x700", "390x844", "1000x420"]);
   const barOk = (f) => f.sticky && f.onScreen && f.rule && f.fadeH === "24px";
   for (const [w, h] of [[320, 700], [390, 844], [466, 1000], [1000, 720], [1000, 420]]) {
     const tag = `${w}x${h}`;
@@ -338,6 +357,8 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     const none = await page.$eval("[data-upc-none]", (b) => { const cs = getComputedStyle(b); const last = document.querySelector(".tt-upc-list").getBoundingClientRect(); return { border: cs.borderTopWidth, bg: cs.backgroundColor, under: b.getBoundingClientRect().top >= last.bottom, deco: cs.textDecorationLine, h: b.getBoundingClientRect().height }; });
     check(`${tag} "None of these": text button under the list (no border/fill, underlined, >=44px)`, none.border === "0px" && none.bg === "rgba(0, 0, 0, 0)" && none.under && none.deco === "underline" && none.h >= 44, JSON.stringify(none));
     await page.$eval("[data-upc-none]", (e) => e.scrollIntoView({ block: "nearest" }));
+    const tap = await page.$eval("[data-upc-none]", (b) => { const r = b.getBoundingClientRect(), x = r.left + r.width / 2; const hit = (y) => b.contains(document.elementFromPoint(x, y)); return { h: r.height, top: hit(r.top + 1), bottom: hit(r.bottom - 1) }; });
+    check(`${tag} "None of these": tap target >= 44px tall, whole height hits the button`, tap.h >= 44 && tap.top && tap.bottom, JSON.stringify(tap));
     await shot(page, `on-suggestions-none-of-these-${tag}`);
     const gap24 = await page.evaluate(() => Math.round(document.querySelector('label[for="tt-coverUrl"]').getBoundingClientRect().top - document.querySelector("#tt-upc-panel").getBoundingClientRect().bottom));
     check(`${tag} suggestions: 24px from the panel to the next label`, gap24 === 24, String(gap24));
@@ -345,12 +366,15 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     check(`${tag} suggestions: rows clear the bar when focused/scrolled, >=44px`, !c.bad.length && !c.small.length, JSON.stringify({ ...c, bad: c.bad.slice(0, 3) }));
     await page.$eval("#tt-upc-h", (e) => e.scrollIntoView({ block: "start" }));
     await page.click('[data-upc-pick="0"]');
+    await page.waitForTimeout(700); // smooth scroll settles
+    if (QSIZES.has(tag)) { const q = await aboveRule(page); check(`${tag} Confirm card opens with its buttons above the bar rule`, q.ok, JSON.stringify(q)); }
     await shot(page, `on-confirm-${tag}`);
     f = await barFacts(page);
     check(`${tag} confirm: bar pinned; Save is an outline, one filled button on screen`, barOk(f) && !f.saveFilled && f.filledCount === 1, JSON.stringify(f));
     c = await clearOfBar(page);
     check(`${tag} confirm: Confirm/Cancel clear the bar, >=44px`, !c.bad.length && !c.small.length, JSON.stringify(c));
     await page.click("[data-upc-confirm]");
+    await page.waitForTimeout(300); // .btn background transition (0.15s)
     await shot(page, `on-picked-${tag}`);
     f = await barFacts(page);
     check(`${tag} after Confirm: Save filled again`, barOk(f) && f.saveFilled, JSON.stringify(f));
@@ -364,6 +388,8 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     await page.fill("#tt-bggId", "174430");
     await page.click("#tt-save");
     await page.waitForSelector('[data-upc-send="send"]');
+    await page.waitForTimeout(700);
+    if (QSIZES.has(tag)) { const q = await aboveRule(page); check(`${tag} send-ask opens with its buttons above the bar rule`, q.ok, JSON.stringify(q)); }
     await shot(page, `on-send-ask-${tag}`);
     f = await barFacts(page);
     check(`${tag} send ask: bar pinned; Save is an outline, one filled button on screen`, barOk(f) && !f.saveFilled && f.filledCount === 1, JSON.stringify(f));
