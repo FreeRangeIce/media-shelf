@@ -62,7 +62,7 @@ Three cases (GameUPC `bgg_info_status`):
   uncached BGG lookup fails closed (503 `not configured`, no BGG call). Same admission pattern as
   the confirm cap: counted before the call, never decremented, max(isolate memory, KV).
 - **KV `TT_CACHE` is required for confirms**: without the binding, `/barcode/confirm` answers 503 and
-  never POSTs. Lookups still work (isolate memory / Cache API).
+  never POSTs. GameUPC barcode lookups still work (isolate memory / Cache API); uncached BGG lookups answer 503.
 - POST body `{"user_id": userId}`. Each device makes its own random id (`crypto.randomUUID()`) the
   first time it sends a match and keeps it under its own storage key `frm-gameupc-device-id`, which
   backups and exports never include. The page sends it as `userId`; the relay answers 400 unless it

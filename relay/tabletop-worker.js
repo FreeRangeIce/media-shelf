@@ -22,7 +22,7 @@
 //                  Cache hits never count. At the cap: 503 {"error":"bgg daily cap reached"} +
 //                  Retry-After, no BGG call. Needs KV: without TT_CACHE every BGG call is refused (503).
 // KV: TT_CACHE. Required for POST /barcode/confirm (503 without it: the daily cap and the
-// lookup-before-confirm record live there). Optional for lookups. Without it, answers go to the Workers Cache API (caches.default,
+// lookup-before-confirm record live there). Optional for GameUPC lookups. Required for BGG lookups: without it every uncached BGG call is refused (503). Without it, GameUPC answers go to the Workers Cache API (caches.default,
 // per data centre) and an isolate-memory map; KV is the shared, longest-lived option.
 //
 // Routes (GET, from ALLOWED_ORIGINS only):
