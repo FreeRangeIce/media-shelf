@@ -582,7 +582,11 @@
     closeModal("tt-form-modal");
     render();
     host.renderStats && host.renderStats();
-    host.toast && host.toast(mode === "update" ? "Updated" : "Saved");
+    // A confirmed pick dropped at Save (BGG id or barcode edited after Confirm): say it wasn't sent.
+    const dropped = Boolean(barcodeLookupOn) && !post.send && ((look && look.status === "choose" && look.confirmed) || lostConfirm);
+    lostConfirm = false;
+    if (dropped) look = null;
+    host.toast && host.toast(dropped ? UPC_COPY.postFailed : mode === "update" ? "Updated" : "Saved");
     if (post.send) {
       const cfg = barcodeLookupOn;
       look = null; // sent once; a re-save never re-sends
@@ -602,20 +606,21 @@
     pickHint: "Choose the game that matches this box.",
     noneOfThese: "None of these",
     confirmTitle: "Is this your game?",
-    confirmWhat: (u) => `Confirm fills in this game. When you save, its BGG id is sent with barcode ${u} so this barcode can be matched next time.`,
+    confirmWhat: (u) => `Confirm fills in this game. When you save, its BGG id and barcode ${u} are sent to GameUPC so this barcode can be matched next time.`,
     confirmWrong: "If it’s wrong, choose Cancel. Nothing is sent until you confirm and save.",
     confirm: "Confirm",
     cancel: "Cancel",
-    picked: (n) => `${n} filled in. Its BGG id is sent with this barcode when you save.`,
+    picked: (n) => `${n} filled in. Its BGG id is sent to GameUPC with this barcode when you save.`,
     noneTitle: "No match for this barcode",
-    noneHint: "Enter the game yourself. If you add its BGG id, you’ll be asked before it’s sent with this barcode. Without a BGG id, nothing is sent.",
-    sendTitle: "Send this barcode match?",
+    noneHint: "Enter the game yourself. If you add its BGG id, you’ll be asked before it’s sent to GameUPC with this barcode. Without a BGG id, nothing is sent.",
+    sendTitle: "Send this barcode match to GameUPC?",
     sendWhat: (t, id, u) => `${t}, BGG id ${id}, barcode ${u}.`,
     sendWhy: "Sending helps this barcode match this game next time. If it’s wrong, choose Save only.",
     sendYes: "Save and send",
     sendNo: "Save only",
     errBadCode: "That barcode doesn’t look right. Check the digits.",
-    errBusy: "Too many lookups. Try again in a minute.",
+    errBusy: "Too many lookups. Try again in a minute.", // this client's own 429
+    errUpstreamBusy: "Barcode lookup is busy. Try again in a minute.", // 503 / GameUPC busy
     errFailed: "Couldn’t look up this barcode. Try again, or enter the game yourself.",
     postFailed: "Saved. The barcode match wasn’t sent.",
     yearLabel: (y) => (y ? `, ${y}` : ""),
@@ -633,7 +638,7 @@
     const p = fetch(`${cfg.relay}/barcode?upc=${encodeURIComponent(upc)}`, { headers: { Accept: "application/json" } })
       .then(async (r) => {
         if (r.status === 200) { const d = await r.json(); upcSession.set(upc, d); return d; }
-        throw new Error(r.status === 400 ? "bad" : r.status === 429 || r.status === 503 ? "busy" : "failed");
+        throw new Error(r.status === 400 ? "bad" : r.status === 429 ? "busy" : r.status === 503 ? "upstreamBusy" : "failed");
       })
       .finally(() => upcInflight.delete(upc));
     upcInflight.set(upc, p);
@@ -726,7 +731,7 @@
     }).catch((err) => {
       if (seq !== upcSeq) return;
       look = null;
-      upcStatus(err.message === "bad" ? UPC_COPY.errBadCode : err.message === "busy" ? UPC_COPY.errBusy : UPC_COPY.errFailed, "tt-upc-err");
+      upcStatus(err.message === "bad" ? UPC_COPY.errBadCode : err.message === "busy" ? UPC_COPY.errBusy : err.message === "upstreamBusy" ? UPC_COPY.errUpstreamBusy : UPC_COPY.errFailed, "tt-upc-err");
     }).finally(() => { if (seq === upcSeq) btn.removeAttribute("aria-busy"); });
   }
 
@@ -746,7 +751,7 @@
     F("tt-barcode").addEventListener("input", () => {
       clearTimeout(upcTimer);
       const v = str(F("tt-barcode").value).replace(/[\s-]/g, "");
-      if (look && look.upc !== v) { look = null; upcSeq++; upcView(""); F("tt-upc-go").removeAttribute("aria-busy"); }
+      if (look && look.upc !== v) { if (look.status === "choose" && look.confirmed) lostConfirm = true; look = null; upcSeq++; upcView(""); F("tt-upc-go").removeAttribute("aria-busy"); }
       if (validGtin(v)) upcTimer = setTimeout(() => runLookup(cfg), UPC_DEBOUNCE_MS);
     });
     row.addEventListener("click", (ev) => {
@@ -762,6 +767,7 @@
       } else if (b.dataset.upcConfirm) {
         const c = look.data.candidates[look.pickIndex];
         look.confirmed = { bggId: c.bggId };
+        lostConfirm = false;
         fillFromCandidate(c, true);
         upcStatus(UPC_COPY.picked(c.name));
         F("tt-title").focus();
@@ -779,8 +785,11 @@
     barcodeLookupOn = cfg;
   }
   let barcodeLookupOn = null;
+  // A confirmed pick whose barcode was then edited away (look is dropped on a new code).
+  let lostConfirm = false;
   function resetBarcodeLookup() {
     if (!barcodeLookupOn) return;
+    lostConfirm = false;
     clearTimeout(upcTimer);
     upcSeq++;
     look = null;

@@ -13,7 +13,7 @@ const check = (n, ok, d = "") => { ok ? pass++ : fail++; console.log(`${ok ? "PA
 const T0 = "2026-10-01T10:00:00.000Z";
 const SHELF = [{ id: "h1", title: "Hand Game", subtype: "board", status: "owned", dateAdded: T0, dateUpdated: T0 }];
 
-async function open(browser, { lookup, width = 390, height = 844, origin = ORIGIN, reduced = false, relayDelay = 0, failPost = false }) {
+async function open(browser, { lookup, width = 390, height = 844, origin = ORIGIN, reduced = false, relayDelay = 0, failPost = false, failGet = 0 }) {
   const ctx = await browser.newContext({ viewport: { width, height }, serviceWorkers: "block", reducedMotion: reduced ? "reduce" : "no-preference" });
   await ctx.addInitScript(({ lookup, relay, shelf }) => {
     if (lookup) window.__FRM_TT_LOOKUP__ = { relay };
@@ -30,6 +30,7 @@ async function open(browser, { lookup, width = 390, height = 844, origin = ORIGI
     if (u.startsWith(RELAY)) {
       relayReqs.push({ method: r.request().method(), url: u.slice(RELAY.length), body: r.request().postData() });
       if (r.request().method() === "POST" && failPost) return r.fulfill({ status: failPost === true ? 502 : failPost, headers: { "Access-Control-Allow-Origin": origin, "Access-Control-Expose-Headers": "Retry-After", "Retry-After": "3600" }, body: JSON.stringify({ error: failPost === 429 ? "slow down" : failPost === 503 ? "not configured" : "upstream" }) });
+      if (failGet && r.request().method() === "GET") return r.fulfill({ status: failGet, headers: { "Access-Control-Allow-Origin": origin, "Retry-After": "30" }, body: "{}" });
       if (relayDelay && r.request().method() === "GET") await new Promise((s) => setTimeout(s, relayDelay));
       return r.continue();
     }
@@ -159,6 +160,62 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     await page.waitForTimeout(500);
     const asked = await page.$("#tt-upc-h");
     check("choose: BGG id edited after confirm -> not the confirmed game; nothing sent without a new confirm", posts(relayReqs).length === 0, asked ? await asked.textContent() : "no ask");
+    const t1 = await page.textContent("#toast");
+    check("choose: BGG id edited after confirm -> toast says the match wasn't sent", t1 === "Saved. The barcode match wasn’t sent.", t1);
+    await ctx.close();
+  }
+  // (b'') confirmed pick, then the barcode is edited: dropped at Save, same toast, nothing sent.
+  {
+    const { ctx, page, relayReqs } = await open(browser, { lookup: true });
+    await addForm(page);
+    await page.fill("#tt-barcode", "222222222224");
+    await page.click("#tt-upc-go");
+    await page.waitForSelector(".tt-upc-list");
+    await page.click('[data-upc-pick="0"]');
+    await page.click("[data-upc-confirm]");
+    await page.fill("#tt-barcode", "22222222222");
+    await page.click("#tt-save");
+    await page.waitForTimeout(600);
+    const t2 = await page.textContent("#toast");
+    check("choose: barcode edited after confirm -> saved, nothing sent, toast says so", posts(relayReqs).length === 0 && (await store(page)).some((e) => e.bggId === "265736") && t2 === "Saved. The barcode match wasn’t sent.", t2);
+    await ctx.close();
+  }
+  // Wording (Berean-approved #8 #12 #14 #15) verbatim on the page.
+  {
+    const { ctx, page } = await open(browser, { lookup: true });
+    await addForm(page);
+    await page.fill("#tt-barcode", "222222222224");
+    await page.click("#tt-upc-go");
+    await page.waitForSelector(".tt-upc-list");
+    await page.click('[data-upc-pick="0"]');
+    const w8 = await page.textContent("#tt-upc-what");
+    check("#8 confirm text", w8 === "Confirm fills in this game. When you save, its BGG id and barcode 222222222224 are sent to GameUPC so this barcode can be matched next time.", w8);
+    const name = await page.textContent(".tt-upc-cand-static .tt-upc-cand-name");
+    await page.click("[data-upc-confirm]");
+    const w12 = await page.textContent(".tt-upc-msg");
+    check("#12 picked text", w12 === `${name} filled in. Its BGG id is sent to GameUPC with this barcode when you save.`, w12);
+    await page.fill("#tt-barcode", "333333333331");
+    await page.click("#tt-upc-go");
+    await page.waitForSelector("#tt-upc-h");
+    const w14 = await page.textContent("#tt-upc-panel .field-hint");
+    check("#14 no-data hint", w14 === "Enter the game yourself. If you add its BGG id, you’ll be asked before it’s sent to GameUPC with this barcode. Without a BGG id, nothing is sent.", w14);
+    await page.fill("#tt-title", "Ask");
+    await page.fill("#tt-bggId", "174430");
+    await page.click("#tt-save");
+    await page.waitForSelector('[data-upc-send="send"]');
+    const w15 = await page.textContent("#tt-upc-h");
+    check("#15 send-ask heading", w15 === "Send this barcode match to GameUPC?", w15);
+    await ctx.close();
+  }
+  // #21: own 429 vs 503 / upstream busy on lookup
+  for (const [st, want] of [[429, "Too many lookups. Try again in a minute."], [503, "Barcode lookup is busy. Try again in a minute."]]) {
+    const { ctx, page } = await open(browser, { lookup: true, failGet: st });
+    await addForm(page);
+    await page.fill("#tt-barcode", "444444444442");
+    await page.click("#tt-upc-go");
+    await page.waitForSelector(".tt-upc-err");
+    const m = await page.textContent(".tt-upc-msg");
+    check(`#21 lookup ${st}: "${want}"`, m === want, m);
     await ctx.close();
   }
   // (c) no data
