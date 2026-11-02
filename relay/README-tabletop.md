@@ -43,8 +43,18 @@ Three cases (GameUPC `bgg_info_status`):
   (Save and send / Save only / Cancel). **No BGG id → nothing is posted.** "None of these" in the
   suggestion list joins this path.
 - A POST failure never blocks: the game is already saved locally; a toast says it wasn't sent.
-- The relay refuses (409) a confirm for a UPC it last saw as `verified` or never saw.
-- POST body `{"user_id": GAMEUPC_USER_ID}` (secret, >= 8 chars, stable), per the spec.
+- The relay refuses (409) a confirm unless it served a `choose` / `none` answer for that UPC to the
+  same client IP (`CF-Connecting-IP`) within the last 10 minutes (recorded in KV; one confirm per
+  lookup). So a `verified` UPC, or a UPC this client never looked up, is never posted.
+- Global cap: at most `CONFIRM_DAILY_CAP` (var, default 10) confirms go upstream per UTC day, across
+  all clients, counted in KV. Over it: 429 + `Retry-After` (seconds to the next UTC midnight), no
+  upstream POST; the page saves anyway and shows "Saved. The barcode match wasn’t sent." KV is
+  eventually consistent across locations, so the cap is exact per location, soft globally. A
+  counted confirm stays counted even if GameUPC then fails.
+- **KV `TT_CACHE` is required for confirms**: without the binding, `/barcode/confirm` answers 503 and
+  never POSTs. Lookups still work (isolate memory / Cache API).
+- POST body `{"user_id": GAMEUPC_USER_ID}` (secret, >= 8 chars, stable). `user_id` is required by the
+  GameUPC spec; whether GameUPC limits or rolls back votes per `user_id` is not documented (unknown).
 
 Cache / throttle: relay memory → KV `TT_CACHE` (if bound) → Workers Cache API. TTLs: verified 30 d,
 choose 7 d, none 12 h; a confirm drops the UPC's entry. One in-flight upstream request per UPC;
@@ -53,5 +63,7 @@ all GameUPC calls serialised ≥ 1 s apart; per client IP 10 upstream lookups/mi
 8/12/13-digit code with a valid check digit; per-page answer cache; one request per code at a time.
 
 Local testing (no wrangler, no account): `relay/dev-shim.mjs` (secrets from the environment,
-POSTs mocked, KV in a JSON file outside the repo) and `tests/tabletop-gameupc.test.js`.
+POSTs mocked, KV in a JSON file outside the repo, in memory, or absent with `NO_KV=1`; `MOCK_GET=1`
+mocks GETs too), `tests/tabletop-relay.test.mjs` (relay rules, node only) and
+`tests/tabletop-gameupc.test.js`.
 Secrets: `wrangler secret put GAMEUPC_KEY` / `GAMEUPC_USER_ID` at deploy time; never committed.

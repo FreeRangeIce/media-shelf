@@ -29,7 +29,7 @@ async function open(browser, { lookup, width = 390, height = 844, origin = ORIGI
     const u = r.request().url();
     if (u.startsWith(RELAY)) {
       relayReqs.push({ method: r.request().method(), url: u.slice(RELAY.length), body: r.request().postData() });
-      if (r.request().method() === "POST" && failPost) return r.fulfill({ status: 502, headers: { "Access-Control-Allow-Origin": origin }, body: "{}" });
+      if (r.request().method() === "POST" && failPost) return r.fulfill({ status: failPost === true ? 502 : failPost, headers: { "Access-Control-Allow-Origin": origin, "Access-Control-Expose-Headers": "Retry-After", "Retry-After": "3600" }, body: JSON.stringify({ error: failPost === 429 ? "slow down" : failPost === 503 ? "not configured" : "upstream" }) });
       if (relayDelay && r.request().method() === "GET") await new Promise((s) => setTimeout(s, relayDelay));
       return r.continue();
     }
@@ -211,6 +211,23 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     const toast = await page.textContent("#toast");
     check("post failure: game still saved, sheet closed, toast says so", (await store(page)).some((e) => e.bggId === "265736") && (await page.isHidden("#tt-form-modal")) && toast === "Saved. The barcode match wasn’t sent.", toast);
     check("post failure: exactly one attempt", posts(relayReqs).length === 1);
+    await ctx.close();
+  }
+  // Relay hardening: a confirm refused by the global daily cap (429), by a missing KV (503) or by
+  // the lookup-before-confirm rule (409) is a send failure: saved anyway, same toast, one attempt.
+  for (const st of [429, 503, 409]) {
+    const { ctx, page, relayReqs } = await open(browser, { lookup: true, failPost: st });
+    await addForm(page);
+    await page.fill("#tt-barcode", "222222222224");
+    await page.click("#tt-upc-go");
+    await page.waitForSelector(".tt-upc-list");
+    await page.click('[data-upc-pick="0"]');
+    await page.click("[data-upc-confirm]");
+    await page.click("#tt-save");
+    await page.waitForTimeout(800);
+    const toast = await page.textContent("#toast");
+    check(`confirm refused ${st}: saved, sheet closed, toast "Saved. The barcode match wasn’t sent."`, (await store(page)).some((e) => e.bggId === "265736") && (await page.isHidden("#tt-form-modal")) && toast === "Saved. The barcode match wasn’t sent.", toast);
+    check(`confirm refused ${st}: exactly one attempt, no retry`, posts(relayReqs).length === 1);
     await ctx.close();
   }
   // reduced motion

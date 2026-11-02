@@ -6,11 +6,15 @@
 // Secrets (wrangler secret put, never committed):
 //   BGG_TOKEN    BoardGameGeek application token (boardgamegeek.com/applications)
 //   GAMEUPC_KEY  GameUPC x-api-key
-//   GAMEUPC_USER_ID  stable id (>= 8 chars) sent as {"user_id"} with a confirmed barcode match
-//                    (GameUPC uses it to undo a bad actor's votes). Without it, POST /barcode/confirm is off.
+//   GAMEUPC_USER_ID  stable id (>= 8 chars) sent as {"user_id"} with a confirmed barcode match.
+//                    user_id is required by the GameUPC spec for this POST. Whether GameUPC limits
+//                    or rolls back votes per user_id is not documented (unknown). Without it,
+//                    POST /barcode/confirm is off.
 // Vars (wrangler.toml [vars], optional):
 //   GAMEUPC_BASE "test" | "v1"   (default "test"; /test "will be wiped periodically")
-// KV (optional): TT_CACHE. Without it, answers go to the Workers Cache API (caches.default,
+//   CONFIRM_DAILY_CAP  confirms forwarded to GameUPC per UTC day, all clients together (default 10)
+// KV: TT_CACHE. Required for POST /barcode/confirm (503 without it: the daily cap and the
+// lookup-before-confirm record live there). Optional for lookups. Without it, answers go to the Workers Cache API (caches.default,
 // per data centre) and an isolate-memory map; KV is the shared, longest-lived option.
 //
 // Routes (GET, from ALLOWED_ORIGINS only):
@@ -20,8 +24,11 @@
 // Route (POST, from ALLOWED_ORIGINS only), the ONLY write:
 //   /barcode/confirm  body {"upc","bggId"} -> { ok: true }
 //     Sent by the page only after the user's explicit confirm (picked suggestion or hand-entered
-//     game with a BGG id). Refused with 409 when this relay has no recent "choose" / "none"
-//     answer for the UPC, so a confirmed match ("verified") is never posted back.
+//     game with a BGG id). Refused with 409 unless this relay served a "choose" / "none" answer
+//     for that UPC to the same client IP (CF-Connecting-IP) in the last 10 minutes (recorded in
+//     KV), so a confirmed match ("verified") is never posted back. 503 when TT_CACHE is not
+//     bound. 429 + Retry-After (seconds to next UTC midnight) once CONFIRM_DAILY_CAP confirms
+//     went upstream today, across all clients; no upstream POST then.
 //   errors: 400 bad input / bad UPC, 409 not postable, 429 + Retry-After { error: "slow down" },
 //           503 + Retry-After { error: "busy" }, 502 { error: "upstream" }
 //
@@ -60,6 +67,8 @@ const CONFIG = {
   CLIENT_MAX_CONFIRMS: 5, // confirm POSTs per client per minute
   MAX_SEARCH_RESULTS: 40,
   KV_PREFIX: "tt1:",
+  CONFIRM_DAILY_CAP: 10, // default; env CONFIRM_DAILY_CAP overrides
+  SEEN_TTL_S: 10 * 60, // a confirm needs a non-match lookup by the same IP within this window
 };
 const USER_AGENT = "FreeRangeMedia-tabletop-relay/0.1 (personal, non-commercial; +https://freerangeice.github.io/media-shelf/)";
 
@@ -264,7 +273,20 @@ function shapeUpc(upc, body) {
   return { ...base, status: "none", candidates: [] }; // anything else, or an empty bgg_info: no data
 }
 
+const clientIp = (request) => request.headers.get("CF-Connecting-IP") || "local";
+/** Record that this client was served a non-match ("choose"/"none") for upc. KV only. */
+async function noteSeen(env, request, upc, out) {
+  if (!env.TT_CACHE || !out || out.status === "verified") return;
+  try {
+    await env.TT_CACHE.put(`${CONFIG.KV_PREFIX}seen:${upc}:${clientIp(request)}`, String(Date.now()), { expirationTtl: CONFIG.SEEN_TTL_S });
+  } catch {}
+}
 async function barcode(env, request, upc) {
+  const out = await barcodeLookup(env, request, upc);
+  await noteSeen(env, request, upc, out);
+  return out;
+}
+async function barcodeLookup(env, request, upc) {
   const key = `u:${upc}`;
   const hit = await cacheGet(env, key);
   if (hit) return hit;
@@ -287,10 +309,29 @@ async function barcode(env, request, upc) {
 }
 
 /** The one write. Only for a UPC this relay last saw as "choose" or "none", never "verified". */
+const utcDay = (t) => new Date(t).toISOString().slice(0, 10);
+const secsToUtcMidnight = (t) => { const d = new Date(t); return Math.max(1, Math.ceil((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1) - t) / 1000)); };
+function dailyCap(env) {
+  const n = Number(env.CONFIRM_DAILY_CAP);
+  return Number.isInteger(n) && n >= 0 ? n : CONFIG.CONFIRM_DAILY_CAP;
+}
 async function confirmBarcode(env, request, upc, bggId) {
+  const kv = env.TT_CACHE;
+  // 1. this client was served a non-match for this UPC in the last 10 minutes (KV record)
+  const seenKey = `${CONFIG.KV_PREFIX}seen:${upc}:${clientIp(request)}`;
+  const seenAt = Number(await kv.get(seenKey).catch(() => null));
+  if (!seenAt || Date.now() - seenAt > CONFIG.SEEN_TTL_S * 1000) return { status: 409, body: { error: "not postable" } };
   const known = await cacheGet(env, `u:${upc}`);
-  if (!known || known.status === "verified") return { status: 409, body: { error: "not postable" } };
+  if (known && known.status === "verified") return { status: 409, body: { error: "not postable" } };
   throttle(request, "post", CONFIG.CLIENT_MAX_CONFIRMS);
+  // 2. global daily cap (all clients), counted in KV before the POST. KV is eventually
+  // consistent across data centres, so this is a soft cap there; exact within one location.
+  const now = Date.now();
+  const capKey = `${CONFIG.KV_PREFIX}confirms:${utcDay(now)}`;
+  const used = Number(await kv.get(capKey).catch(() => null)) || 0;
+  if (used >= dailyCap(env)) throw new SlowDown(secsToUtcMidnight(now));
+  await kv.put(capKey, String(used + 1), { expirationTtl: 2 * 24 * 3600 });
+  await kv.delete(seenKey).catch(() => {}); // one confirm per lookup
   const res = await gameupc(env, `/upc/${encodeURIComponent(upc)}/bgg_id/${bggId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -315,6 +356,7 @@ export default {
     try {
       if (request.method === "POST" && url.pathname === "/barcode/confirm") {
         if (!env.GAMEUPC_KEY || !env.GAMEUPC_USER_ID || String(env.GAMEUPC_USER_ID).length < 8) return json({ error: "not configured" }, 503, origin);
+        if (!env.TT_CACHE) return json({ error: "not configured" }, 503, origin); // no KV: no cap, no record -> never POST
         const b = await request.json().catch(() => null);
         const upc = String((b && b.upc) || "").trim();
         const bggId = String((b && b.bggId) || "").trim();
@@ -352,4 +394,4 @@ export default {
 };
 
 // Exported for local unit tests only.
-export const _test = { parseSearch, parseThings, shapeUpc, CONFIG };
+export const _test = { parseSearch, parseThings, shapeUpc, CONFIG, secsToUtcMidnight, utcDay };

@@ -5,6 +5,11 @@
 // - KV_FILE: a JSON file standing in for the TT_CACHE KV binding, so cached GameUPC answers
 //   survive restarts (one real GET per UPC across test runs).
 // - Every GameUPC POST is MOCKED here (never sent upstream): it is logged and answered 200.
+// - NO_KV=1: no TT_CACHE binding at all (lookups use memory only; POST /barcode/confirm -> 503).
+//   Without KV_FILE (and without NO_KV) the KV stand-in is in memory for the shim's lifetime.
+// - CONFIRM_DAILY_CAP: passed through to the worker (global confirms per UTC day, default 10).
+// - MOCK_GET=1: GameUPC GETs are mocked too (a "choose" answer with two entries, nothing sent
+//   upstream), for abuse / cap tests with made-up UPCs.
 // - UPSTREAM_LOG: one JSON line per upstream call (method, path, mocked); the key is never logged.
 import http from "node:http";
 import fs from "node:fs";
@@ -19,9 +24,9 @@ const TT_CACHE = {
   async get(k) { const e = kvData[k]; return e && e.until > Date.now() ? e.v : null; },
   async put(k, v, o) { kvData[k] = { v, until: Date.now() + (o && o.expirationTtl ? o.expirationTtl * 1000 : 864e5) }; saveKv(); },
   // KEEP_CACHE=1: a (mocked) confirm doesn't drop the cached answer, so tests never re-GET v1.
-  async delete(k) { if (process.env.KEEP_CACHE === "1") return log({ cacheDeleteSkipped: k }); delete kvData[k]; saveKv(); },
+  async delete(k) { if (process.env.KEEP_CACHE === "1" && k.includes(":u:")) return log({ cacheDeleteSkipped: k }); delete kvData[k]; saveKv(); },
 };
-const env = { GAMEUPC_KEY: process.env.GAMEUPC_KEY, GAMEUPC_BASE: process.env.GAMEUPC_BASE, GAMEUPC_USER_ID: process.env.GAMEUPC_USER_ID, DEV_ORIGIN: process.env.DEV_ORIGIN, TT_CACHE };
+const env = { GAMEUPC_KEY: process.env.GAMEUPC_KEY, GAMEUPC_BASE: process.env.GAMEUPC_BASE, GAMEUPC_USER_ID: process.env.GAMEUPC_USER_ID, DEV_ORIGIN: process.env.DEV_ORIGIN, CONFIRM_DAILY_CAP: process.env.CONFIRM_DAILY_CAP, ...(process.env.NO_KV === "1" ? {} : { TT_CACHE }) };
 
 const realFetch = globalThis.fetch;
 const log = (o) => LOG && fs.appendFileSync(LOG, JSON.stringify({ t: new Date().toISOString(), ...o }) + "\n");
@@ -31,6 +36,10 @@ globalThis.fetch = async (input, init = {}) => {
   if (u.hostname === "api.gameupc.com" && method !== "GET") {
     log({ method, path: u.pathname, mocked: true, body: init.body ? JSON.parse(init.body) : null });
     return new Response(JSON.stringify({ status: "ok", mocked: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  if (u.hostname === "api.gameupc.com" && process.env.MOCK_GET === "1") {
+    log({ method, path: u.pathname, mocked: true });
+    return new Response(JSON.stringify({ name: "Mock", searched_for: "Mock", bgg_info_status: "choose_from_bgg_info_or_search", bgg_info: [{ id: 1, name: "A" }, { id: 2, name: "B" }] }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
   if (u.hostname !== "api.gameupc.com") throw new Error("shim: only api.gameupc.com is reachable");
   const res = await realFetch(input, init);
@@ -52,4 +61,4 @@ http.createServer(async (req, res) => {
   const r = await worker.fetch(new Request(`http://127.0.0.1:${PORT}${req.url}`, { method: req.method, headers: req.headers, body: ["GET", "HEAD", "OPTIONS"].includes(req.method) ? undefined : body }), env);
   res.writeHead(r.status, Object.fromEntries(r.headers));
   res.end(Buffer.from(await r.arrayBuffer()));
-}).listen(PORT, "127.0.0.1", () => console.log(`relay shim on http://127.0.0.1:${PORT} (base=${env.GAMEUPC_BASE || "test"}, POST mocked)`));
+}).listen(PORT, "127.0.0.1", () => console.log(`relay shim on http://127.0.0.1:${PORT} (base=${env.GAMEUPC_BASE || "test"}, POST mocked, KV ${env.TT_CACHE ? (KV_FILE ? "file" : "memory") : "none"}${process.env.MOCK_GET === "1" ? ", GET mocked" : ""})`));
