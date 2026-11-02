@@ -144,6 +144,20 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     const p = posts(relayReqs);
     check("choose: exactly one POST after Confirm + Save", p.length === 1 && p[0].url === "/barcode/confirm" && JSON.parse(p[0].body).bggId === "265736" && JSON.parse(p[0].body).upc === "222222222224", JSON.stringify(p));
     check("choose: saved locally", (await store(page)).some((e) => e.bggId === "265736"));
+    // Option A: this device's own random id, kept in its own key, sent as userId.
+    const devId = await page.evaluate(() => localStorage.getItem("frm-gameupc-device-id"));
+    check("device id: made on first send, 8 to 64 letters/digits/dashes", /^[A-Za-z0-9-]{8,64}$/.test(devId || ""), String(devId));
+    check("device id: sent as userId with the match", JSON.parse(p[0].body).userId === devId, p[0].body);
+    // Backups and exports never carry it.
+    await page.evaluate(() => {
+      const lib = JSON.parse(localStorage.getItem("media-tracker-v1"));
+      lib.items = [{ id: "b1", type: "book", title: "Export Probe", status: "owned", dateAdded: "2026-10-01T10:00:00.000Z", dateUpdated: "2026-10-01T10:00:00.000Z" }];
+      localStorage.setItem("media-tracker-v1", JSON.stringify(lib));
+    });
+    await page.reload(); await page.waitForTimeout(400);
+    const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 5000 }), page.evaluate(() => document.querySelector("#btn-export").click())]);
+    const exported = fs.readFileSync(await dl.path(), "utf8");
+    check("device id: not in the export file", exported.includes("Export Probe") && !exported.includes(devId) && !/frm-gameupc-device-id|userId|user_id/.test(exported));
     await ctx.close();
   }
   // (b') confirmed pick, then the BGG id is changed by hand: nothing sent.
@@ -189,7 +203,7 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     await page.waitForSelector(".tt-upc-list");
     await page.click('[data-upc-pick="0"]');
     const w8 = await page.textContent("#tt-upc-what");
-    check("#8 confirm text", w8 === "Confirm fills in this game. When you save, its BGG id and barcode 222222222224 are sent to GameUPC so this barcode can be matched next time.", w8);
+    check("#8 confirm text", w8 === "Confirm fills in this game. When you save, its BGG id and barcode 222222222224 are sent to GameUPC, with a random id for this device, so this barcode can be matched next time.", w8);
     const name = await page.textContent(".tt-upc-cand-static .tt-upc-cand-name");
     await page.click("[data-upc-confirm]");
     const w12 = await page.textContent(".tt-upc-msg");

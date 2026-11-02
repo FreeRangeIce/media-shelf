@@ -606,7 +606,7 @@
     pickHint: "Choose the game that matches this box.",
     noneOfThese: "None of these",
     confirmTitle: "Is this your game?",
-    confirmWhat: (u) => `Confirm fills in this game. When you save, its BGG id and barcode ${u} are sent to GameUPC so this barcode can be matched next time.`,
+    confirmWhat: (u) => `Confirm fills in this game. When you save, its BGG id and barcode ${u} are sent to GameUPC, with a random id for this device, so this barcode can be matched next time.`,
     confirmWrong: "If it’s wrong, choose Cancel. Nothing is sent until you confirm and save.",
     confirm: "Confirm",
     cancel: "Cancel",
@@ -645,9 +645,37 @@
     return p;
   }
 
+  /**
+   * This device's GameUPC user_id (GameUPC asks for "a unique (but consistent) user_id for each
+   * user"). Made the first time this device sends a match, then kept in its own storage key, which
+   * backups and exports never read. If storage is unavailable, the id lasts for this page load.
+   */
+  const DEVICE_ID_KEY = "frm-gameupc-device-id";
+  const DEVICE_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
+  let sessionDeviceId = "";
+  function makeDeviceId() {
+    const c = globalThis.crypto;
+    if (c && typeof c.randomUUID === "function") return c.randomUUID();
+    const b = new Uint8Array(16);
+    c.getRandomValues(b);
+    return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  }
+  function deviceId() {
+    try {
+      const saved = localStorage.getItem(DEVICE_ID_KEY);
+      if (saved && DEVICE_ID_RE.test(saved)) return saved;
+      const id = makeDeviceId();
+      localStorage.setItem(DEVICE_ID_KEY, id);
+      return id;
+    } catch (_) {
+      if (!sessionDeviceId) sessionDeviceId = makeDeviceId();
+      return sessionDeviceId;
+    }
+  }
+
   /** The ONLY POST. Called from saveForm after a confirmed pick / a "Save and send" answer. */
   function sendBarcodeMatch(cfg, m) {
-    return fetch(`${cfg.relay}/barcode/confirm`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(m) })
+    return fetch(`${cfg.relay}/barcode/confirm`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ ...m, userId: deviceId() }) })
       .then((r) => r.ok)
       .catch(() => false);
   }

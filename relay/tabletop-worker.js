@@ -6,13 +6,14 @@
 // Secrets (wrangler secret put, never committed):
 //   BGG_TOKEN    BoardGameGeek application token (boardgamegeek.com/applications)
 //   GAMEUPC_KEY  GameUPC x-api-key
-//   GAMEUPC_USER_ID  stable id (>= 8 chars) sent as {"user_id"} with a confirmed barcode match.
-//                    Source: GameUPC OpenAPI spec, https://gameupc.com/gameupc-oas.yaml (POST
-//                    /upc/{upc}/bgg_id/{bgg_id}, requestBody: "we require app authors to include a
-//                    unique (but consistent) user_id for each user. If one of your users goes bad,
-//                    we can go back and clear out any updates they've made."; intro: "at least 8
-//                    characters"). This relay sends the one GAMEUPC_USER_ID for every confirm (a
-//                    single-user app). Without it, POST /barcode/confirm is off.
+// user_id: GameUPC's OpenAPI spec, https://gameupc.com/gameupc-oas.yaml (POST /upc/{upc}/bgg_id/{bgg_id},
+//   requestBody: "we require app authors to include a unique (but consistent) user_id for each user.
+//   If one of your users goes bad, we can go back and clear out any updates they've made.";
+//   intro: "at least 8 characters"). The page is public, so each
+//   device makes its own random id the first time it sends a match, keeps it in its own storage
+//   (never in backups or exports) and sends it as "userId". The relay checks it is 8 to 64
+//   letters, digits or dashes (400 otherwise) and passes it on as {"user_id"}. There is no shared
+//   fallback id. The daily cap and the same-IP check do not depend on the id.
 // Vars (wrangler.toml [vars], optional):
 //   GAMEUPC_BASE "test" | "v1"   (default "test"; /test "will be wiped periodically")
 //   CONFIRM_DAILY_CAP  confirms forwarded to GameUPC per UTC day, all clients together (default 10)
@@ -25,7 +26,7 @@
 //   /thing?ids=1,2,...       -> { things: [Thing] }  (at most 20 ids)
 //   /barcode?upc=DIGITS      -> { upc, status: "verified"|"choose"|"none", name, searchedFor, candidates: [{ bggId, name, year, thumbnail }] }
 // Route (POST, from ALLOWED_ORIGINS only), the ONLY write:
-//   /barcode/confirm  body {"upc","bggId"} -> { ok: true }
+//   /barcode/confirm  body {"upc","bggId","userId"} -> { ok: true }
 //     Sent by the page only after the user's explicit confirm (picked suggestion or hand-entered
 //     game with a BGG id). Refused with 409 unless this relay served a "choose" / "none" answer
 //     for that UPC to the same client IP (CF-Connecting-IP) in the last 10 minutes (recorded in
@@ -352,13 +353,14 @@ function admitConfirm(env, request, upc) {
   admitChain = p.catch(() => {});
   return p;
 }
-async function confirmBarcode(env, request, upc, bggId) {
+const USER_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
+async function confirmBarcode(env, request, upc, bggId, userId) {
   const refused = await admitConfirm(env, request, upc);
   if (refused) return refused;
   const res = await gameupc(env, `/upc/${encodeURIComponent(upc)}/bgg_id/${bggId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_id: env.GAMEUPC_USER_ID }),
+    body: JSON.stringify({ user_id: userId }),
   });
   if (res.status === 400) throw new BadInput("bad upc");
   if (res.status === 429) throw new Busy(CONFIG.RETRY_LATER_S);
@@ -378,13 +380,16 @@ export default {
     const url = new URL(request.url);
     try {
       if (request.method === "POST" && url.pathname === "/barcode/confirm") {
-        if (!env.GAMEUPC_KEY || !env.GAMEUPC_USER_ID || String(env.GAMEUPC_USER_ID).length < 8) return json({ error: "not configured" }, 503, origin);
+        if (!env.GAMEUPC_KEY) return json({ error: "not configured" }, 503, origin);
         if (!env.TT_CACHE) return json({ error: "not configured" }, 503, origin); // no KV: no cap, no record -> never POST
         const b = await request.json().catch(() => null);
         const upc = String((b && b.upc) || "").trim();
         const bggId = String((b && b.bggId) || "").trim();
         if (!/^\d{8,14}$/.test(upc) || !/^[1-9]\d{0,8}$/.test(bggId)) return json({ error: "upc and bggId required" }, 400, origin);
-        const r = await confirmBarcode(env, request, upc, bggId);
+        // Checked before admission, so a bad id never uses up the lookup record or the day's cap.
+        const userId = b && typeof b.userId === "string" ? b.userId : "";
+        if (!USER_ID_RE.test(userId)) return json({ error: "userId: 8 to 64 letters, digits or dashes" }, 400, origin);
+        const r = await confirmBarcode(env, request, upc, bggId, userId);
         return json(r.body, r.status, origin);
       }
       if (request.method !== "GET") return json({ error: "not found" }, 404, origin);
@@ -417,4 +422,4 @@ export default {
 };
 
 // Exported for local unit tests only.
-export const _test = { parseSearch, parseThings, shapeUpc, CONFIG, secsToUtcMidnight, utcDay };
+export const _test = { USER_ID_RE, parseSearch, parseThings, shapeUpc, CONFIG, secsToUtcMidnight, utcDay };

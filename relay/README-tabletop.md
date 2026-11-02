@@ -56,7 +56,11 @@ Three cases (GameUPC `bgg_info_status`):
   also keeps its own day count and admits on max(memory, KV), so a slow KV can't let extras in.
 - **KV `TT_CACHE` is required for confirms**: without the binding, `/barcode/confirm` answers 503 and
   never POSTs. Lookups still work (isolate memory / Cache API).
-- POST body `{"user_id": GAMEUPC_USER_ID}` (secret, >= 8 chars, stable; one id for every confirm).
+- POST body `{"user_id": userId}`. Each device makes its own random id (`crypto.randomUUID()`) the
+  first time it sends a match and keeps it under its own storage key `frm-gameupc-device-id`, which
+  backups and exports never include. The page sends it as `userId`; the relay answers 400 unless it
+  is 8 to 64 letters, digits or dashes, checked before the same-IP record or the day's cap is
+  touched, and there is no shared fallback id. The cap and the same-IP check don't depend on it.
   The spec (https://gameupc.com/gameupc-oas.yaml, POST `/upc/{upc}/bgg_id/{bgg_id}`) requires "a
   unique (but consistent) user_id for each user" and says "If one of your users goes bad, we can go
   back and clear out any updates they've made."
@@ -72,4 +76,4 @@ Local testing (no wrangler, no account): `relay/dev-shim.mjs` (secrets from the 
 POSTs mocked, KV in a JSON file outside the repo, in memory, or absent with `NO_KV=1`; `MOCK_GET=1`
 mocks GETs too), `tests/tabletop-relay.test.mjs` (relay rules, node only) and
 `tests/tabletop-gameupc.test.js`.
-Secrets: `wrangler secret put GAMEUPC_KEY` / `GAMEUPC_USER_ID` at deploy time; never committed.
+Secrets: `wrangler secret put GAMEUPC_KEY` at deploy time; never committed. (No user_id secret: each device sends its own.)

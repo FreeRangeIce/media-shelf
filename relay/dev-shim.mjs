@@ -1,7 +1,7 @@
 // LOCAL ONLY. Runs relay/tabletop-worker.js under plain node (no wrangler, no Cloudflare
 // account) for testing. Secrets come from the environment, never from this repo:
 //   set -a; . /path/outside/repo/gameupc.env; set +a
-//   GAMEUPC_USER_ID=local-test-user PORT=8795 KV_FILE=/tmp/tt-kv.json UPSTREAM_LOG=/tmp/up.log node relay/dev-shim.mjs
+//   PORT=8795 KV_FILE=/tmp/tt-kv.json UPSTREAM_LOG=/tmp/up.log node relay/dev-shim.mjs
 // - KV_FILE: a JSON file standing in for the TT_CACHE KV binding, so cached GameUPC answers
 //   survive restarts (one real GET per UPC across test runs).
 // - Every GameUPC POST is MOCKED here (never sent upstream): it is logged and answered 200.
@@ -26,7 +26,7 @@ const TT_CACHE = {
   // KEEP_CACHE=1: a (mocked) confirm doesn't drop the cached answer, so tests never re-GET v1.
   async delete(k) { if (process.env.KEEP_CACHE === "1" && k.includes(":u:")) return log({ cacheDeleteSkipped: k }); delete kvData[k]; saveKv(); },
 };
-const env = { GAMEUPC_KEY: process.env.GAMEUPC_KEY, GAMEUPC_BASE: process.env.GAMEUPC_BASE, GAMEUPC_USER_ID: process.env.GAMEUPC_USER_ID, DEV_ORIGIN: process.env.DEV_ORIGIN, CONFIRM_DAILY_CAP: process.env.CONFIRM_DAILY_CAP, ...(process.env.NO_KV === "1" ? {} : { TT_CACHE }) };
+const env = { GAMEUPC_KEY: process.env.GAMEUPC_KEY, GAMEUPC_BASE: process.env.GAMEUPC_BASE, DEV_ORIGIN: process.env.DEV_ORIGIN, CONFIRM_DAILY_CAP: process.env.CONFIRM_DAILY_CAP, ...(process.env.NO_KV === "1" ? {} : { TT_CACHE }) };
 
 const realFetch = globalThis.fetch;
 const log = (o) => LOG && fs.appendFileSync(LOG, JSON.stringify({ t: new Date().toISOString(), ...o }) + "\n");

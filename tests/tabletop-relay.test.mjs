@@ -3,9 +3,9 @@
 import fs from "node:fs";
 let pass = 0, fail = 0;
 const check = (n, ok, d = "") => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${n}${d ? "  — " + d : ""}`); };
-let upPosts = 0, upGets = 0;
+let upPosts = 0, upGets = 0, lastPostBody = null;
 globalThis.fetch = async (u, i = {}) => {
-  if (i.method === "POST") { upPosts++; return new Response("{}", { status: 200 }); }
+  if (i.method === "POST") { upPosts++; lastPostBody = i.body; return new Response("{}", { status: 200 }); }
   upGets++;
   const verified = String(u).includes("/upc/555555555555");
   return new Response(JSON.stringify(verified ? { name: "V", bgg_info_status: "verified", bgg_info: [{ id: 7, name: "V" }] } : { name: "X", bgg_info_status: "choose_from_bgg_info_or_search", bgg_info: [{ id: 1, name: "A" }] }), { status: 200 });
@@ -17,8 +17,8 @@ const freshIsolate = async () => { w = (await import(`../relay/tabletop-worker.j
 const kv = () => { const m = new Map(); return { m, async get(k) { return m.has(k) ? m.get(k) : null; }, async put(k, v) { m.set(k, v); }, async delete(k) { m.delete(k); } }; };
 const O = "https://freerangeice.github.io";
 const look = (env, upc, ip) => w.fetch(new Request(`https://r/barcode?upc=${upc}`, { headers: { Origin: O, "CF-Connecting-IP": ip } }), env);
-const conf = (env, upc, ip, bggId = "999") => w.fetch(new Request("https://r/barcode/confirm", { method: "POST", headers: { Origin: O, "Content-Type": "application/json", "CF-Connecting-IP": ip }, body: JSON.stringify({ upc, bggId }) }), env);
-const base = { GAMEUPC_KEY: "k", GAMEUPC_USER_ID: "test-user-01" };
+const conf = (env, upc, ip, bggId = "999", userId = "device-test-0001") => w.fetch(new Request("https://r/barcode/confirm", { method: "POST", headers: { Origin: O, "Content-Type": "application/json", "CF-Connecting-IP": ip }, body: JSON.stringify({ upc, bggId, userId }) }), env);
+const base = { GAMEUPC_KEY: "k" };
 
 await freshIsolate();
 // no KV: confirm 503, never POSTs; lookup still works
@@ -103,8 +103,37 @@ await freshIsolate();
   for (let n = 1; n <= 2; n++) { const upc = String(520000000000 + n), ip = `5.2.0.${n + 1}`; await look(env, upc, ip); st.push((await conf(env, upc, ip)).status); }
   check("cap 2 after one failed POST: one more 200, then 429", st.join(",") === "200,429", st.join(","));
 }
+// Per-device user_id (Option A): 8 to 64 letters, digits or dashes, else 400 before admission.
+await freshIsolate();
+{
+  const env = { ...base, TT_CACHE: kv() }, before = upPosts, upc = "610000000001", ip = "6.1.0.1";
+  await look(env, upc, ip);
+  const bad = [undefined, "", "short7c", "a".repeat(65), "has space1", "under_score", "émoji-ok-1", 12345678];
+  const st = [];
+  for (const id of bad) {
+    const body = { upc, bggId: "999" }; if (id !== undefined) body.userId = id;
+    st.push((await w.fetch(new Request("https://r/barcode/confirm", { method: "POST", headers: { Origin: O, "Content-Type": "application/json", "CF-Connecting-IP": ip }, body: JSON.stringify(body) }), env)).status);
+  }
+  check("bad or missing userId -> 400 every time, zero POSTs", st.every((x) => x === 400) && upPosts === before, st.join(","));
+  check("bad userId does not use up the day's cap", !env.TT_CACHE.m.has(today()));
+  check("bad userId does not use up the lookup record", (await conf(env, upc, ip, "999", "a".repeat(64))).status === 200 && upPosts === before + 1);
+  check("upstream body is exactly the device's user_id", lastPostBody === JSON.stringify({ user_id: "a".repeat(64) }), lastPostBody);
+  const upc2 = "610000000002"; await look(env, upc2, ip);
+  check("8-char id with dashes accepted", (await conf(env, upc2, ip, "999", "ab-12-CD")).status === 200 && JSON.parse(lastPostBody).user_id === "ab-12-CD");
+  check("no shared fallback: GAMEUPC_USER_ID is ignored", !fs.readFileSync(new URL("../relay/tabletop-worker.js", import.meta.url), "utf8").includes("GAMEUPC_USER_ID"));
+}
+// Cap and same-IP check are independent of the id: new ids don't reset either.
+await freshIsolate();
+{
+  const env = { ...base, CONFIRM_DAILY_CAP: "2", TT_CACHE: kv() }, st = [];
+  for (let n = 1; n <= 3; n++) { const upc = String(620000000000 + n), ip = `6.2.0.${n}`; await look(env, upc, ip); st.push((await conf(env, upc, ip, "999", `fresh-id-000${n}`)).status); }
+  check("cap 2 with a new id each time: 200,200,429", st.join(",") === "200,200,429", st.join(","));
+  const upc = "620000000009"; await look(env, upc, "6.2.9.1");
+  check("other IP with any id -> 409", (await conf(env, upc, "6.2.9.2", "999", "other-device-01")).status === 409);
+}
 const src = fs.readFileSync(new URL("../relay/tabletop-worker.js", import.meta.url), "utf8");
 check("user_id note cites the GameUPC spec URL and quotes it", src.includes("https://gameupc.com/gameupc-oas.yaml") && src.includes("we can go back and clear out any updates they've made"));
+check("no single-user / one-id wording", !/single-user|one-person|one id for every/i.test(src));
 check("no paraphrased 'bad actor' claim", !/bad actor/i.test(src));
 console.log(`\n${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);
