@@ -54,5 +54,23 @@ await fresh();
 { const env = { TT_CACHE: kv() }; bggCalls = 0;
   check("no BGG_API_TOKEN: 503, no BGG call", (await thing(env, 600)).status === 503 && bggCalls === 0); }
 
+await fresh();
+{ const env = { ...base, TT_CACHE: kv() }; bggCalls = 0;
+  const ipThing = (id, ip) => w.fetch(new Request(`https://r/thing?ids=${id}`, { headers: { Origin: O, "CF-Connecting-IP": ip } }), env);
+  const ipSrch = (q, ip) => w.fetch(new Request(`https://r/search?q=${q}`, { headers: { Origin: O, "CF-Connecting-IP": ip } }), env);
+  const st = [];
+  for (let n = 1; n <= 5; n++) st.push((await ipThing(700 + n, "1.2.3.4")).status);
+  for (let n = 1; n <= 5; n++) st.push((await ipSrch(`q${n}`, "1.2.3.4")).status);
+  check("per-IP: 10 upstream lookups in a minute -> all 200", st.every((s) => s === 200) && bggCalls === 10, `${st} calls=${bggCalls}`);
+  const r = await ipThing(799, "1.2.3.4");
+  check("per-IP: 11th uncached lookup -> 429 + Retry-After, no BGG call", r.status === 429 && Number(r.headers.get("Retry-After")) > 0 && bggCalls === 10, `${r.status} calls=${bggCalls}`);
+  const rs = await ipSrch("q99", "1.2.3.4");
+  check("per-IP: 11th uncached /search -> 429, no BGG call", rs.status === 429 && bggCalls === 10, `${rs.status} calls=${bggCalls}`);
+  check("per-IP: throttled requests don't count toward the daily cap", env.TT_CACHE.m.get(`tt1:bgg:${new Date().toISOString().slice(0, 10)}`) === "10");
+  const h1 = await ipThing(701, "1.2.3.4"), h2 = await ipSrch("q1", "1.2.3.4");
+  check("per-IP: cache hits never limited (thing + search 200 while throttled)", h1.status === 200 && h2.status === 200 && bggCalls === 10, `${h1.status} ${h2.status}`);
+  const o = await ipThing(800, "5.6.7.8");
+  check("per-IP: another IP still gets through", o.status === 200 && bggCalls === 11, `${o.status} calls=${bggCalls}`); }
+
 console.log(`\n${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);

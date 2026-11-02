@@ -265,10 +265,11 @@ function parseThings(xml) {
   });
 }
 
-async function search(env, q) {
+async function search(env, request, q) {
   const key = `s:${q.toLowerCase()}`;
   const hit = await cacheGet(env, key);
   if (hit) return hit;
+  throttle(request, "get", CONFIG.CLIENT_MAX_LOOKUPS); // per-IP, cache misses only, before the daily cap counts
   const xmls = [];
   if (CONFIG.BGG_COMBINED_SEARCH) {
     xmls.push(await bgg(env, `/search?query=${encodeURIComponent(q)}&type=${CONFIG.BGG_SEARCH_TYPES.join(",")}`));
@@ -282,10 +283,11 @@ async function search(env, q) {
   return out;
 }
 
-async function things(env, ids) {
+async function things(env, request, ids) {
   const out = [];
   const missing = [];
   for (const id of ids) { const c = await cacheGet(env, `t:${id}`); c ? out.push(c) : missing.push(id); }
+  if (missing.length) throttle(request, "get", CONFIG.CLIENT_MAX_LOOKUPS); // per-IP, cache misses only
   for (let i = 0; i < missing.length; i += CONFIG.BGG_MAX_THING_IDS) {
     const batch = missing.slice(i, i + CONFIG.BGG_MAX_THING_IDS);
     const parsed = parseThings(await bgg(env, `/thing?id=${batch.join(",")}`));
@@ -428,13 +430,13 @@ export default {
         if (!env.BGG_API_TOKEN) return json({ error: "not configured" }, 503, origin);
         const q = (url.searchParams.get("q") || "").trim();
         if (q.length < 2 || q.length > 100) return json({ error: "q must be 2 to 100 characters" }, 400, origin);
-        return json(await search(env, q), 200, origin);
+        return json(await search(env, request, q), 200, origin);
       }
       if (url.pathname === "/thing") {
         if (!env.BGG_API_TOKEN) return json({ error: "not configured" }, 503, origin);
         const ids = [...new Set((url.searchParams.get("ids") || "").split(",").map((s) => s.trim()).filter(Boolean))];
         if (!ids.length || ids.length > CONFIG.BGG_MAX_THING_IDS || !ids.every((s) => /^[1-9]\d{0,8}$/.test(s))) return json({ error: "ids: 1 to 20 numbers" }, 400, origin);
-        return json(await things(env, ids), 200, origin);
+        return json(await things(env, request, ids), 200, origin);
       }
       if (url.pathname === "/barcode") {
         if (!env.GAMEUPC_KEY) return json({ error: "not configured" }, 503, origin);
