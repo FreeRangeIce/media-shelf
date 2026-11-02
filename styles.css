@@ -1583,6 +1583,11 @@ label.check input[type="checkbox"]:focus-visible {
   z-index: 110; /* above Settings when restoring from there */
 }
 
+/* The backup match dialog can also open from a Settings restore, so it sits above Settings too (v41) */
+#tt-match-modal {
+  z-index: 110;
+}
+
 /* Duplicate prompt (v1.2): same dialog, a little wider for the Existing / Incoming rows */
 #confirm-panel.is-wide {
   max-width: 480px;
