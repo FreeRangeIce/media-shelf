@@ -7,6 +7,8 @@ const { chromium } = require("playwright-core");
 const fs = require("fs");
 const ORIGIN = process.env.TT_ORIGIN, MAIN = process.env.MAIN_ORIGIN, RELAY = process.env.RELAY || "http://127.0.0.1:8795";
 const SHOTS = process.env.SHOTS || "";
+const FLAG_ON = 'const GAMEUPC_LOOKUP = { enabled: true, relay: "https://frm-tabletop.freerangeice.workers.dev" };';
+const liveReqs = []; // requests aimed at the live relay (aborted; must stay empty)
 if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
 let pass = 0, fail = 0;
 const check = (n, ok, d = "") => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${n}${d ? "  — " + d : ""}`); };
@@ -33,6 +35,15 @@ async function open(browser, { lookup, width = 390, height = 844, origin = ORIGI
       if (failGet && r.request().method() === "GET") return r.fulfill({ status: failGet, headers: { "Access-Control-Allow-Origin": origin, "Retry-After": "30" }, body: "{}" });
       if (relayDelay && r.request().method() === "GET") await new Promise((s) => setTimeout(s, relayDelay));
       return r.continue();
+    }
+    if (/^https:\/\/frm-tabletop\.freerangeice\.workers\.dev/.test(u)) { liveReqs.push(u); return r.abort(); } // the live Worker: never contacted from tests
+    // v43 ships with Lookup on. "lookup: false" serves this branch's tabletop.js with the flag
+    // forced off (test only), so the flag-off checks keep comparing against v39.
+    if (!lookup && origin === ORIGIN && u.startsWith(ORIGIN + "/tabletop.js")) {
+      const res = await r.fetch();
+      const body = await res.text();
+      if (!body.includes(FLAG_ON)) throw new Error("flag line not found in tabletop.js");
+      return r.fulfill({ response: res, body: body.replace(FLAG_ON, 'const GAMEUPC_LOOKUP = { enabled: false, relay: "" };') });
     }
     return u.startsWith(origin) || u.startsWith("data:") ? r.continue() : r.abort(); // thumbnails (BGG CDN) are not loaded in tests
   });
@@ -433,6 +444,8 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     await shot(page, `off-sheet-${w}x${h}`);
     await ctx.close();
   }
+
+  check("never contacted the live Worker (all lookups via the local test relay)", liveReqs.length === 0, liveReqs.join(" "));
 
   await browser.close();
   console.log(`\n${pass}/${pass + fail} passed`);

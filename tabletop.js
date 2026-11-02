@@ -14,9 +14,10 @@
  * Lookup: BoardGameGeek lookup is NOT connected. No network call is ever made from here;
  * the Lookup button only says so (LOOKUP_RELAY_URL is empty). See relay/tabletop-worker.js.
  *
- * Barcode lookup (GameUPC, via the relay): OFF. GAMEUPC_LOOKUP.enabled is false, so the page
- * builds no barcode UI and makes no relay call, exactly as v39. Turn on only after BGG approves
- * the token (Micah). See "barcode lookup" below and relay/README-tabletop.md.
+ * Barcode lookup (GameUPC, via the relay): ON since v43 (Micah approved the relay, deployed at
+ * frm-tabletop.freerangeice.workers.dev). With GAMEUPC_LOOKUP.enabled false the page builds no
+ * barcode UI and makes no relay call, exactly as v39. See "barcode lookup" below and
+ * relay/README-tabletop.md.
  */
 (function (root) {
   "use strict";
@@ -25,29 +26,30 @@
   /** Relay endpoint for BGG / GameUPC lookups. Empty = not connected (no network calls). */
   const LOOKUP_RELAY_URL = "";
   /**
-   * Lookup data credits (BGG, GameUPC) are not in the page at all while Lookup is off (Micah:
-   * no preview). Nothing sets lookupReturnedRecord today: no lookup exists, so no record.
-   * TODO(lookup): in the same commit that turns Lookup on, add the credits back to the footer
-   * with BoardGameGeek's official linked "Powered by BGG" logo, rendered only when
-   * lookupCreditsAllowed() is true (Lookup connected AND a real lookup returned a record).
+   * Lookup data credits: the BoardGameGeek credit (official linked "Powered by BGG" logo under
+   * lookup results that show BGG data, and the "Game data from BoardGameGeek" Tabletop footer
+   * line) is gated on GAMEUPC_LOOKUP.enabled (see bggCreditOn below): when that flag is false
+   * neither is in the page at all. There is no GameUPC credit line. lookupCreditsAllowed() is
+   * only about the separate BGG name lookup (LOOKUP_RELAY_URL), which is still not connected.
    */
   const lookupReturnedRecord = false;
   const lookupCreditsAllowed = () => Boolean(LOOKUP_RELAY_URL) && lookupReturnedRecord;
   const LOOKUP_NOT_CONNECTED =
     "BoardGameGeek lookup isn’t connected yet. Fill in the details by hand; you can add a BGG id later."; // Berean cleared
   /**
-   * Barcode lookup flag. Off by default; while off nothing below "barcode lookup" runs.
+   * Barcode lookup flag. While off nothing below "barcode lookup" runs.
    * Dev only: on a loopback host (127.0.0.1 / localhost) a test may set
    * window.__FRM_TT_LOOKUP__ = { relay } before load; ignored on any other host.
    */
-  const GAMEUPC_LOOKUP = { enabled: false, relay: "" };
+  const GAMEUPC_LOOKUP = { enabled: true, relay: "https://frm-tabletop.freerangeice.workers.dev" }; // no trailing slash: paths are appended
   function barcodeLookupConfig() {
-    if (GAMEUPC_LOOKUP.enabled && GAMEUPC_LOOKUP.relay) return { relay: GAMEUPC_LOOKUP.relay };
+    // Loopback dev hook first, so local tests reach their own test relay, never the live Worker.
     try {
       const dev = root.__FRM_TT_LOOKUP__;
       const loop = root.location && /^(127\.0\.0\.1|localhost)$/.test(root.location.hostname);
       if (loop && dev && typeof dev.relay === "string" && /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(dev.relay)) return { relay: dev.relay };
     } catch {}
+    if (GAMEUPC_LOOKUP.enabled && GAMEUPC_LOOKUP.relay) return { relay: GAMEUPC_LOOKUP.relay };
     return null;
   }
   /**

@@ -1,5 +1,5 @@
-/* FreeRangeMedia service worker — cache version v42 */
-const CACHE = "media-shelf-v42";
+/* FreeRangeMedia service worker — cache version v43 */
+const CACHE = "media-shelf-v43";
 /*
  * Cross-origin responses (cover images, APIs, CDNs) are never written to the cache: only
  * same-origin responses are (see the fetch handler). Comic data and covers from the Grand
@@ -9,10 +9,11 @@ const CACHE = "media-shelf-v42";
  */
 const NEVER_HANDLE_HOSTS = /(^|\.)comics\.org$/i;
 /*
- * The comic Lookup relay (Cloudflare Worker frm-gcd) is never routed through this worker
- * either: its answers go straight to the page and are never cached here.
+ * The comic Lookup relay (Cloudflare Worker frm-gcd) and the Tabletop relay (frm-tabletop) are
+ * never routed through this worker either: their answers go straight to the page and are never
+ * cached here.
  */
-const RELAY_HOSTS = /^frm-gcd\.freerangeice\.workers\.dev$/i;
+const RELAY_HOSTS = /^(frm-gcd|frm-tabletop)\.freerangeice\.workers\.dev$/i;
 /*
  * Comic cover pictures from Metron (static.metron.cloud) are never routed through this
  * worker either, so the browser loads them straight from Metron and no image bytes can land
