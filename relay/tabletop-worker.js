@@ -2,7 +2,7 @@
 // Deployed as the Cloudflare Worker frm-tabletop (https://frm-tabletop.freerangeice.workers.dev),
 // used by Media Shelf's barcode lookup since v43 (BGG title search, LOOKUP_RELAY_URL, is not wired
 // yet). Modelled on the frm-gcd relay: origin-locked, own CORS, upstream keys held as
-// Worker secrets, answers cached. See relay/README-tabletop.md for what it needs.
+// Worker secrets, answers cached. See relay/README-tabletop.md for how it was set up.
 //
 // Secrets (wrangler secret put, never committed):
 //   BGG_API_TOKEN  BoardGameGeek application token (boardgamegeek.com/applications), sent only

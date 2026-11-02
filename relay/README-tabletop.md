@@ -22,7 +22,7 @@ and it makes no network call.
 - Thing pulls batched ≤20 ids, from boardgamegeek.com only (never GameUPC's `data_url` on api.geekdo.com).
 - GameUPC `verified` → first match; `choose_from_bgg_info_or_search` → list for the user to pick.
 - BGG numeric `0` → empty. Parent-of-expansion mapping (`link type=boardgameexpansion inbound=true`)
-  and all rpgitem field mappings are **UNVERIFIED** (nothing tested without a token).
+  and all rpgitem field mappings are **UNVERIFIED** (not yet tested live).
 
 ## Barcode lookup (GameUPC v1) — design/frm-gameupc-lookup
 Page side: `GAMEUPC_LOOKUP = { enabled: true, relay: "https://frm-tabletop.freerangeice.workers.dev" }`
