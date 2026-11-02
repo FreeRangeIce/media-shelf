@@ -3337,10 +3337,6 @@ body.modal-open {
   align-self: flex-start;
 }
 
-.tt-lookup-status {
-  margin-top: var(--space-2);
-}
-
 .tt-dup {
   margin: var(--space-3) 0;
   padding: var(--space-3);
@@ -3397,12 +3393,6 @@ body.modal-open {
 .tt-detail-line.tt-bgg-id {
   font-size: 13px;
   color: var(--text-muted);
-}
-
-/* Lookup isn't connected: looks unavailable, stays focusable, explained by the helper line. */
-#tt-lookup[aria-disabled="true"] {
-  opacity: 0.5;
-  cursor: default;
 }
 
 /* ---------- Tabletop merge: same-title prompt (one match at a time) ---------- */

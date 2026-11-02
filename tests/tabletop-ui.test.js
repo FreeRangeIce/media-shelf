@@ -135,16 +135,15 @@ async function addViaForm(page, fields) {
     await tab(page, "tabletop");
     await page.click("#tt-empty-add");
     check("new entry form defaults to Owned", (await page.inputValue("#tt-status")) === "owned");
-    const lk = await page.evaluate(() => { const b = document.getElementById("tt-lookup"); const cs = getComputedStyle(b); const d = document.getElementById(b.getAttribute("aria-describedby") || ""); return { ad: b.getAttribute("aria-disabled"), dis: b.disabled, op: cs.opacity, cur: cs.cursor, tab: b.tabIndex, desc: d ? d.textContent : "" }; });
-    check("Lookup control: aria-disabled, 50% opacity, default cursor, still focusable and described", lk.ad === "true" && !lk.dis && lk.op === "0.5" && lk.cur === "default" && lk.tab === 0 && /isn’t connected yet/.test(lk.desc), JSON.stringify(lk));
-    await page.focus("#tt-lookup");
-    check("Lookup control takes keyboard focus", await page.evaluate(() => document.activeElement.id === "tt-lookup"));
-    const before = requests.length;
-    await page.click("#tt-lookup", { force: true }); // aria-disabled: Playwright would wait for "enabled"
-    const msg = await page.textContent("#tt-lookup-status");
-    check("Lookup says it isn't connected", /Searching BoardGameGeek by title isn’t connected yet/.test(msg), msg);
-    check("Lookup made no network request", requests.length === before);
-    for (const w of [1440, 390, 320]) { await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 }); await page.$eval("#tt-lookup-status", (e) => e.scrollIntoView({ block: "center" })); await shot(page, `lookup-not-connected-${w}`); }
+    // v44: title search isn't connected (LOOKUP_RELAY_URL empty), so its button isn't built at all.
+    const lk = await page.evaluate(() => ({ el: document.getElementById("tt-lookup"), row: document.querySelector(".tt-lookup-row"), status: document.getElementById("tt-lookup-status"), txt: /Look up on BoardGameGeek|isn’t connected yet/.test(document.getElementById("tt-form-modal").innerText) }));
+    check("title search hidden: no button, no message, no row in the Add sheet", !lk.el && !lk.row && !lk.status && !lk.txt, JSON.stringify(lk));
+    await page.focus("#tt-title");
+    await page.keyboard.press("Tab");
+    check("title search hidden: Tab goes from Title straight to Kind (no extra tab stop)", await page.evaluate(() => document.activeElement.id === "tt-subtype"));
+    const gap = await page.evaluate(() => { const t = document.getElementById("tt-title").closest(".form-row"); const n = t.nextElementSibling; return Math.round(n.getBoundingClientRect().top - t.getBoundingClientRect().bottom); });
+    const gap2 = await page.evaluate(() => { const c = document.getElementById("tt-coverUrl").closest(".form-row"); const n = document.getElementById("tt-notes").closest(".form-row"); return Math.round(n.getBoundingClientRect().top - c.getBoundingClientRect().bottom); });
+    check("title search hidden: Title row to Kind/Status grid gap matches the Cover URL to Notes row gap", Math.abs(gap - gap2) <= 1, `${gap} vs ${gap2}`);
     await page.setViewportSize({ width: 390, height: 1400 });
     await page.fill("#tt-title", "Wingspan: European Expansion");
     await page.selectOption("#tt-subtype", "expansion");
@@ -556,6 +555,29 @@ async function addViaForm(page, fields) {
     await ctx.close();
   }
 
+  // v44: the title-search button comes back when LOOKUP_RELAY_URL is set (test-only rewrite; nothing is called)
+  {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 1400 }, serviceWorkers: "block" });
+    const reqs = [];
+    await ctx.route("**/*", async (r) => {
+      const u = r.request().url(); reqs.push(u);
+      if (u.startsWith(ORIGIN + "/tabletop.js")) {
+        const res = await r.fetch(); const body = await res.text();
+        return r.fulfill({ response: res, body: body.replace('const LOOKUP_RELAY_URL = "";', 'const LOOKUP_RELAY_URL = "http://127.0.0.1:9";') });
+      }
+      return u.startsWith(ORIGIN) || u.startsWith("data:") ? r.continue() : r.abort();
+    });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + "/index.html");
+    await page.waitForSelector("#stats .stat-pill");
+    await tab(page, "tabletop");
+    await page.click("#tt-empty-add");
+    const b = await page.evaluate(() => { const el = document.getElementById("tt-lookup"); return el && { text: el.textContent, vis: !!el.offsetParent, afterTitle: el.closest(".form-row").previousElementSibling.contains(document.getElementById("tt-title")) }; });
+    check("LOOKUP_RELAY_URL set (test rewrite): title-search button is built, visible, right after Title", b && b.text === "Look up on BoardGameGeek" && b.vis && b.afterTitle, JSON.stringify(b));
+    check("LOOKUP_RELAY_URL set (test rewrite): no request to it", !reqs.some((u) => u.startsWith("http://127.0.0.1:9/")));
+    await ctx.close();
+  }
+
   // Lookup credits removed until Lookup is connected (Micah): not served, not rendered, not in the a11y tree
   {
     const GONE = ["Board game data from " + "BoardGameGeek", "Barcode matching by " + "GameUPC"]; // split so this file never matches a grep
@@ -575,7 +597,7 @@ async function addViaForm(page, fields) {
     check("Settings open: neither credit shown", GONE.every((g) => !st.includes(g)));
     await page.click("#settings-close");
     check("lookup credits gate is false today (not connected, no record)", await page.evaluate(() => window.FRMTabletop.lookupCreditsAllowed() === false && window.FRMTabletop.lookupConnected() === false));
-    check("Lookup message unchanged", /Searching BoardGameGeek by title isn’t connected yet\. Fill in the details by hand; you can add a BGG id later\./.test(await page.evaluate(() => window.FRMTabletop.LOOKUP_NOT_CONNECTED)));
+    check("title-search message removed (unreachable while the button is hidden)", await page.evaluate(() => window.FRMTabletop.LOOKUP_NOT_CONNECTED === undefined));
     const foot = await page.evaluate(() => { const c = document.querySelector(".footer-credits"); const kids = [...c.children]; return { html: c.innerHTML, seps: kids.filter((k, i) => k.classList.contains("footer-sep") && (!kids[i + 1] || kids[i + 1].classList.contains("footer-sep"))).length, empty: kids.filter((k) => k.classList.contains("footer-credit") && !k.id && !k.textContent.trim()).length }; });
     check("footer: no doubled/trailing separator or empty credit", foot.seps === 0 && foot.empty === 0, JSON.stringify(foot));
     if (MAIN) {

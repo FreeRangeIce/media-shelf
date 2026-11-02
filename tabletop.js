@@ -11,9 +11,9 @@
  * are rewritten to carry that BGG id too (linkBggId). Deleting a base never deletes its
  * expansions; they stand alone and keep the BGG id, so re-adding the base relinks them.
  *
- * Lookup: searching BoardGameGeek by title (LOOKUP_RELAY_URL) is not connected and makes no
- * network call; the Lookup button only says so (LOOKUP_RELAY_URL is empty). Barcode lookup
- * (below) does make calls, through the relay. See relay/tabletop-worker.js.
+ * Lookup: searching BoardGameGeek by title (LOOKUP_RELAY_URL) isn't connected yet, so its button
+ * is hidden (not built at all) and it makes no network call. Barcode lookup (below) does make
+ * calls, through the relay. See relay/tabletop-worker.js.
  *
  * Barcode lookup (GameUPC, via the relay): on since v43, using the relay at frm-tabletop.freerangeice.workers.dev. Setting GAMEUPC_LOOKUP.enabled to false turns it off: no barcode UI and no relay call.
  * See "barcode lookup" below and relay/README-tabletop.md.
@@ -33,8 +33,6 @@
    */
   const lookupReturnedRecord = false;
   const lookupCreditsAllowed = () => Boolean(LOOKUP_RELAY_URL) && lookupReturnedRecord;
-  const LOOKUP_NOT_CONNECTED =
-    "Searching BoardGameGeek by title isn’t connected yet. Fill in the details by hand; you can add a BGG id later."; // Berean cleared
   /**
    * Barcode lookup flag. While off nothing below "barcode lookup" runs.
    * Dev only: on a loopback host (127.0.0.1 / localhost) a test may set
@@ -341,7 +339,7 @@
     return none; // verified: never posted
   }
 
-  const core = { STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed, LOOKUP_NOT_CONNECTED };
+  const core = { STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
   if (typeof document === "undefined") return;
 
@@ -508,10 +506,6 @@
       const el = F(`tt-${k}`);
       if (el) el.value = entry ? e[k] || "" : "";
     });
-    // Lookup isn't connected: the control stays focusable (aria-disabled, not disabled) and
-    // is described by the helper line, which also shows when it's pressed.
-    F("tt-lookup-status").textContent = LOOKUP_NOT_CONNECTED;
-    F("tt-lookup-status").hidden = true;
     F("tt-dup").hidden = true;
     F("tt-title-error").hidden = true;
     resetBarcodeLookup();
@@ -832,6 +826,18 @@
     barcodeLookupOn = cfg;
   }
   let barcodeLookupOn = null;
+  /**
+   * "Look up on BoardGameGeek" (title search): built only when LOOKUP_RELAY_URL is set. While it's
+   * empty (today) the button isn't in the page at all: no element, no tab stop, no gap.
+   * TODO(title search): wire the click to the relay's /search and /thing when it's connected.
+   */
+  function setupTitleLookup() {
+    if (!LOOKUP_RELAY_URL || F("tt-lookup")) return;
+    const row = document.createElement("div");
+    row.className = "form-row tt-lookup-row";
+    row.innerHTML = `<button type="button" class="btn btn-ghost" id="tt-lookup">Look up on BoardGameGeek</button>`;
+    F("tt-title").closest(".form-row").after(row);
+  }
   /** Tabletop footer credit: only built when GAMEUPC_LOOKUP.enabled is true (else not in the DOM). */
   function setupBggFooter() {
     if (!bggCreditOn()) return;
@@ -1062,12 +1068,6 @@
     });
     F("tt-dup-update").addEventListener("click", () => saveForm("update"));
     F("tt-dup-add").addEventListener("click", () => saveForm("add"));
-    F("tt-lookup").addEventListener("click", () => {
-      // Never a network call while LOOKUP_RELAY_URL is empty.
-      const s = F("tt-lookup-status");
-      s.textContent = LOOKUP_NOT_CONNECTED;
-      s.hidden = false;
-    });
     document.querySelectorAll("[data-tt-close]").forEach((b) => b.addEventListener("click", () => closeModal(b.dataset.ttClose)));
     F("tt-detail-edit").addEventListener("click", (ev) => openForm(entries.find((e) => e.id === ev.currentTarget.dataset.id)));
     F("tt-detail-delete").addEventListener("click", (ev) => deleteEntry(ev.currentTarget.dataset.id));
@@ -1091,6 +1091,7 @@
       host = h || {};
       load();
       bind();
+      setupTitleLookup();
       setupBarcodeLookup();
       setupBggFooter();
     },

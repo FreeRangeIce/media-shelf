@@ -2,8 +2,8 @@
 
 `relay/tabletop-worker.js` is a Cloudflare Worker, modelled on the frm-gcd relay. The app
 calls it for barcode lookup since v43 (`GAMEUPC_LOOKUP.relay` in `tabletop.js`). Searching
-BoardGameGeek by title is not wired yet (`LOOKUP_RELAY_URL` is empty), so that button only says
-so and makes no network call.
+BoardGameGeek by title isn't connected yet (`LOOKUP_RELAY_URL` is empty), so its button is hidden
+and it makes no network call.
 
 ## How it was set up
 - Worker name `frm-tabletop` on the freerangeice workers.dev subdomain: https://frm-tabletop.freerangeice.workers.dev

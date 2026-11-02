@@ -112,7 +112,7 @@ t("restore on another device with manual links (no BGG ids) survives", () => {
 t("Lookup not connected: no relay configured", () => {
   assert.strictEqual(T.lookupConnected(), false);
   assert.strictEqual(T.lookupCreditsAllowed(), false);
-  assert.match(T.LOOKUP_NOT_CONNECTED, /Searching BoardGameGeek by title isn’t connected yet/);
+  assert.strictEqual(T.LOOKUP_NOT_CONNECTED, undefined); // v44: message removed, the title-search button is hidden instead
 });
 t("merge: hand-entered match (no BGG id, other local id, same title+subtype) keeps both and is reported", () => {
   const here = [base({ id: "h1", bggId: "", title: "Homebrew Quest" })];

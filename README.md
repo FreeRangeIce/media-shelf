@@ -103,7 +103,7 @@ The Tabletop tab (`tabletop.js`) keeps physical tabletop games on their own shel
 backups simply lack. Expansions sit under their base game (linked by BGG id, with the local id as
 fallback). Barcode lookup (GameUPC + BoardGameGeek data, via the relay) is on: the relay is
 `relay/tabletop-worker.js`, deployed as frm-tabletop (see `relay/README-tabletop.md`). Searching
-BoardGameGeek by title isn't connected yet. Tests:
+BoardGameGeek by title isn't connected yet, so its button is hidden. Tests:
 `node tests/tabletop-core.test.js` and `tests/tabletop-ui.test.js` (Playwright).
 
 ## Features

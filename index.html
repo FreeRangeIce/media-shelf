@@ -435,10 +435,7 @@
           <input type="text" id="tt-title" maxlength="200" autocomplete="off" aria-describedby="tt-title-error" />
           <p class="field-error" id="tt-title-error" hidden>Add a title.</p>
         </div>
-        <div class="form-row tt-lookup-row">
-          <button type="button" class="btn btn-ghost" id="tt-lookup" aria-disabled="true" aria-describedby="tt-lookup-status">Look up on BoardGameGeek</button>
-          <p class="field-hint tt-lookup-status" id="tt-lookup-status" role="status" aria-live="polite" hidden></p>
-        </div>
+        <!-- "Look up on BoardGameGeek" (title search) is built by tabletop.js only when LOOKUP_RELAY_URL is set. -->
         <div class="form-grid tt-two">
           <div class="form-row">
             <label for="tt-subtype">Kind</label>

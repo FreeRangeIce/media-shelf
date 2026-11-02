@@ -88,11 +88,10 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     await addForm(page);
     await typeCode(page, "111111111117");
     await page.waitForTimeout(1500);
-    await page.$eval("#tt-lookup", (b) => b.click());
     await page.fill("#tt-title", "Off Test");
     await page.click("#tt-save");
     await page.waitForTimeout(300);
-    check("flag off: zero relay requests (typed a valid code, pressed Lookup, saved)", relayReqs.length === 0, `${relayReqs.length} requests`);
+    check("flag off: zero relay requests (typed a valid code, saved)", relayReqs.length === 0, `${relayReqs.length} requests`);
     check("flag off: no barcode lookup UI in the DOM", (await page.$("#tt-upc")) === null);
     check("flag off: no page errors", errors.length === 0, errors.join(" | "));
     const formNow = await page.evaluate(() => { document.querySelector("#tt-btn-reset"); return document.querySelector("#tt-form-modal").outerHTML.length; });
@@ -102,16 +101,16 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
       const o = await open(browser, { lookup: false, origin });
       await addForm(o.page);
       const h = await o.page.evaluate(() => document.querySelector("#tt-form-modal").outerHTML.replace(/\s+/g, " "));
-      const lk = await o.page.evaluate(() => { document.querySelector("#tt-lookup").click(); return document.querySelector("#tt-lookup-status").textContent; });
+      const lk = await o.page.evaluate(() => { const b = document.querySelector("#tt-lookup"); if (!b) return null; b.click(); return document.querySelector("#tt-lookup-status").textContent; });
       await o.ctx.close();
       return { h, lk, n: o.relayReqs.length };
     };
     const a = await grab(ORIGIN), b = await grab(MAIN);
-    // v43 renamed the title-search message (Berean); otherwise the flag-off sheet is v39's.
-    const OLD_LK = "BoardGameGeek lookup isn’t connected yet. Fill in the details by hand; you can add a BGG id later.";
-    const NEW_LK = "Searching BoardGameGeek by title isn’t connected yet. Fill in the details by hand; you can add a BGG id later.";
-    check("flag off: Add sheet markup identical to v39 (apart from the renamed message)", a.h.split(NEW_LK).join(OLD_LK) === b.h, `${a.h.length} vs ${b.h.length}`);
-    check("flag off: Lookup button says the new title-search message (v39 said the old one)", a.lk === NEW_LK && b.lk === OLD_LK, a.lk);
+    // v44 removed the title-search row (title search isn't connected, so its button is hidden);
+    // otherwise the flag-off sheet is v39's.
+    const strip = (h) => h.replace(/ ?<div class="form-row tt-lookup-row">.*?<\/div>/, "").replace(/ ?<!-- "Look up on BoardGameGeek".*?-->/, "");
+    check("flag off: Add sheet markup identical to v39 (apart from the removed title-search row)", strip(a.h) === strip(b.h), `${strip(a.h).length} vs ${strip(b.h).length}`);
+    check("flag off: no title-search button (v39 had one)", a.lk === null && typeof b.lk === "string", String(a.lk));
     void formNow;
   }
 
