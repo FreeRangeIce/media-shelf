@@ -614,7 +614,8 @@
     noneTitle: "No match for this barcode",
     noneHint: "Enter the game yourself. If you add its BGG id, you’ll be asked before it’s sent to GameUPC with this barcode. Without a BGG id, nothing is sent.",
     sendTitle: "Send this barcode match to GameUPC?",
-    sendWhat: (t, id, u) => `${t}, BGG id ${id}, barcode ${u}.`,
+    sendWhat: (t, id, u) => `${t}, BGG id ${id}, barcode ${u}. Sent with a random id for this device.`,
+    sendDevice: "Sent with a random id for this device.",
     sendWhy: "Sending helps this barcode match this game next time. If it’s wrong, choose Save only.",
     sendYes: "Save and send",
     sendNo: "Save only",
@@ -738,7 +739,7 @@
   function showSendAsk(form) {
     upcView(`<div class="tt-upc-confirm" role="group" aria-labelledby="tt-upc-h" aria-describedby="tt-upc-what tt-upc-wrong">
 <h3 class="tt-upc-h" id="tt-upc-h" tabindex="-1">${esc(UPC_COPY.sendTitle)}</h3>
-<div class="tt-upc-cand tt-upc-cand-static" id="tt-upc-what" aria-label="${esc(UPC_COPY.sendWhat(str(form.title), bggNum(form.bggId), look.upc))}"><span class="tt-upc-cand-text"><span class="tt-upc-cand-name">${esc(str(form.title))}</span><span class="tt-upc-cand-year">BGG ${esc(bggNum(form.bggId))} · <span class="tt-upc-nowrap">Barcode ${esc(look.upc)}</span></span></span></div>
+<div class="tt-upc-cand tt-upc-cand-static" id="tt-upc-what" aria-label="${esc(UPC_COPY.sendWhat(str(form.title), bggNum(form.bggId), look.upc))}"><span class="tt-upc-cand-text"><span class="tt-upc-cand-name">${esc(str(form.title))}</span><span class="tt-upc-cand-year">BGG ${esc(bggNum(form.bggId))} · <span class="tt-upc-nowrap">Barcode ${esc(look.upc)}</span></span><span class="tt-upc-cand-year tt-upc-device">${esc(UPC_COPY.sendDevice)}</span></span></div>
 <p class="field-hint" id="tt-upc-wrong">${esc(UPC_COPY.sendWhy)}</p>
 <div class="tt-upc-actions"><button type="button" class="btn btn-ghost" data-upc-ask-cancel="1">${esc(UPC_COPY.cancel)}</button><button type="button" class="btn btn-ghost" data-upc-send="skip">${esc(UPC_COPY.sendNo)}</button><button type="button" class="btn btn-primary" data-upc-send="send">${esc(UPC_COPY.sendYes)}</button></div></div>`, "#tt-upc-h");
   }
