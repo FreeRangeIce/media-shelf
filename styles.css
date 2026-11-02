@@ -3567,3 +3567,14 @@ body.modal-open {
 .tt-match-late[hidden] {
   display: none;
 }
+
+/* Duo fix (v40): iOS Safari zooms the page when a focused field's text is under 16px.
+   On touch screens every text-entry control is at least 16px; desktop keeps 14px.
+   (No maximum-scale / user-scalable=no: pinch zoom stays available.) */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  select,
+  textarea {
+    font-size: max(16px, 1rem) !important;
+  }
+}
