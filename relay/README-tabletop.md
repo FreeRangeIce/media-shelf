@@ -7,7 +7,7 @@ only says "BoardGameGeek lookup isn’t connected yet" and makes no network call
 ## Needs before it can go live
 1. **BGG token.** Register a non-commercial application at https://boardgamegeek.com/applications
    (BGG says approval "may be a week or more"), then create a token there. Set it with
-   `wrangler secret put BGG_TOKEN`. Sent as `Authorization: Bearer <token>` to
+   `wrangler secret put BGG_API_TOKEN` (read only as `env.BGG_API_TOKEN`). Sent as `Authorization: Bearer <token>` to
    `https://boardgamegeek.com/xmlapi2` (no `www`). Docs: https://boardgamegeek.com/using_the_xml_api
 2. **GameUPC key.** `/test` works with the public test key (`test_test_test_test_test`) but
    is wiped periodically; `/v1` (production) needs a key by email. `wrangler secret put GAMEUPC_KEY`,
@@ -54,6 +54,13 @@ Three cases (GameUPC `bgg_info_status`):
   Within one isolate, confirm admission (same-IP/10-minute check, consuming the one-confirm-per-lookup
   marker, cap check, day-count write) runs one at a time and finishes before the POST; the isolate
   also keeps its own day count and admits on max(memory, KV), so a slow KV can't let extras in.
+- BGG cap: at most `BGG_DAILY_CAP` (var, default 200) upstream BGG XML API calls (`/search`,
+  `/thing`) per UTC day, across all clients, counted in KV (`tt1:bgg:YYYY-MM-DD`). Each upstream
+  call counts (a `/search` with separate types is up to 3 calls); cache hits never count and are
+  still served after the cap. At the cap: 503 `{"error":"bgg daily cap reached"}` + `Retry-After`
+  (seconds to the next UTC midnight), no BGG call. Without the `TT_CACHE` KV binding every
+  uncached BGG lookup fails closed (503 `not configured`, no BGG call). Same admission pattern as
+  the confirm cap: counted before the call, never decremented, max(isolate memory, KV).
 - **KV `TT_CACHE` is required for confirms**: without the binding, `/barcode/confirm` answers 503 and
   never POSTs. Lookups still work (isolate memory / Cache API).
 - POST body `{"user_id": userId}`. Each device makes its own random id (`crypto.randomUUID()`) the

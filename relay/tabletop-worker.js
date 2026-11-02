@@ -4,7 +4,8 @@
 // Worker secrets, answers cached. See relay/README-tabletop.md for what it needs.
 //
 // Secrets (wrangler secret put, never committed):
-//   BGG_TOKEN    BoardGameGeek application token (boardgamegeek.com/applications)
+//   BGG_API_TOKEN  BoardGameGeek application token (boardgamegeek.com/applications), sent only
+//                  as Authorization: Bearer to boardgamegeek.com (no www)
 //   GAMEUPC_KEY  GameUPC x-api-key
 // user_id: GameUPC's OpenAPI spec, https://gameupc.com/gameupc-oas.yaml (POST /upc/{upc}/bgg_id/{bgg_id},
 //   requestBody: "we require app authors to include a unique (but consistent) user_id for each user.
@@ -17,6 +18,9 @@
 // Vars (wrangler.toml [vars], optional):
 //   GAMEUPC_BASE "test" | "v1"   (default "test"; /test "will be wiped periodically")
 //   CONFIRM_DAILY_CAP  confirms forwarded to GameUPC per UTC day, all clients together (default 10)
+//   BGG_DAILY_CAP  upstream BGG XML API calls per UTC day, all clients together (default 200).
+//                  Cache hits never count. At the cap: 503 {"error":"bgg daily cap reached"} +
+//                  Retry-After, no BGG call. Needs KV: without TT_CACHE every BGG call is refused (503).
 // KV: TT_CACHE. Required for POST /barcode/confirm (503 without it: the daily cap and the
 // lookup-before-confirm record live there). Optional for lookups. Without it, answers go to the Workers Cache API (caches.default,
 // per data centre) and an isolate-memory map; KV is the shared, longest-lived option.
@@ -72,6 +76,7 @@ const CONFIG = {
   MAX_SEARCH_RESULTS: 40,
   KV_PREFIX: "tt1:",
   CONFIRM_DAILY_CAP: 10, // default; env CONFIRM_DAILY_CAP overrides
+  BGG_DAILY_CAP: 200, // default; env BGG_DAILY_CAP overrides (Micah's number)
   SEEN_TTL_S: 10 * 60, // a confirm needs a non-match lookup by the same IP within this window
 };
 const USER_AGENT = "FreeRangeMedia-tabletop-relay/0.1 (personal, non-commercial; +https://freerangeice.github.io/media-shelf/)";
@@ -162,11 +167,37 @@ function gameupc(env, path, init) {
 }
 const inflight = new Map();
 
+// ---------- BGG daily cap (same pattern as CONFIRM_DAILY_CAP) ----------
+// One KV counter per UTC day (tt1:bgg:YYYY-MM-DD), all clients together. Counted before the
+// call, never decremented. Admission runs inside bggChain (one BGG call at a time per isolate),
+// and uses max(isolate memory, KV) so a stale KV read can't let extra calls in. No KV: fail closed.
+class BggCapped extends Error { constructor(s) { super("bgg cap"); this.retryAfter = s; } }
+class BggNoKv extends Error {}
+const memBggDay = { day: "", n: 0 };
+function bggDailyCap(env) {
+  const n = Number(env.BGG_DAILY_CAP);
+  return env.BGG_DAILY_CAP != null && env.BGG_DAILY_CAP !== "" && Number.isInteger(n) && n >= 0 ? n : CONFIG.BGG_DAILY_CAP;
+}
+async function admitBgg(env) {
+  const kv = env.TT_CACHE;
+  if (!kv) throw new BggNoKv();
+  const now = Date.now();
+  const day = utcDay(now);
+  if (memBggDay.day !== day) { memBggDay.day = day; memBggDay.n = 0; }
+  const capKey = `${CONFIG.KV_PREFIX}bgg:${day}`;
+  const kvUsed = Number(await kv.get(capKey).catch(() => null)) || 0;
+  const used = Math.max(memBggDay.n, kvUsed);
+  if (used >= bggDailyCap(env)) throw new BggCapped(secsToUtcMidnight(now));
+  memBggDay.n = used + 1;
+  await kv.put(capKey, String(used + 1), { expirationTtl: 2 * 24 * 3600 }).catch(() => {});
+}
+
 // ---------- BGG (spaced calls, one at a time per isolate) ----------
 let nextBggAt = 0;
 let bggChain = Promise.resolve();
 function bgg(env, path) {
   const run = async () => {
+    await admitBgg(env); // daily cap, before any wait or call; throws BggCapped / BggNoKv
     const wait = nextBggAt - Date.now();
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     nextBggAt = Date.now() + CONFIG.BGG_GAP_MS;
@@ -174,7 +205,7 @@ function bgg(env, path) {
     const timer = setTimeout(() => ctl.abort(), CONFIG.UPSTREAM_TIMEOUT_MS);
     let res;
     try {
-      res = await fetch(`${CONFIG.BGG_API}${path}`, { headers: { Authorization: `Bearer ${env.BGG_TOKEN}`, Accept: "application/xml", "User-Agent": USER_AGENT }, signal: ctl.signal });
+      res = await fetch(`${CONFIG.BGG_API}${path}`, { headers: { Authorization: `Bearer ${env.BGG_API_TOKEN}`, Accept: "application/xml", "User-Agent": USER_AGENT }, signal: ctl.signal });
     } catch { throw new Upstream("BGG did not answer"); } finally { clearTimeout(timer); }
     if (res.status === 202 || res.status === 500 || res.status === 503 || res.status === 429) {
       nextBggAt = Math.max(nextBggAt, Date.now() + CONFIG.RETRY_LATER_S * 1000);
@@ -394,13 +425,13 @@ export default {
       }
       if (request.method !== "GET") return json({ error: "not found" }, 404, origin);
       if (url.pathname === "/search") {
-        if (!env.BGG_TOKEN) return json({ error: "not configured" }, 503, origin);
+        if (!env.BGG_API_TOKEN) return json({ error: "not configured" }, 503, origin);
         const q = (url.searchParams.get("q") || "").trim();
         if (q.length < 2 || q.length > 100) return json({ error: "q must be 2 to 100 characters" }, 400, origin);
         return json(await search(env, q), 200, origin);
       }
       if (url.pathname === "/thing") {
-        if (!env.BGG_TOKEN) return json({ error: "not configured" }, 503, origin);
+        if (!env.BGG_API_TOKEN) return json({ error: "not configured" }, 503, origin);
         const ids = [...new Set((url.searchParams.get("ids") || "").split(",").map((s) => s.trim()).filter(Boolean))];
         if (!ids.length || ids.length > CONFIG.BGG_MAX_THING_IDS || !ids.every((s) => /^[1-9]\d{0,8}$/.test(s))) return json({ error: "ids: 1 to 20 numbers" }, 400, origin);
         return json(await things(env, ids), 200, origin);
@@ -413,6 +444,8 @@ export default {
       }
       return json({ error: "not found" }, 404, origin);
     } catch (err) {
+      if (err instanceof BggCapped) return json({ error: "bgg daily cap reached" }, 503, origin, { "Retry-After": String(err.retryAfter) });
+      if (err instanceof BggNoKv) return json({ error: "not configured" }, 503, origin);
       if (err instanceof Busy) return json({ error: "busy" }, 503, origin, { "Retry-After": String(err.retryAfter) });
       if (err instanceof SlowDown) return json({ error: "slow down" }, 429, origin, { "Retry-After": String(err.retryAfter) });
       if (err instanceof BadInput) return json({ error: "bad upc" }, 400, origin);
@@ -422,4 +455,4 @@ export default {
 };
 
 // Exported for local unit tests only.
-export const _test = { USER_ID_RE, parseSearch, parseThings, shapeUpc, CONFIG, secsToUtcMidnight, utcDay };
+export const _test = { USER_ID_RE, parseSearch, parseThings, shapeUpc, CONFIG, secsToUtcMidnight, utcDay, bggDailyCap };

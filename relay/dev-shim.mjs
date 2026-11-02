@@ -8,6 +8,7 @@
 // - NO_KV=1: no TT_CACHE binding at all (lookups use memory only; POST /barcode/confirm -> 503).
 //   Without KV_FILE (and without NO_KV) the KV stand-in is in memory for the shim's lifetime.
 // - CONFIRM_DAILY_CAP: passed through to the worker (global confirms per UTC day, default 10).
+// - BGG_DAILY_CAP: passed through (global upstream BGG calls per UTC day, default 200). No BGG token here.
 // - MOCK_GET=1: GameUPC GETs are mocked too (a "choose" answer with two entries, nothing sent
 //   upstream), for abuse / cap tests with made-up UPCs.
 // - UPSTREAM_LOG: one JSON line per upstream call (method, path, mocked); the key is never logged.
@@ -26,7 +27,7 @@ const TT_CACHE = {
   // KEEP_CACHE=1: a (mocked) confirm doesn't drop the cached answer, so tests never re-GET v1.
   async delete(k) { if (process.env.KEEP_CACHE === "1" && k.includes(":u:")) return log({ cacheDeleteSkipped: k }); delete kvData[k]; saveKv(); },
 };
-const env = { GAMEUPC_KEY: process.env.GAMEUPC_KEY, GAMEUPC_BASE: process.env.GAMEUPC_BASE, DEV_ORIGIN: process.env.DEV_ORIGIN, CONFIRM_DAILY_CAP: process.env.CONFIRM_DAILY_CAP, ...(process.env.NO_KV === "1" ? {} : { TT_CACHE }) };
+const env = { GAMEUPC_KEY: process.env.GAMEUPC_KEY, GAMEUPC_BASE: process.env.GAMEUPC_BASE, DEV_ORIGIN: process.env.DEV_ORIGIN, CONFIRM_DAILY_CAP: process.env.CONFIRM_DAILY_CAP, BGG_DAILY_CAP: process.env.BGG_DAILY_CAP, ...(process.env.NO_KV === "1" ? {} : { TT_CACHE }) };
 
 const realFetch = globalThis.fetch;
 const log = (o) => LOG && fs.appendFileSync(LOG, JSON.stringify({ t: new Date().toISOString(), ...o }) + "\n");
