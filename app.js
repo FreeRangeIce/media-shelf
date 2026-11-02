@@ -5,7 +5,7 @@
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Bump it with the service worker cache each release: it must match sw.js's CACHE name
   // (media-shelf-v37), which the tests check.
-  const APP_VERSION = 39;
+  const APP_VERSION = 40;
   const STORAGE_KEY = "media-tracker-v1";
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
   const RAWG_KEY_STORAGE = "media-shelf-rawg-key";
