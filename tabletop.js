@@ -50,6 +50,16 @@
     } catch {}
     return null;
   }
+  /**
+   * BoardGameGeek credit ("Powered by BGG" linked logo, BGG terms). Shown ONLY when
+   * GAMEUPC_LOOKUP.enabled is true: under each lookup result that shows BGG data (match,
+   * suggestions, confirm, picked; never the no-data state or the Save bar) and as the Tabletop
+   * footer line. While the flag is off nothing of it is in the DOM. The svg is BGG's official art,
+   * unaltered; width/height keep its 342:76 ratio.
+   */
+  const bggCreditOn = () => GAMEUPC_LOOKUP.enabled === true;
+  const BGG_LOGO = `<a class="tt-bgg-logo" href="https://boardgamegeek.com" target="_blank" rel="noopener"><img src="icons/powered-by-bgg.svg" alt="Powered by BGG" width="162" height="36" /></a>`;
+  const bggLogo = () => (bggCreditOn() ? BGG_LOGO : "");
   const SUBTYPES = ["board", "card", "dice", "miniatures", "rpg", "expansion"];
   const SUBTYPE_LABELS = { board: "Board", card: "Card", dice: "Dice", miniatures: "Miniatures", rpg: "RPG", expansion: "Expansion" };
   const STATUSES = ["owned", "want"];
@@ -702,7 +712,7 @@
       q.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
     }
   }
-  const upcStatus = (msg, cls = "") => upcView(`<p class="field-hint tt-upc-msg ${cls}" role="status">${esc(msg)}</p>`);
+  const upcStatus = (msg, cls = "", logo = false) => upcView(`<p class="field-hint tt-upc-msg ${cls}" role="status">${esc(msg)}</p>${logo ? bggLogo() : ""}`);
   const thumb = (c) => (c.thumbnail && !/blank_box_thumb/.test(c.thumbnail)
     ? `<img class="tt-upc-thumb" src="${esc(c.thumbnail)}" alt="" loading="lazy" referrerpolicy="no-referrer" />`
     : `<span class="tt-upc-thumb tt-upc-thumb-none" aria-hidden="true"></span>`);
@@ -720,7 +730,7 @@
     upcView(`<h3 class="tt-upc-h" id="tt-upc-h" tabindex="-1">${esc(UPC_COPY.pickTitle)}</h3>
 <p class="field-hint">${esc(UPC_COPY.pickHint)}</p>
 <ul class="tt-upc-list" aria-labelledby="tt-upc-h">${cands.map((c, i) => `<li><button type="button" class="tt-upc-cand" data-upc-pick="${i}" aria-label="${esc(c.name + UPC_COPY.yearLabel(c.year))}">${candRow(c)}</button></li>`).join("")}</ul>
-<button type="button" class="tt-upc-secondary" data-upc-none="1">${esc(UPC_COPY.noneOfThese)}</button>`, "#tt-upc-h");
+<button type="button" class="tt-upc-secondary" data-upc-none="1">${esc(UPC_COPY.noneOfThese)}</button>${bggLogo()}`, "#tt-upc-h");
   }
   function showConfirmPick(i) {
     const c = look.data.candidates[i];
@@ -730,7 +740,7 @@
 <div class="tt-upc-cand tt-upc-cand-static">${candRow(c)}</div>
 <p class="field-hint" id="tt-upc-what">${esc(UPC_COPY.confirmWhat(look.upc))}</p>
 <p class="field-hint" id="tt-upc-wrong">${esc(UPC_COPY.confirmWrong)}</p>
-<div class="tt-upc-actions"><button type="button" class="btn btn-ghost" data-upc-cancel="1">${esc(UPC_COPY.cancel)}</button><button type="button" class="btn btn-primary" data-upc-confirm="1">${esc(UPC_COPY.confirm)}</button></div></div>`, "#tt-upc-h");
+<div class="tt-upc-actions"><button type="button" class="btn btn-ghost" data-upc-cancel="1">${esc(UPC_COPY.cancel)}</button><button type="button" class="btn btn-primary" data-upc-confirm="1">${esc(UPC_COPY.confirm)}</button></div></div>${bggLogo()}`, "#tt-upc-h");
   }
   function showNone() {
     look.status = "none"; // "None of these" joins the no-data path: hand entry, ask before any send
@@ -761,7 +771,7 @@
       look.status = d.status;
       if (d.status === "verified" && d.candidates[0]) {
         fillFromCandidate(d.candidates[0], false);
-        upcStatus(UPC_COPY.found(d.candidates[0].name), "tt-upc-found");
+        upcStatus(UPC_COPY.found(d.candidates[0].name), "tt-upc-found", true);
       } else if (d.status === "choose" && d.candidates.length) showChoose();
       else showNone();
     }).catch((err) => {
@@ -805,7 +815,7 @@
         look.confirmed = { bggId: c.bggId };
         lostConfirm = false;
         fillFromCandidate(c, true);
-        upcStatus(UPC_COPY.picked(c.name));
+        upcStatus(UPC_COPY.picked(c.name), "", true);
         F("tt-title").focus();
       } else if (b.dataset.upcSend) {
         look.answer = b.dataset.upcSend;
@@ -821,6 +831,17 @@
     barcodeLookupOn = cfg;
   }
   let barcodeLookupOn = null;
+  /** Tabletop footer credit: only built when GAMEUPC_LOOKUP.enabled is true (else not in the DOM). */
+  function setupBggFooter() {
+    if (!bggCreditOn()) return;
+    const view = $("#tabletop-view");
+    if (!view || F("tt-bgg-credit")) return;
+    const p = document.createElement("p");
+    p.className = "tt-bgg-credit";
+    p.id = "tt-bgg-credit";
+    p.innerHTML = `<span class="tt-bgg-credit-text">Game data from BoardGameGeek</span>${BGG_LOGO}`;
+    view.appendChild(p);
+  }
   // A confirmed pick whose barcode was then edited away (look is dropped on a new code).
   let lostConfirm = false;
   function resetBarcodeLookup() {
@@ -1070,6 +1091,7 @@
       load();
       bind();
       setupBarcodeLookup();
+      setupBggFooter();
     },
     show,
     render,

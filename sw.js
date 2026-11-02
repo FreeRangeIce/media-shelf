@@ -32,6 +32,7 @@ const ASSETS = [
   "./icons/icon-512.png",
   "./icons/apple-touch-icon.png",
   "./icons/powered-by-google.png",
+  "./icons/powered-by-bgg.svg",
 ];
 
 self.addEventListener("install", (event) => {

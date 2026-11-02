@@ -3837,3 +3837,58 @@ body.modal-open {
     white-space: nowrap;
   }
 }
+
+/* BoardGameGeek credit ("Powered by BGG", BGG's official art, never recoloured). Built only
+   when GAMEUPC_LOOKUP.enabled is true. The link is the tap target (>= 44px tall via padding);
+   the img's width/height attributes reserve its box, so the result panel doesn't shift. 36px
+   tall on phones, 40px from 601px. */
+.tt-bgg-logo {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 4px 0;
+  box-sizing: border-box;
+  border-radius: var(--radius-sm);
+  max-width: 100%;
+}
+.tt-bgg-logo img {
+  display: block;
+  height: 36px;
+  width: auto;
+  max-width: 100%;
+}
+.tt-bgg-logo:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.tt-upc-panel > .tt-bgg-logo {
+  margin-top: var(--space-2);
+}
+/* Footer line under the saved list. The list sits on the oak (dark), so the navy lettering
+   goes on a white chip (8px padding); the text is the muted cream used on the oak. */
+.tt-bgg-credit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-6) 0 0;
+  padding-inline: max(0px, env(safe-area-inset-left)) max(0px, env(safe-area-inset-right));
+  font-size: 13px;
+  line-height: 1.4;
+  color: #c4b8a2;
+  text-align: center;
+}
+.tt-bgg-credit .tt-bgg-logo {
+  padding: 8px;
+  min-height: 52px;
+  background: #fff;
+}
+.tt-bgg-credit .tt-bgg-logo:focus-visible {
+  outline-color: #f3ead7;
+}
+@media (min-width: 601px) {
+  .tt-bgg-logo img {
+    height: 40px;
+  }
+}
