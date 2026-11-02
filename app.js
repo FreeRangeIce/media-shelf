@@ -5,8 +5,50 @@
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Bump it with the service worker cache each release: it must match sw.js's CACHE name
   // (media-shelf-v37), which the tests check.
-  const APP_VERSION = 40;
+  const APP_VERSION = 41;
   const STORAGE_KEY = "media-tracker-v1";
+
+  /*
+   * Duo fix (v41): while any sheet is open (body.modal-open), the page behind is pinned in
+   * place, so iOS can't scroll the page itself while the keyboard is up. Before this, scrolling
+   * the Add sheet with the keyboard open scrolled the page too, and when the keyboard closed
+   * the fixed sheet stayed pushed up by the keyboard's height: Cancel / Save floated mid-screen
+   * with the shelf showing below. The page goes back to where it was when the sheet closes.
+   * Every place that opens or closes a sheet toggles body.modal-open, so one observer covers
+   * them all. No viewport meta change; pinch zoom is untouched.
+   */
+  (function pinPageUnderSheets() {
+    let pinnedY = null;
+    const body = document.body;
+    const sync = () => {
+      const open = body.classList.contains("modal-open");
+      if (open && pinnedY === null) {
+        pinnedY = window.scrollY;
+        body.style.position = "fixed";
+        body.style.top = `-${pinnedY}px`;
+        body.style.left = "0";
+        body.style.right = "0";
+      } else if (!open && pinnedY !== null) {
+        const y = pinnedY;
+        pinnedY = null;
+        body.style.position = body.style.top = body.style.left = body.style.right = "";
+        window.scrollTo(0, y);
+      }
+    };
+    new MutationObserver(sync).observe(body, { attributes: true, attributeFilter: ["class"] });
+    // When the keyboard closes (the visual viewport grows back), iOS can leave the view
+    // offset by the keyboard's height. With the page pinned there is nothing to scroll, so
+    // this only puts the view back at the top of the screen.
+    const vv = window.visualViewport;
+    if (vv) {
+      let lastH = vv.height;
+      vv.addEventListener("resize", () => {
+        const grew = vv.height > lastH + 80;
+        lastH = vv.height;
+        if (grew && pinnedY !== null && (window.scrollY !== 0 || vv.offsetTop !== 0)) window.scrollTo(0, 0);
+      });
+    }
+  })();
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
   const RAWG_KEY_STORAGE = "media-shelf-rawg-key";
   const LAST_BACKUP_STORAGE = "media-shelf-last-backup";
