@@ -51,6 +51,9 @@ Three cases (GameUPC `bgg_info_status`):
   upstream POST; the page saves anyway and shows "Saved. The barcode match wasn’t sent." KV is
   eventually consistent across locations, so the cap is exact per location, soft globally. A
   counted confirm stays counted even if GameUPC then fails.
+  Within one isolate, confirm admission (same-IP/10-minute check, consuming the one-confirm-per-lookup
+  marker, cap check, day-count write) runs one at a time and finishes before the POST; the isolate
+  also keeps its own day count and admits on max(memory, KV), so a slow KV can't let extras in.
 - **KV `TT_CACHE` is required for confirms**: without the binding, `/barcode/confirm` answers 503 and
   never POSTs. Lookups still work (isolate memory / Cache API).
 - POST body `{"user_id": GAMEUPC_USER_ID}` (secret, >= 8 chars, stable; one id for every confirm).

@@ -318,23 +318,43 @@ function dailyCap(env) {
   const n = Number(env.CONFIRM_DAILY_CAP);
   return Number.isInteger(n) && n >= 0 ? n : CONFIG.CONFIRM_DAILY_CAP;
 }
+// Confirm admission runs one at a time per isolate (like upcChain): seen-check, marker
+// consumption, cap check and the day-count write all finish before the next admission starts
+// and before any POST. memDay is this isolate's own count, so a slow or stale KV read can't
+// let extra confirms in (admission uses max(memory, KV)).
+let admitChain = Promise.resolve();
+const memDay = { day: "", n: 0 };
+function admitConfirm(env, request, upc) {
+  const run = async () => {
+    const kv = env.TT_CACHE;
+    // 1. this client was served a non-match for this UPC in the last 10 minutes (KV record)
+    const seenKey = `${CONFIG.KV_PREFIX}seen:${upc}:${clientIp(request)}`;
+    const seenAt = Number(await kv.get(seenKey).catch(() => null));
+    if (!seenAt || Date.now() - seenAt > CONFIG.SEEN_TTL_S * 1000) return { status: 409, body: { error: "not postable" } };
+    const known = await cacheGet(env, `u:${upc}`);
+    if (known && known.status === "verified") return { status: 409, body: { error: "not postable" } };
+    throttle(request, "post", CONFIG.CLIENT_MAX_CONFIRMS);
+    // 2. global daily cap (all clients). Counted before the POST, never decremented (a failed
+    // POST still counts). KV is eventually consistent across data centres: a soft cap there.
+    const now = Date.now();
+    const day = utcDay(now);
+    if (memDay.day !== day) { memDay.day = day; memDay.n = 0; }
+    const capKey = `${CONFIG.KV_PREFIX}confirms:${day}`;
+    const kvUsed = Number(await kv.get(capKey).catch(() => null)) || 0;
+    const used = Math.max(memDay.n, kvUsed);
+    if (used >= dailyCap(env)) throw new SlowDown(secsToUtcMidnight(now));
+    memDay.n = used + 1;
+    await kv.put(capKey, String(used + 1), { expirationTtl: 2 * 24 * 3600 }).catch(() => {});
+    await kv.delete(seenKey).catch(() => {}); // one confirm per lookup
+    return null; // admitted
+  };
+  const p = admitChain.then(run, run);
+  admitChain = p.catch(() => {});
+  return p;
+}
 async function confirmBarcode(env, request, upc, bggId) {
-  const kv = env.TT_CACHE;
-  // 1. this client was served a non-match for this UPC in the last 10 minutes (KV record)
-  const seenKey = `${CONFIG.KV_PREFIX}seen:${upc}:${clientIp(request)}`;
-  const seenAt = Number(await kv.get(seenKey).catch(() => null));
-  if (!seenAt || Date.now() - seenAt > CONFIG.SEEN_TTL_S * 1000) return { status: 409, body: { error: "not postable" } };
-  const known = await cacheGet(env, `u:${upc}`);
-  if (known && known.status === "verified") return { status: 409, body: { error: "not postable" } };
-  throttle(request, "post", CONFIG.CLIENT_MAX_CONFIRMS);
-  // 2. global daily cap (all clients), counted in KV before the POST. KV is eventually
-  // consistent across data centres, so this is a soft cap there; exact within one location.
-  const now = Date.now();
-  const capKey = `${CONFIG.KV_PREFIX}confirms:${utcDay(now)}`;
-  const used = Number(await kv.get(capKey).catch(() => null)) || 0;
-  if (used >= dailyCap(env)) throw new SlowDown(secsToUtcMidnight(now));
-  await kv.put(capKey, String(used + 1), { expirationTtl: 2 * 24 * 3600 });
-  await kv.delete(seenKey).catch(() => {}); // one confirm per lookup
+  const refused = await admitConfirm(env, request, upc);
+  if (refused) return refused;
   const res = await gameupc(env, `/upc/${encodeURIComponent(upc)}/bgg_id/${bggId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
