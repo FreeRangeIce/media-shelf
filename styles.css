@@ -3721,8 +3721,91 @@ body.modal-open {
   color: var(--text-muted);
 }
 
+/* "None of these": a text button under the list, not a card (same look as .tt-match-rest). */
 .tt-upc-secondary {
+  appearance: none;
+  display: block;
   min-height: var(--tap);
+  margin-top: var(--space-1);
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.tt-upc-secondary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+/* Match line ("Found …"): body size and ink, not a muted hint. */
+.tt-upc-msg.tt-upc-found {
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+
+/* Send-ask game row: same bordered row as the Confirm card; barcode never breaks. */
+.tt-upc-nowrap {
+  white-space: nowrap;
+}
+
+/* 12px from Look up barcode to its status line / panel; 24px from a shown panel to the next label. */
+.tt-upc .tt-upc-panel {
+  margin-top: var(--space-3);
+}
+
+.item-form .form-row.tt-upc:has(.tt-upc-panel:not([hidden])) {
+  margin-bottom: var(--space-6);
+}
+
+.tt-upc-panel > :last-child,
+.tt-upc-confirm > :last-child {
+  margin-bottom: 0;
+}
+
+/* Lookup on only (#tt-upc exists): the Tabletop sheet's Cancel / Save bar is pinned like the
+   v39 Add sheet bar (.item-form .form-actions): 1px rule, 24px fade above it. Flag off: no
+   #tt-upc, so none of this applies and the sheet stays exactly as v39. */
+#tt-form-modal > .modal-panel:has(#tt-upc) {
+  scroll-padding-bottom: calc(8.25rem + env(safe-area-inset-bottom, 0px));
+}
+
+#tt-form:has(#tt-upc) > .form-actions-right {
+  position: sticky;
+  bottom: calc(-1 * var(--space-6));
+  z-index: 1;
+  margin-top: var(--space-5);
+  margin-bottom: calc(-1 * var(--space-6));
+  padding-top: calc(var(--space-4) + var(--space-4));
+  padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  justify-content: flex-end;
+}
+
+#tt-form:has(#tt-upc) > .form-actions-right::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 1px);
+  height: var(--space-6);
+  background: linear-gradient(to bottom, rgba(255, 253, 248, 0), var(--bg-elevated));
+  pointer-events: none;
+}
+
+/* While the Confirm card or the send-ask is open, Save is an outline (one filled button on
+   screen). Back to filled as soon as the question is answered (the card is gone). */
+#tt-form:has(.tt-upc-confirm) #tt-save,
+#tt-form:has(.tt-upc-confirm) #tt-save:hover {
+  background: transparent;
+  border: 1px solid var(--text-muted);
+  color: var(--text);
 }
 
 .tt-upc-confirm p {
@@ -3739,4 +3822,17 @@ body.modal-open {
 
 .tt-upc-actions .btn {
   min-height: var(--tap);
+}
+
+/* Narrow phones (320): Cancel / Save only / Save and send stay on one row. */
+@media (max-width: 359px) {
+  .tt-upc-actions {
+    flex-wrap: nowrap;
+  }
+
+  .tt-upc-actions .btn {
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+    white-space: nowrap;
+  }
 }

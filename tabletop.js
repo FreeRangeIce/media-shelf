@@ -684,7 +684,7 @@
     upcView(`<h3 class="tt-upc-h" id="tt-upc-h" tabindex="-1">${esc(UPC_COPY.pickTitle)}</h3>
 <p class="field-hint">${esc(UPC_COPY.pickHint)}</p>
 <ul class="tt-upc-list" aria-labelledby="tt-upc-h">${cands.map((c, i) => `<li><button type="button" class="tt-upc-cand" data-upc-pick="${i}" aria-label="${esc(c.name + UPC_COPY.yearLabel(c.year))}">${candRow(c)}</button></li>`).join("")}</ul>
-<button type="button" class="btn btn-ghost tt-upc-secondary" data-upc-none="1">${esc(UPC_COPY.noneOfThese)}</button>`, "#tt-upc-h");
+<button type="button" class="tt-upc-secondary" data-upc-none="1">${esc(UPC_COPY.noneOfThese)}</button>`, "#tt-upc-h");
   }
   function showConfirmPick(i) {
     const c = look.data.candidates[i];
@@ -703,7 +703,7 @@
   function showSendAsk(form) {
     upcView(`<div class="tt-upc-confirm" role="group" aria-labelledby="tt-upc-h" aria-describedby="tt-upc-what tt-upc-wrong">
 <h3 class="tt-upc-h" id="tt-upc-h" tabindex="-1">${esc(UPC_COPY.sendTitle)}</h3>
-<p class="tt-upc-what" id="tt-upc-what">${esc(UPC_COPY.sendWhat(str(form.title), bggNum(form.bggId), look.upc))}</p>
+<div class="tt-upc-cand tt-upc-cand-static" id="tt-upc-what" aria-label="${esc(UPC_COPY.sendWhat(str(form.title), bggNum(form.bggId), look.upc))}"><span class="tt-upc-cand-text"><span class="tt-upc-cand-name">${esc(str(form.title))}</span><span class="tt-upc-cand-year">BGG ${esc(bggNum(form.bggId))} · <span class="tt-upc-nowrap">Barcode ${esc(look.upc)}</span></span></span></div>
 <p class="field-hint" id="tt-upc-wrong">${esc(UPC_COPY.sendWhy)}</p>
 <div class="tt-upc-actions"><button type="button" class="btn btn-ghost" data-upc-ask-cancel="1">${esc(UPC_COPY.cancel)}</button><button type="button" class="btn btn-ghost" data-upc-send="skip">${esc(UPC_COPY.sendNo)}</button><button type="button" class="btn btn-primary" data-upc-send="send">${esc(UPC_COPY.sendYes)}</button></div></div>`, "#tt-upc-h");
   }
@@ -725,7 +725,7 @@
       look.status = d.status;
       if (d.status === "verified" && d.candidates[0]) {
         fillFromCandidate(d.candidates[0], false);
-        upcStatus(UPC_COPY.found(d.candidates[0].name));
+        upcStatus(UPC_COPY.found(d.candidates[0].name), "tt-upc-found");
       } else if (d.status === "choose" && d.candidates.length) showChoose();
       else showNone();
     }).catch((err) => {

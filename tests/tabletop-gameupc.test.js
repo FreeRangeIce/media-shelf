@@ -300,7 +300,19 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
   }
 
   /* ---------- shots + bar clearance at four sizes ---------- */
-  for (const [w, h] of [[390, 844], [466, 1000], [1000, 720], [1000, 420]]) {
+  /** Pinned bar facts: sticky, on screen at the panel bottom, 1px rule, 24px fade; Save filled or outline. */
+  const barFacts = (page) => page.evaluate(() => {
+    const bar = document.querySelector("#tt-form > .form-actions-right");
+    const panel = document.querySelector("#tt-form-modal > .modal-panel");
+    const r = bar.getBoundingClientRect(), pr = panel.getBoundingClientRect();
+    const cs = getComputedStyle(bar), fade = getComputedStyle(bar, "::before");
+    const save = getComputedStyle(document.querySelector("#tt-save"));
+    const filled = save.backgroundColor !== "rgba(0, 0, 0, 0)" && save.backgroundColor !== "transparent";
+    const btns = [...document.querySelectorAll("#tt-form > .form-actions-right > button.btn-primary, #tt-upc-panel .btn-primary")].filter((b) => b.offsetParent && getComputedStyle(b).backgroundColor !== "rgba(0, 0, 0, 0)");
+    return { sticky: cs.position === "sticky", onScreen: r.bottom <= Math.min(innerHeight, pr.bottom) + 1 && r.top >= pr.top, rule: cs.borderTopWidth === "1px", fadeH: fade.content !== "none" ? fade.height : "none", saveFilled: filled, filledCount: btns.length };
+  });
+  const barOk = (f) => f.sticky && f.onScreen && f.rule && f.fadeH === "24px";
+  for (const [w, h] of [[320, 700], [390, 844], [466, 1000], [1000, 720], [1000, 420]]) {
     const tag = `${w}x${h}`;
     const { ctx, page } = await open(browser, { lookup: true, width: w, height: h, relayDelay: 1200 });
     await addForm(page);
@@ -311,28 +323,60 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     await shot(page, `on-loading-${tag}`);
     await page.waitForSelector(".tt-upc-msg:not(.tt-upc-loading)");
     await shot(page, `on-match-${tag}`);
+    const ml = await page.evaluate(() => { const m = document.querySelector(".tt-upc-msg"), cs = getComputedStyle(m); return { px: cs.fontSize, color: cs.color, gap: Math.round(m.getBoundingClientRect().top - document.querySelector("#tt-upc-go").getBoundingClientRect().bottom) }; });
+    check(`${tag} match line 14px body ink; 12px under Look up barcode`, ml.px === "14px" && ml.color === "rgb(44, 36, 28)" && ml.gap === 12, JSON.stringify(ml));
+    const fm = await barFacts(page);
+    check(`${tag} match: pinned bar with rule + fade, Save filled`, barOk(fm) && fm.saveFilled, JSON.stringify(fm));
     let c = await clearOfBar(page);
     check(`${tag} match: buttons clear the bar, >=44px`, !c.bad.length && !c.small.length, JSON.stringify(c));
     await page.fill("#tt-barcode", "222222222224");
     await page.click("#tt-upc-go");
     await page.waitForSelector(".tt-upc-list");
     await shot(page, `on-suggestions-${tag}`);
+    let f = await barFacts(page);
+    check(`${tag} suggestions: pinned bar on screen, 1px rule, 24px fade, Save filled`, barOk(f) && f.saveFilled, JSON.stringify(f));
+    const none = await page.$eval("[data-upc-none]", (b) => { const cs = getComputedStyle(b); const last = document.querySelector(".tt-upc-list").getBoundingClientRect(); return { border: cs.borderTopWidth, bg: cs.backgroundColor, under: b.getBoundingClientRect().top >= last.bottom, deco: cs.textDecorationLine, h: b.getBoundingClientRect().height }; });
+    check(`${tag} "None of these": text button under the list (no border/fill, underlined, >=44px)`, none.border === "0px" && none.bg === "rgba(0, 0, 0, 0)" && none.under && none.deco === "underline" && none.h >= 44, JSON.stringify(none));
+    await page.$eval("[data-upc-none]", (e) => e.scrollIntoView({ block: "nearest" }));
+    await shot(page, `on-suggestions-none-of-these-${tag}`);
+    const gap24 = await page.evaluate(() => Math.round(document.querySelector('label[for="tt-coverUrl"]').getBoundingClientRect().top - document.querySelector("#tt-upc-panel").getBoundingClientRect().bottom));
+    check(`${tag} suggestions: 24px from the panel to the next label`, gap24 === 24, String(gap24));
     c = await clearOfBar(page);
     check(`${tag} suggestions: rows clear the bar when focused/scrolled, >=44px`, !c.bad.length && !c.small.length, JSON.stringify({ ...c, bad: c.bad.slice(0, 3) }));
     await page.$eval("#tt-upc-h", (e) => e.scrollIntoView({ block: "start" }));
     await page.click('[data-upc-pick="0"]');
     await shot(page, `on-confirm-${tag}`);
+    f = await barFacts(page);
+    check(`${tag} confirm: bar pinned; Save is an outline, one filled button on screen`, barOk(f) && !f.saveFilled && f.filledCount === 1, JSON.stringify(f));
     c = await clearOfBar(page);
     check(`${tag} confirm: Confirm/Cancel clear the bar, >=44px`, !c.bad.length && !c.small.length, JSON.stringify(c));
+    await page.click("[data-upc-confirm]");
+    await shot(page, `on-picked-${tag}`);
+    f = await barFacts(page);
+    check(`${tag} after Confirm: Save filled again`, barOk(f) && f.saveFilled, JSON.stringify(f));
     await page.fill("#tt-barcode", "333333333331");
     await page.click("#tt-upc-go");
     await page.waitForSelector("text=No match for this barcode");
     await shot(page, `on-nodata-${tag}`);
+    f = await barFacts(page);
+    check(`${tag} no data: pinned bar on screen with rule + fade, Save filled`, barOk(f) && f.saveFilled, JSON.stringify(f));
     await page.fill("#tt-title", "Shot game");
     await page.fill("#tt-bggId", "174430");
     await page.click("#tt-save");
     await page.waitForSelector('[data-upc-send="send"]');
     await shot(page, `on-send-ask-${tag}`);
+    f = await barFacts(page);
+    check(`${tag} send ask: bar pinned; Save is an outline, one filled button on screen`, barOk(f) && !f.saveFilled && f.filledCount === 1, JSON.stringify(f));
+    const ask = await page.evaluate(() => {
+      const row = document.querySelector("#tt-upc-what");
+      const sub = row.querySelector(".tt-upc-cand-year"), nw = row.querySelector(".tt-upc-nowrap");
+      const hs = parseFloat(getComputedStyle(document.querySelector("#tt-upc-h")).fontSize);
+      const texts = [...document.querySelectorAll(".tt-upc-confirm p, .tt-upc-confirm .tt-upc-cand-name")].map((e) => parseFloat(getComputedStyle(e).fontSize));
+      const tops = [...document.querySelectorAll(".tt-upc-actions .btn")].map((b) => Math.round(b.getBoundingClientRect().top));
+      return { bordered: getComputedStyle(row).borderTopWidth === "1px" && row.classList.contains("tt-upc-cand"), title: row.querySelector(".tt-upc-cand-name").textContent, sub: sub.textContent, subPx: getComputedStyle(sub).fontSize, muted: getComputedStyle(sub).color, nowrap: getComputedStyle(nw).whiteSpace, notBigger: texts.every((x) => x <= hs), oneRow: new Set(tops).size === 1, n: tops.length };
+    });
+    check(`${tag} send ask: bordered row, title then "BGG id · Barcode upc" 13px muted, barcode nowrap, text not bigger than heading`, ask.bordered && ask.title === "Shot game" && ask.sub === "BGG 174430 · Barcode 333333333331" && ask.subPx === "13px" && ask.muted === "rgb(92, 83, 72)" && ask.nowrap === "nowrap" && ask.notBigger, JSON.stringify(ask));
+    check(`${tag} send ask: the three buttons on one row`, ask.oneRow && ask.n === 3, JSON.stringify(ask));
     c = await clearOfBar(page);
     check(`${tag} send ask: buttons clear the bar, >=44px`, !c.bad.length && !c.small.length, JSON.stringify(c));
     const ov = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
