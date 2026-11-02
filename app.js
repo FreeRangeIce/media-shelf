@@ -4,7 +4,7 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Bump it with the service worker cache each release: it must match sw.js's CACHE name
-  // (media-shelf-v37), which the tests check.
+  // (media-shelf-v41), which the tests check.
   const APP_VERSION = 41;
   const STORAGE_KEY = "media-tracker-v1";
 
@@ -17,6 +17,12 @@
    * Every place that opens or closes a sheet toggles body.modal-open, so one observer covers
    * them all. No viewport meta change; pinch zoom is untouched.
    */
+  // Clears body.modal-open only once no sheet is still showing (app or Tabletop), so closing
+  // a dialog on top of another sheet never unpins the page behind it.
+  function releaseModalOpen() {
+    if (!document.querySelector(".modal:not([hidden])")) document.body.classList.remove("modal-open");
+  }
+
   (function pinPageUnderSheets() {
     let pinnedY = null;
     const body = document.body;
@@ -1691,7 +1697,7 @@
     closeScanModal(true);
     els.modal.hidden = true;
     els.modal.setAttribute("aria-hidden", "true");
-    document.body.classList.remove("modal-open");
+    releaseModalOpen();
     editingId = null;
     editingSnapshot = null;
     setLookupStatus("");
@@ -1771,7 +1777,7 @@
       els.scanModal.hidden &&
       (!els.settingsModal || els.settingsModal.hidden)
     ) {
-      document.body.classList.remove("modal-open");
+      releaseModalOpen();
     }
     const back = confirmReturnFocus;
     confirmReturnFocus = null;
@@ -3018,7 +3024,7 @@
       if (c) c.classList.remove("is-focus");
     });
     if (els.modal.hidden && els.scanModal.hidden && els.confirm.hidden) {
-      document.body.classList.remove("modal-open");
+      releaseModalOpen();
     }
     updateApiKeyHint();
   }
@@ -5554,7 +5560,7 @@
     els.scanModal.setAttribute("aria-hidden", "true");
     if (!silent && els.scanStatus) els.scanStatus.textContent = "";
     if (els.modal.hidden && els.confirm.hidden) {
-      document.body.classList.remove("modal-open");
+      releaseModalOpen();
     }
   }
 

@@ -1,4 +1,4 @@
-/* FreeRangeMedia service worker — cache version v39 */
+/* FreeRangeMedia service worker — cache version v41 */
 const CACHE = "media-shelf-v41";
 /*
  * Cross-origin responses (cover images, APIs, CDNs) are never written to the cache: only

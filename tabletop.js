@@ -398,16 +398,23 @@
   let returnFocus = null;
   let pendingDup = null;
 
+  // v41: Tabletop sheets set body.modal-open too, so app.js pins the page behind them while
+  // the keyboard is up (the Duo fix). It's cleared only when no other sheet is still open.
+  const releaseModalOpen = () => {
+    if (!document.querySelector(".modal:not([hidden])")) document.body.classList.remove("modal-open");
+  };
   function openModal(id) {
     const m = F(id);
     returnFocus = returnFocus || document.activeElement;
     m.hidden = false;
     m.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
   }
   function closeModal(id) {
     const m = F(id);
     m.hidden = true;
     m.setAttribute("aria-hidden", "true");
+    releaseModalOpen();
     if (F("tt-form-modal").hidden && F("tt-detail-modal").hidden && returnFocus) {
       try { returnFocus.focus(); } catch {}
       returnFocus = null;
@@ -640,7 +647,7 @@
       const finish = (result) => {
         modal.hidden = true;
         modal.setAttribute("aria-hidden", "true");
-        document.body.classList.remove("modal-open");
+        releaseModalOpen();
         cleanup();
         try { prevFocus && prevFocus.focus && prevFocus.focus(); } catch {}
         resolve(result);
