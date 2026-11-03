@@ -992,6 +992,7 @@ body {
   font-weight: var(--fw-semibold);
   letter-spacing: 0.02em;
   text-transform: uppercase;
+  white-space: nowrap; /* v45: "Video game" stays one pill */
 }
 
 .badge-type.book { background: var(--book-dim); color: var(--book); }

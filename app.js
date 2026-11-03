@@ -85,7 +85,7 @@
   const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
   const HTML5_QRCODE_CDN =
     "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js";
-  const TYPE_LABELS = { book: "Book", game: "Game", movie: "Movie", music: "Music", comic: "Comic" };
+  const TYPE_LABELS = { book: "Book", game: "Video game", movie: "Movie", music: "Music", comic: "Comic" };
   const STATUS_LABELS = {
     want: "Want",
     owned: "Owned",
@@ -152,7 +152,7 @@
    */
   const COUNT_NOUNS = {
     book: ["book", "books"],
-    game: ["game", "games"],
+    game: ["video game", "video games"],
     movie: ["movie", "movies"],
     music: ["music", "music"], // stats strip: lowercase like "0 movies" (the tab and type label stay "Music")
     comic: ["comic", "comics"],
@@ -2168,7 +2168,7 @@
         ? "Every comic here has its cover or was left as typed."
         : totalFilteredOut
         ? "Try a different filter or search."
-        : "Add a book, game, movie, or album to get started."; // PLACEHOLDER (Berean)
+        : "Add a book, video game, movie, or album to get started."; // PLACEHOLDER (Berean)
       $("#btn-empty-add").hidden = totalFilteredOut;
       return;
     }

@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="FreeRange" />
-  <title>FreeRangeMedia — Books · Games · Movies · Music</title>
+  <title>FreeRangeMedia — Books · Video games · Movies · Music</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
@@ -31,7 +31,7 @@
         </span>
         <div>
           <h1>FreeRangeMedia</h1>
-          <p class="tagline">Books · Games · Movies · Music — your personal shelf</p>
+          <p class="tagline"><span class="nowrap">Books · Video games · Movies · Music</span> <span class="nowrap">— your personal shelf</span></p>
         </div>
       </div>
       <div class="header-actions">
@@ -49,7 +49,7 @@
       <span class="type-tabs-fade-start" aria-hidden="true"></span>
       <button type="button" class="chip active" data-type="all" role="tab" aria-selected="true">All</button>
       <button type="button" class="chip" data-type="book" role="tab" aria-selected="false">Books</button>
-      <button type="button" class="chip" data-type="game" role="tab" aria-selected="false">Games</button>
+      <button type="button" class="chip" data-type="game" role="tab" aria-selected="false">Video games</button>
       <button type="button" class="chip" data-type="movie" role="tab" aria-selected="false">Movies</button>
       <button type="button" class="chip" data-type="music" role="tab" aria-selected="false">Music</button>
       <button type="button" class="chip" data-type="comic" role="tab" aria-selected="false">Comics</button>
@@ -121,14 +121,14 @@
     </section>
     <div id="empty-state" class="empty-state" hidden>
       <p class="empty-title">Nothing on this shelf yet</p>
-      <p class="empty-hint">Add a book, game, movie, or album to get started.</p>
+      <p class="empty-hint">Add a book, video game, movie, or album to get started.</p>
       <button type="button" class="btn btn-primary" id="btn-empty-add">+ Add your first item</button>
     </div>
   </main>
 
   <footer class="site-footer">
     <p>Your library is saved in this browser (<code>localStorage</code>). Back up, or Export in Settings, to keep a copy. Hosted on GitHub Pages.</p>
-    <p class="footer-credits"><span class="footer-credit">Game data from <a href="https://rawg.io" target="_blank" rel="noopener noreferrer">RAWG</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Movie data from <a href="https://www.omdbapi.com" target="_blank" rel="noopener noreferrer">OMDb</a> (<a class="nowrap" href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>)</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Music data from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Covers from the <a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer">Cover Art Archive</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit" id="footer-comic-credit"></span></p>
+    <p class="footer-credits"><span class="footer-credit">Video game data from <a href="https://rawg.io" target="_blank" rel="noopener noreferrer">RAWG</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Movie data from <a href="https://www.omdbapi.com" target="_blank" rel="noopener noreferrer">OMDb</a> (<a class="nowrap" href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>)</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Music data from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Covers from the <a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer">Cover Art Archive</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit" id="footer-comic-credit"></span></p>
     <!-- "App version v<APP_VERSION>" (cleared, Berean, Oct 11), same line as in Settings, filled by fillAppVersionLine() -->
     <p class="footer-version" id="footer-version"></p>
   </footer>
@@ -148,7 +148,7 @@
           <label for="field-type">Type <span class="req">*</span></label>
           <select id="field-type" required>
             <option value="book">Book</option>
-            <option value="game">Game</option>
+            <option value="game">Video game</option>
             <option value="movie">Movie</option>
             <option value="music">Music</option>
             <option value="comic">Comic</option>
@@ -597,7 +597,7 @@
           Paste rows copied from a spreadsheet, or type them with commas between the parts.
         </p>
         <div class="import-field">
-          <label for="import-games-text">Games to add</label>
+          <label for="import-games-text">Video games to add</label>
           <textarea id="import-games-text" rows="6" spellcheck="false" autocomplete="off" placeholder="Hades II, Steam, 2025&#10;Celeste, Switch"></textarea>
         </div>
         <div class="api-key-actions backup-actions import-file-actions">
@@ -754,7 +754,7 @@
 
         <section class="api-key-card" id="api-card-rawg" data-provider="rawg" tabindex="-1">
           <div class="api-key-card-head">
-            <h3>Games (RAWG)</h3>
+            <h3>Video games (RAWG)</h3>
             <span class="api-key-status" id="rawg-key-status" data-status="unset">Not set</span>
           </div>
           <p class="api-key-blurb">
