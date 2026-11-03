@@ -1595,6 +1595,7 @@
   function openModal(item, snapshot, { focusTitle = true } = {}) {
     if (els.modal.hidden) lastFocus = document.activeElement;
     dismissPlainToast();
+    syncTabletopTypeOption(!item);
     editingId = item ? item.id : null;
     statusTouched = false;
     scannedNewItem = false;
@@ -1690,6 +1691,35 @@
     set(els.fieldSourceUrl, c.sourceUrl);
     set(els.fieldCoverLabel, c.coverLabel);
     set(els.fieldCoverVariant, c.coverVariant ? "1" : "");
+  }
+
+  /**
+   * v45: Type "Tabletop game" (only when tabletop.js is loaded, new items only) swaps the media
+   * Add sheet for the Tabletop Add sheet in place, carrying Title and Barcode. The Tabletop sheet
+   * opens before this one hides, so body.modal-open never drops and the v41 page pin holds.
+   */
+  function syncTabletopTypeOption(isNew) {
+    let opt = els.fieldType.querySelector('option[value="tabletop"]');
+    if (TT && isNew && !opt) {
+      opt = document.createElement("option");
+      opt.value = "tabletop";
+      opt.textContent = "Tabletop game";
+      els.fieldType.appendChild(opt);
+    } else if (opt && !(TT && isNew)) opt.remove();
+  }
+
+  function swapToTabletop() {
+    const carry = { title: els.fieldTitle.value.trim(), barcode: els.fieldBarcode.value.trim() };
+    const back = lastFocus;
+    TT.openAddFrom(carry, back);
+    stopScanner();
+    closeScanModal(true);
+    els.modal.hidden = true;
+    els.modal.setAttribute("aria-hidden", "true");
+    editingId = null;
+    editingSnapshot = null;
+    setLookupStatus("");
+    lastFocus = null;
   }
 
   function closeModal() {
@@ -5791,6 +5821,7 @@
     });
     els.btnDelete.addEventListener("click", deleteCurrent);
     els.fieldType.addEventListener("change", () => {
+      if (els.fieldType.value === "tabletop") return swapToTabletop();
       lookupYearLoose = false;
       clearCarriedCreatorAndCover();
       updateFormatOptions();

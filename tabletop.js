@@ -1099,6 +1099,13 @@
     render,
     isActive: () => active,
     openAdd: () => openForm(null),
+    /** v45: the media Add sheet's Type "Tabletop game" swaps to this sheet in place, carrying
+     *  Title and Barcode. `returnTo` gets focus back when this sheet closes (the media sheet's opener). */
+    openAddFrom({ title = "", barcode = "" } = {}, returnTo) {
+      if (returnTo) returnFocus = returnTo;
+      openForm(null, { title });
+      F("tt-barcode").value = barcode;
+    },
     count: () => load().length,
     askHandMatches,
     /** Hand matches a merge of `incoming` would raise, without writing anything. */
