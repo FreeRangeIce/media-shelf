@@ -1,4 +1,4 @@
-# Video-game title lookup relay (local review build; not deployed)
+# Video-game title lookup relay (deployed)
 
 ## Verified primary documentation, read 2026-11-08
 
@@ -6,7 +6,7 @@
 - https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/#client-credentials-grant-flow : confidential server-only POST to `https://id.twitch.tv/oauth2/token`, form-urlencoded client credentials, response `expires_in`. This implementation derives `expires_at` from that value and refreshes proactively; a 401 gets one renewed-token retry, never an unbounded retry loop. Tokens/secrets are neither browser data nor public responses, logs, KV data or backups.
 - https://www.upcitemdb.com/wp/docs/main/development/api-rate-limits/ : the documentation calls the free tier **FREE**, 100 combined lookup/search requests/day, search subset 40/day, burst 6/minute, per IP. It documents `X-RateLimit-Reset`; the browser adapter also honors `Retry-After` if supplied. “Explorer” branding and that header's guaranteed availability were not established by this page. No new UPC plan or account is assumed.
 
-Live IGDB search quality, noisy retail names and real-device behavior have NOT been verified by these mocked tests. No provider calls are required for the suite. Public Exa/Firecrawl integrations were unavailable here; primary documentation was read directly.
+A deployed HTTPS Hades query returned choices including IGDB 113112 (2020), cover and platform/details; validation/CORS checks passed with one provider search. Noisy retail names and real-device behavior have NOT been verified. No provider calls are required for the suite. Public Exa/Firecrawl integrations were unavailable here; primary documentation was read directly.
 
 ## Split path and deliberate selection
 
@@ -18,16 +18,18 @@ Every result, including one result, requires a choice and **Use this match**. Ch
 
 New `igdbId` is additive and separate from `rawgId`, `externalId` and legacy cover source IDs. Old RAWG IDs, cover URLs and stored keys are not reinterpreted/deleted. Backups/exports keep both identities. The existing same-size no-cover tile handles legacy image failure. No image bytes are copied/cached by this relay. Tabletop BGG/GameUPC code and storage are unchanged.
 
-## Required deployment configuration — missing, not provisioned
+## Deployment configuration
 
-`wrangler-games.example.toml` is a review template, NOT an active deployment configuration. Before any approved deployment:
+Deployed Worker: `https://media-shelf-games.freerangeice.workers.dev`. KV: `media-shelf-games-limits` (`07f371db78924a9a8c11af68b2f56f29`). SQLite Durable Object: `media-shelf-games_GameCoordinator` (`33440eca3c13412985e28bac4a307db8`), migration `games-v1`. Server credentials are secret bindings only. Allowed origin is only `https://freerangeice.github.io`. The app safety budget remains 500/day; the verification used one reservation.
+
+`wrangler-games.example.toml` remains a reusable template, NOT the active configuration. Deployment configuration is maintained outside the repository, with no secret values. Configuration requirements:
 
 1. Provision/bind a real KV namespace as `GAME_LIMITS`; replace the explicit placeholder ID.
 2. Bind the SQLite Durable Object namespace `GAME_COORDINATOR` to `GameCoordinator` and apply its migration. All requests must use the fixed singleton name `game-upstream-v1` through the entrypoint. Do not expose an alternate uncoordinated route.
 3. Bind server secrets `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET` through the platform's approved secret mechanism. Do not paste values into source, configuration, URLs, logs or a client-side environment file.
 4. Set exact `ALLOWED_ORIGINS` (scheme/host/port origins, not path prefixes). Current template is `https://freerangeice.github.io`; local tests inject loopback origins only.
 5. Review `IGDB_APP_DAILY_CAP`: default **500**, allowed 1–10000. This is an **application-owned conservative admission budget**, NOT an IGDB allowance, not BGG's 200 and not a UPCitemdb plan quota. Failed auth reservations can consume this safety budget without spending an IGDB request. Each actual 401 retry also reserves budget. Per-IP client throttle: 10 requests/minute; bounded start queue 16.
-6. Only after deployment, endpoint verification and approval, set the browser `GAME_RELAY_URL` to the actual approved HTTPS relay origin. It is currently **empty**. Title search remains hidden without this usable configuration. There is a loopback-only test override `window.__FRM_GAME_RELAY__`; production origins cannot enable it.
+6. Only after deployment, endpoint verification and approval, set the browser `GAME_RELAY_URL` to the actual approved HTTPS relay origin. It is configured to the bare deployed origin above. Title search remains independently disabled with `GAME_TITLE_SEARCH_TESTED=false`, even when this relay is configured. There is a loopback-only test override `window.__FRM_GAME_RELAY__`; production origins cannot enable it.
 
 The singleton serializes admissions, spaces **actual** IGDB starts by 260ms, and limits open IGDB requests to eight. A slow OAuth acquisition cannot release a burst of previously admitted requests. The authoritative daily counter is Durable Object storage; KV is a required fail-closed mirror. KV alone is eventually consistent and non-atomic: it would NOT enforce a distributed global cap. The singleton/storage design avoids relying on KV increments for atomicity. Rotating coordinator names, multiple separately deployed environments or other clients using the same Twitch app can still bypass aggregate coordination; do not share credentials across uncoordinated deployments. Old durable daily keys remain small counters and need an operational retention policy if long-lived.
 
@@ -37,7 +39,7 @@ The existing direct UPCitemdb browser call remains per-user-IP and subject to it
 
 ## Review-only wording
 
-Footer: **Game data from IGDB.com.** Same muted credit location. Settings explain the split path, server relay and no personal game key; legacy RAWG key controls/reference links are retired without deleting stored data. Berean wording/terms review is pending. The owner previously accepted the personal/noncommercial storage-terms concern; this is not a fresh legal assurance or authorization to publish.
+Footer: **Game data from IGDB.com.** Same muted credit location. Settings explain the split path, server relay and no personal game key; legacy RAWG key controls/reference links are retired without deleting stored data. Berean cleared the pre-deployment wording; release configuration deltas receive separate review. The owner previously accepted the personal/noncommercial storage-terms concern; this is not a fresh legal assurance or authorization to publish.
 
 ## Tests
 

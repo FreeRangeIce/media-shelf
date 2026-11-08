@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Bump it with the service worker cache each release: it must match sw.js's CACHE name
-  // (media-shelf-v45), which the tests check.
-  const APP_VERSION = 45;
+  // (media-shelf-v46), which the tests check.
+  const APP_VERSION = 46;
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -97,7 +97,7 @@
     }
   })();
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
-  const GAME_RELAY_URL = ""; // Set only after the tested relay is deployed and approved.
+  const GAME_RELAY_URL = "https://media-shelf-games.freerangeice.workers.dev"; // Bare HTTPS origin; title search stays independently off.
   const GAME_TITLE_SEARCH_TESTED = false; // Enable separately only after live title-path review.
   function gameRelayUrl() {
     const local = ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);

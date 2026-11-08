@@ -55,12 +55,12 @@ ISFDB serves HTML without CORS for browser apps, so Lookup does not scrape it.
 
 **IMDb** reference link: `https://www.imdb.com/find/?q={title}` (and year when set). Movie UPC barcodes alone usually will not match — use a title or paste a cover URL.
 
-### Games (next combined review build; not deployed)
+### Games (v46)
 Barcode lookup stays **Wikidata + UPCitemdb → title**. IGDB is title → cover/details only; it is never asked to look up UPC/EAN. Retail titles are preserved conservatively (no generic dash/Edition trimming). All IGDB matches, even one, require explicit selection and Use before fields fill; Save is separate. A filled field still needs explicit Overwrite consent.
 
-The IGDB server relay is implemented and mocked-tested, but no endpoint/resources have been deployed and `GAME_RELAY_URL` is empty. Title search stays hidden without a usable configured relay. Without it, barcode results can name a title in the status but no IGDB details are claimed; manual entry and cover URLs remain available. No personal RAWG key is needed for new game lookup. Legacy `rawgId`, cover URLs and keys stay stored; additive `igdbId` never guesses/migrates old IDs. The existing image-failure placeholder keeps its frame.
+The IGDB server relay is deployed at `https://media-shelf-games.freerangeice.workers.dev`, with KV, a SQLite Durable Object and server-only Twitch secret bindings. One real title lookup and HTTPS validation/CORS checks passed. `GAME_RELAY_URL` uses that bare origin; **title search remains independently off** (`GAME_TITLE_SEARCH_TESTED=false`). Barcode-to-title lookup can request IGDB choices; manual entry and cover URLs remain available. No personal RAWG key is needed for new game lookup. Legacy `rawgId`, cover URLs and keys stay stored; additive `igdbId` never guesses/migrates old IDs. The existing image-failure placeholder keeps its frame.
 
-See [relay configuration, verified provider limits and blockers](relay/README-games.md). Footer copy for review: **Game data from IGDB.com.** IGDB reference links open the public search UI; they are not API calls. Movie lookup is unchanged (OMDb for movie covers).
+See [relay configuration, verified provider limits and blockers](relay/README-games.md). Footer copy: **Game data from IGDB.com.** IGDB reference links open the public search UI; they are not API calls. Movie lookup is unchanged (OMDb for movie covers).
 
 ### Comics
 - **Lookup** goes only to our comic relay, the Cloudflare Worker `frm-gcd` at `https://frm-gcd.freerangeice.workers.dev` (`COMIC_RELAY_URL` in `app.js`): `GET …/comic?series=&issue=[&year=][&publisher=]` (the app no longer calls `…/comic-covers`). The browser never calls the comic database itself. When the form's Year holds a 4-digit year it is sent as `year=` (GCD's name search is a “contains” match, so the year narrows it a lot). If `COMIC_RELAY_URL` is empty, or the dev-only key `localStorage["frm:devComicRelay"] = "off"` is set (tests use it), comic Lookup asks nothing and says “Comic lookup isn't set up yet. What you typed is kept.” (a barcode alone still gets the barcode miss line, with the code kept).
