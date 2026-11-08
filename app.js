@@ -26,6 +26,46 @@
   (function pinPageUnderSheets() {
     let pinnedY = null;
     const body = document.body;
+    const vv = window.visualViewport;
+    const viewportVars = ["--sheet-vv-top", "--sheet-vv-left", "--sheet-vv-width", "--sheet-vv-height"];
+    let frame = null, lastH = null, lastW = null, lowH = null, recovering = false, resetKey = "";
+    const clearViewport = () => viewportVars.forEach((name) => body.style.removeProperty(name));
+    const resetRecovery = () => { lastH = lastW = lowH = null; recovering = false; resetKey = ""; };
+    const updateViewport = () => {
+      frame = null;
+      if (pinnedY === null || !vv) return;
+      // Leave native pinch-zoom/panning alone. These are layout CSS pixels, not screen pixels.
+      if (Math.abs(vv.scale - 1) > 0.01 || !(vv.width > 0 && vv.height > 0)) {
+        clearViewport();
+        resetRecovery();
+        return;
+      }
+      const h = vv.height, w = vv.width;
+      if (lastH === null || Math.abs(w - lastW) > 1) {
+        lowH = h;
+        recovering = false;
+        resetKey = "";
+      } else if (h < lastH - 1) {
+        lowH = h;
+        recovering = false;
+        resetKey = "";
+      }
+      // Keyboard dismissal can arrive as many small resizes. Compare with the low-water
+      // height, not just the preceding event; keep recovery armed for a later offset scroll.
+      if (h > lowH + 80) recovering = true;
+      lastH = h;
+      lastW = w;
+      [vv.offsetTop, vv.offsetLeft, w, h].forEach((value, i) => body.style.setProperty(viewportVars[i], `${value}px`));
+      const key = [h, w, vv.offsetTop, vv.offsetLeft, window.scrollX, window.scrollY].join(":");
+      if (recovering && key !== resetKey && (window.scrollY !== 0 || window.scrollX !== 0 || vv.offsetTop !== 0 || vv.offsetLeft !== 0)) {
+        resetKey = key;
+        window.scrollTo(0, 0);
+        scheduleViewport(); // remeasure after a synchronous scroll; no timer/polling loop
+      }
+    };
+    const scheduleViewport = () => {
+      if (pinnedY !== null && frame === null) frame = requestAnimationFrame(updateViewport);
+    };
     const sync = () => {
       const open = body.classList.contains("modal-open");
       if (open && pinnedY === null) {
@@ -34,25 +74,26 @@
         body.style.top = `-${pinnedY}px`;
         body.style.left = "0";
         body.style.right = "0";
+        resetRecovery();
+        // Measure before the opening sheet focuses a field and brings up the keyboard.
+        updateViewport();
       } else if (!open && pinnedY !== null) {
         const y = pinnedY;
         pinnedY = null;
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = null;
+        clearViewport();
+        resetRecovery();
         body.style.position = body.style.top = body.style.left = body.style.right = "";
         window.scrollTo(0, y);
       }
     };
     new MutationObserver(sync).observe(body, { attributes: true, attributeFilter: ["class"] });
-    // When the keyboard closes (the visual viewport grows back), iOS can leave the view
-    // offset by the keyboard's height. With the page pinned there is nothing to scroll, so
-    // this only puts the view back at the top of the screen.
-    const vv = window.visualViewport;
     if (vv) {
-      let lastH = vv.height;
-      vv.addEventListener("resize", () => {
-        const grew = vv.height > lastH + 80;
-        lastH = vv.height;
-        if (grew && pinnedY !== null && (window.scrollY !== 0 || vv.offsetTop !== 0)) window.scrollTo(0, 0);
-      });
+      vv.addEventListener("resize", scheduleViewport);
+      vv.addEventListener("scroll", scheduleViewport);
+      window.addEventListener("resize", scheduleViewport);
+      body.addEventListener("focusout", scheduleViewport);
     }
   })();
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";

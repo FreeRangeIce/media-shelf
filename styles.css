@@ -1276,9 +1276,19 @@ body {
   padding: 0;
 }
 
-/* v45 (Duo): the cover is its own fixed layer on the whole screen, not a child box of
-   .modal's size, so after the keyboard closes it can't be left at a stale (keyboard-open)
-   size with the oak page showing along the bottom / right. No vh height on it. */
+/* The host and cover share measured visual-viewport bounds while a sheet is open.
+   inset:0 alone follows the browser's fixed-position viewport, which may lag keyboard
+   dismissal. Variables are removed on close and during pinch zoom (native behavior). */
+body.modal-open .modal,
+body.modal-open .modal-backdrop {
+  top: var(--sheet-vv-top, 0px);
+  left: var(--sheet-vv-left, 0px);
+  right: auto;
+  bottom: auto;
+  width: var(--sheet-vv-width, 100%);
+  height: var(--sheet-vv-height, 100%);
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1290,7 +1300,7 @@ body {
   width: 100%;
   max-width: 520px;
   max-height: min(92vh, 720px, calc(100vh - var(--sheet-gap))); /* fallback without dvh */
-  max-height: min(92dvh, 720px, calc(100dvh - var(--sheet-gap)));
+  max-height: min(92dvh, 720px, calc(var(--sheet-vv-height, 100dvh) - var(--sheet-gap)));
   overflow: auto;
   overscroll-behavior: contain;
   background: var(--bg-elevated);
@@ -1304,7 +1314,7 @@ body {
 .modal-panel-sm {
   max-width: 380px;
   max-height: min(92vh, 720px, calc(100vh - var(--sheet-gap) - 30vh)); /* fallback */
-  max-height: min(92dvh, 720px, calc(100dvh - var(--sheet-gap) - 30vh));
+  max-height: min(92dvh, 720px, calc(var(--sheet-vv-height, 100dvh) - var(--sheet-gap) - 30vh));
   margin: auto var(--space-4) 30vh;
   border-radius: var(--radius);
   padding: var(--space-5);
@@ -1313,7 +1323,7 @@ body {
 .modal-panel-settings {
   max-width: 560px;
   max-height: min(92vh, 860px, calc(100vh - var(--sheet-gap) - 8vh)); /* fallback */
-  max-height: min(92dvh, 860px, calc(100dvh - var(--sheet-gap) - 8vh));
+  max-height: min(92dvh, 860px, calc(var(--sheet-vv-height, 100dvh) - var(--sheet-gap) - 8vh));
   margin: auto var(--space-4) 8vh;
   border-radius: var(--radius);
   padding: var(--space-5) var(--space-5) var(--space-5);
@@ -1328,7 +1338,7 @@ body {
 
   .modal-panel {
     max-height: min(92vh, 720px, calc(100vh - var(--sheet-gap) - var(--space-4))); /* fallback */
-    max-height: min(92dvh, 720px, calc(100dvh - var(--sheet-gap) - var(--space-4)));
+    max-height: min(92dvh, 720px, calc(var(--sheet-vv-height, 100dvh) - var(--sheet-gap) - var(--space-4)));
     border-radius: var(--radius);
     animation: fade-scale 0.18s ease-out;
   }
@@ -1345,12 +1355,12 @@ body {
 
   .modal-panel-sm {
     max-height: min(92vh, 720px, calc(100vh - var(--sheet-gap) - var(--space-4))); /* fallback */
-    max-height: min(92dvh, 720px, calc(100dvh - var(--sheet-gap) - var(--space-4)));
+    max-height: min(92dvh, 720px, calc(var(--sheet-vv-height, 100dvh) - var(--sheet-gap) - var(--space-4)));
   }
 
   .modal-panel-settings {
     max-height: min(92vh, 860px, calc(100vh - var(--sheet-gap) - var(--space-4))); /* fallback */
-    max-height: min(92dvh, 860px, calc(100dvh - var(--sheet-gap) - var(--space-4)));
+    max-height: min(92dvh, 860px, calc(var(--sheet-vv-height, 100dvh) - var(--sheet-gap) - var(--space-4)));
   }
 }
 
