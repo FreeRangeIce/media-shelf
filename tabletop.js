@@ -1132,9 +1132,13 @@
     if (!e) return;
     F("tt-detail-title").textContent = e.title;
     const rows = [];
-    rows.push(`<div class="tt-detail-badges">${subtypeBadge(e)}${statusBadge(e)}</div>`);
     const ml = metaLine(e);
-    if (ml) rows.push(ml);
+    const head = `<div class="tt-detail-badges">${subtypeBadge(e)}${statusBadge(e)}</div>${ml || ""}`;
+    // The saved cover (same URL the shelf card shows), beside the badges/meta; stacks when narrow.
+    // No cover or a broken one: no frame at all.
+    rows.push(e.coverUrl
+      ? `<div class="tt-detail-top"><span class="tt-detail-cover"><img src="${esc(e.coverUrl)}" alt="" referrerpolicy="no-referrer" /></span><div class="tt-detail-meta">${head}</div></div>`
+      : head);
     if (e.barcode) rows.push(`<p class="tt-detail-line">Barcode ${esc(e.barcode)}</p>`);
     if (e.subtype === "expansion") {
       const p = resolveParent(entries, e);
@@ -1156,6 +1160,8 @@
     if (e.notes) rows.push(`<p class="item-notes">${esc(e.notes)}</p>`);
     if (e.bggId) rows.push(`<p class="tt-detail-line tt-bgg-id">BGG id ${esc(e.bggId)}</p>`);
     F("tt-detail-body").innerHTML = rows.join("");
+    const cov = F("tt-detail-body").querySelector(".tt-detail-cover img");
+    if (cov) cov.addEventListener("error", () => { const w = cov.closest(".tt-detail-cover"); if (w) w.remove(); }, { once: true });
     F("tt-detail-edit").dataset.id = e.id;
     F("tt-detail-delete").dataset.id = e.id;
     openModal("tt-detail-modal");
