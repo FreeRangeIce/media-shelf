@@ -42,3 +42,9 @@ Footer: **Game data from IGDB.com.** Same muted credit location. Settings explai
 ## Tests
 
 `node tests/game-relay.test.mjs` uses fake credentials, fetch, time and durable/KV storage. Browser suite `tests/game-igdb-ui.test.js` intercepts every provider request; no real writes or screenshots. Known-bad worker title-validation and retry-bound controls are external scratch modules, never committed. Existing strict suites remain required. No release version/cache bump yet.
+
+### Native-runtime and cancelled-overwrite regressions
+
+Run `node tests/game-lookup-transaction.test.cjs` from the repo root for the pure-Node lookup transaction tests. They execute the actual app functions without launching a browser. Conflicting IGDB fields and record ID stay unchanged until Overwrite is accepted; Cancel preserves the old record link.
+
+Run `MINIFLARE_MODULE=/path/to/miniflare node tests/game-relay-runtime.test.cjs` for native workerd with dummy credentials and a mocked outbound service. It verifies successful token/game requests and rejects redirects without following them. `WORKER_COMPAT_DATE` selects the runtime compatibility date. The installed Miniflare 4.20260730.0 supports dates through 2026-08-06, which is the date locally tested; the template's 2026-11-08 compatibility date still needs verification on a supporting runtime before deployment. No browser or live provider traffic is used by these two tests.

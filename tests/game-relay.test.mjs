@@ -58,9 +58,16 @@ check("malicious provider IDs/cover references dropped", sanitizeGames([{ ...gam
   check("APICalypse search safely quotes user title, fixed fields and limit", query.init.body.startsWith('search "Halo \\"; fields *;"; fields id,name,') && query.init.body.endsWith("limit 10;"));
   check("query never contains barcode/UPC/EAN fields", !/barcode|\bupc\b|\bean\b/i.test(query.init.body));
   check("response never includes token/client secret", !JSON.stringify(data).includes("dummy-"));
+  check("Workers-compatible manual redirects on token and game requests", s.calls.every(c => c.init.redirect === "manual"));
   check("cache disabled and CORS scoped", r.headers.get("Cache-Control") === "no-store" && r.headers.get("Access-Control-Allow-Origin") === ORIGIN);
   await s.request(); check("unexpired token reused", s.tokenCalls === 1 && s.gameCalls === 2);
 }
+for (const target of ["token", "game"]) {
+  const s = setup({ handler: async kind => kind === target ? new Response(null, { status: 302, headers: { Location: "https://evil.invalid/steal" } }) : null });
+  const r = await s.request();
+  check(`${target} redirects rejected without forwarding secrets`, r.status === 502 && (await r.json()).error === "provider_redirect_rejected" && s.calls.every(c => !c.url.includes("evil.invalid")) && s.calls.length === (target === "token" ? 1 : 2));
+}
+
 {
   const s = setup({ expiry: 100 }); await s.request(); s.advance(91000); await s.request();
   check("expires_in drives proactive renewal", s.tokenCalls === 2);

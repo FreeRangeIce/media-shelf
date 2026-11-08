@@ -610,7 +610,7 @@ async function addViaForm(page, fields) {
     if (MAIN) {
       const m = await open(browser, { origin: MAIN, tt: SHELF });
       const mh = await m.page.evaluate(() => document.querySelector(".footer-credits").innerHTML);
-      check("other footer credits identical to origin/main (only the explicit IGDB game-credit migration)", mh === foot.html.replace('Game data from <a href="https://www.igdb.com/" target="_blank" rel="noopener noreferrer">IGDB.com</a>.', 'Game data from <a href="https://rawg.io" target="_blank" rel="noopener noreferrer">RAWG</a>'));
+      check("other footer credits identical to origin/main (only the explicit IGDB game-credit migration)", mh === foot.html.replace('Game data from <a href="https://www.igdb.com/" target="_blank" rel="noopener noreferrer">IGDB.com</a>.', 'Video game data from <a href="https://rawg.io" target="_blank" rel="noopener noreferrer">RAWG</a>'));
       await m.ctx.close();
     }
     if (SHOTS) {
@@ -637,7 +637,7 @@ async function addViaForm(page, fields) {
       out.push(await page.$eval("#item-list", (e) => e.innerHTML));
       await ctx.close();
     }
-    check("Video games tab markup identical to origin/main (only renamed label and retired RAWG reference)", out[0].replace(/<a class="card-ref" href="https:\/\/rawg\.io\/search\?query=[^"]*" target="_blank" rel="noopener noreferrer">RAWG<\/a>/g, "") === out[1].replace(/Video game/g, "Game"));
+    check("Video games tab markup identical to origin/main (only retired RAWG reference; exact v45 Video game label retained)", out[0].replace(/<a class="card-ref" href="https:\/\/rawg\.io\/search\?query=[^"]*" target="_blank" rel="noopener noreferrer">RAWG<\/a>/g, "") === out[1]);
   }
   if (SHOT_DIR) {
     fs.writeFileSync(`${SHOT_DIR}/footer-check.json`, JSON.stringify(footerLog, null, 1));
