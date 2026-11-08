@@ -9,8 +9,8 @@ const check = (name, fn) => { fn(); passed++; console.log('PASS', name); };
 const source = fs.readFileSync(path.join(__dirname, '../tabletop.js'), 'utf8');
 const tick = () => new Promise(r => setImmediate(r));
 
-function boot(seed, things) {
-  const els = new Map(), store = new Map(), fetches = [];
+function boot(seed, things, upcCandidate) {
+  const els = new Map(), store = new Map(), fetches = [], created = [];
   class El {
     constructor(id) { this.id = id; this.value = ''; this.hidden = id === 'tt-form-modal' || id === 'tt-detail-modal'; this.listeners = {}; this.attrs = {}; this.innerHTML = ''; this.textContent = ''; this.dataset = {}; this.style = {}; this.classList = { add() {}, remove() {}, toggle() {}, contains: () => false }; this.options = []; this.children = []; }
     setAttribute(k, v) { this.attrs[k] = v; } removeAttribute(k) { delete this.attrs[k]; } getAttribute(k) { return this.attrs[k] ?? null; }
@@ -25,18 +25,18 @@ function boot(seed, things) {
   // Elements built from HTML strings exist only once their markup has been assigned.
   const built = new Set();
   const byId = id => (/^tt-(bgg-go|bgg-panel|upc-|lookup)/.test(id) && !built.has(id)) ? null : F(id);
-  const mk = t => { const e = new El(t); let h = ''; Object.defineProperty(e, 'innerHTML', { get: () => h, set: v => { h = v; for (const m of String(v).matchAll(/id="([^"]+)"/g)) built.add(m[1]); } }); return e; };
+  const mk = t => { const e = new El(t); created.push(e); let h = ''; Object.defineProperty(e, 'innerHTML', { get: () => h, set: v => { h = v; for (const m of String(v).matchAll(/id="([^"]+)"/g)) built.add(m[1]); } }); return e; };
   const document = { getElementById: byId, querySelector: s => s.startsWith('#') ? F(s.slice(1)) : new El('q'), querySelectorAll: () => [], createElement: mk, addEventListener() {}, body: new El('body'), activeElement: null, documentElement: new El('html') };
   store.set('media-tracker-v1:tabletop', JSON.stringify(seed));
   const localStorage = { getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) };
-  const fetch = async (url, opts = {}) => { fetches.push({ url, method: opts.method || 'GET' }); return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ things }) }; };
+  const fetch = async (url, opts = {}) => { fetches.push({ url, method: opts.method || 'GET' }); return { ok: true, status: 200, headers: { get: () => null }, json: async () => (String(url).includes('/barcode?') ? { status: 'choose', candidates: [upcCandidate] } : { things }) }; };
   const win = { document, localStorage, fetch, location: { hostname: 'freerangeice.github.io', origin: 'https://freerangeice.github.io' }, addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }), setTimeout, clearTimeout, requestAnimationFrame: fn => setTimeout(fn, 0), AbortController, URL, console, crypto: globalThis.crypto };
   win.window = win; win.globalThis = win;
   vm.createContext(win); vm.runInContext(source, win);
   const toasts = [];
   win.FRMTabletop.init({ toast: t => toasts.push(t), renderStats() {} });
   const panelClick = dataset => F('tt-bgg-panel').trigger('click', { target: { closest: () => ({ dataset }) } });
-  return { F, store, fetches, toasts, tt: win.FRMTabletop, panelClick,
+  return { F, store, fetches, toasts, tt: win.FRMTabletop, panelClick, upcClick: dataset => created.find(e => e.id === 'tt-upc').trigger('click', { target: { closest: () => ({ dataset }) } }),
     edit: id => { F('tt-detail-edit').dataset.id = id; F('tt-detail-edit').trigger('click'); },
     saved: () => JSON.parse(store.get('media-tracker-v1:tabletop')) };
 }
@@ -53,7 +53,7 @@ const B = { bggId: '200', bggType: 'boardgame', name: 'New Game B', year: '0', d
     t.F('tt-bgg-go').trigger('click'); await tick(); await tick();
     check('lookup is a GET of /thing for B only; no GameUPC POST', () => { assert.equal(t.fetches.length, 1); assert.match(t.fetches[0].url, /\/thing\?ids=200$/); assert.equal(t.fetches[0].method, 'GET'); });
     t.panelClick({ bggPick: '1' }); t.panelClick({ bggUse: '1' });
-    check('overwrite warning names the details that will be cleared', () => { assert.match(t.F('tt-bgg-panel').innerHTML, /Overwrite filled details/); assert.match(t.F('tt-bgg-panel').innerHTML, /cleared, since they belong to the previous BGG id/); assert.match(t.F('tt-bgg-panel').innerHTML, /cover/); assert.equal(t.F('tt-coverUrl').value, A.coverUrl); });
+    check('overwrite warning names the details that will be cleared', () => { assert.match(t.F('tt-bgg-panel').innerHTML, /Overwrite filled details/); assert.match(t.F('tt-bgg-panel').innerHTML, /This BGG result has no year, designer, players, play time, cover\. Those fields will be cleared to avoid mixing details from different games\./); assert.match(t.F('tt-bgg-panel').innerHTML, /cover/); assert.equal(t.F('tt-coverUrl').value, A.coverUrl); });
     t.panelClick({ bggBack: '1' });
     check('Cancel on overwrite clears nothing', () => { assert.equal(t.F('tt-coverUrl').value, A.coverUrl); assert.equal(t.F('tt-title').value, 'Old Game A'); assert.equal(t.F('tt-year').value, '2001'); });
     t.panelClick({ bggUse: '1' }); t.panelClick({ bggOverwrite: '1' });
@@ -94,6 +94,40 @@ const B = { bggId: '200', bggType: 'boardgame', name: 'New Game B', year: '0', d
     const t = boot([X], []);
     t.F('tt-empty-add').trigger('click'); t.F('tt-title').value = 'Shared'; t.F('tt-form').trigger('submit'); t.F('tt-dup-update').trigger('click');
     check('duplicate Update without type metadata keeps known true flag', () => assert.equal(t.saved()[0].bggIsExpansion, true));
+  }
+  // Mixed providers: saved A -> confirmed GameUPC pick B (fills only title/id/year) -> direct BGG X.
+  const upcB = { bggId: '200', name: 'GameUPC Game B', year: '2025' };
+  const upc = async t => { t.F('tt-barcode').value = '200000000001'; t.F('tt-upc-go').trigger('click'); await tick(); await tick(); t.upcClick({ upcPick: '0' }); t.upcClick({ upcConfirm: '1' }); assert.equal(t.F('tt-year').value, '2025'); };
+  const direct = async (t, id, accept = true) => { t.F('tt-bggId').value = id; t.F('tt-form').trigger('input', { target: t.F('tt-bggId') }); t.F('tt-bgg-go').trigger('click'); await tick(); await tick(); t.panelClick({ bggPick: '1' }); t.panelClick({ bggUse: '1' }); const w = t.F('tt-bgg-panel').innerHTML; if (accept && /Overwrite filled/.test(w)) t.panelClick({ bggOverwrite: '1' }); return w; };
+  {
+    const t = boot([A], [{ ...B, bggId: '100', name: 'Old Game A' }], upcB); t.edit('g1'); await upc(t);
+    const w = await direct(t, '100');
+    check('A -> UPC B -> direct A (no year): warning names year only, no origin claim', () => { assert.match(w, /This BGG result has no year\. Those fields will be cleared to avoid mixing details from different games\./); assert.doesNotMatch(w, /previous BGG id/); });
+    t.F('tt-form').trigger('submit'); const s = t.saved()[0];
+    check('A -> UPC B -> direct A: B year does not survive save; A cover/details stay', () => { assert.equal(s.bggId, '100'); assert.equal(s.year, ''); assert.equal(s.coverUrl, A.coverUrl); assert.equal(s.designer, 'Designer A'); });
+    t.edit('g1'); check('reopen A shows no B year', () => assert.equal(t.F('tt-year').value, ''));
+  }
+  {
+    const t = boot([A], [B], upcB); t.edit('g1'); await upc(t);
+    const w = await direct(t, '200');
+    check('mixed chain lookups are GETs only (barcode + /thing)', () => assert(t.fetches.every(f => f.method === 'GET')));
+    check('A -> UPC B -> direct B (no image): warning names A-bound fields, not B year', () => { assert.match(w, /has no designer, players, play time, cover\./); assert.doesNotMatch(w, /no year/); });
+    t.F('tt-form').trigger('submit'); const s = t.saved()[0];
+    check('A -> UPC B -> direct B: old A cover cleared, B year kept', () => { assert.equal(s.coverUrl, ''); assert.equal(s.designer, ''); assert.equal(s.year, '2025'); assert.equal(s.bggIsExpansion, false); });
+    t.edit('g1'); check('reopen B shows no A cover', () => assert.equal(t.F('tt-coverUrl').value, ''));
+  }
+  {
+    const t = boot([A], [{ ...B, bggId: '300', name: 'C' }], upcB); t.edit('g1'); await upc(t); await direct(t, '300'); t.F('tt-form').trigger('submit'); const s = t.saved()[0];
+    check('A -> UPC B -> direct C: neither A cover nor B year survives', () => { assert.equal(s.coverUrl, ''); assert.equal(s.year, ''); });
+  }
+  {
+    const t = boot([A], [B], upcB); t.edit('g1'); await upc(t); await direct(t, '200', false); t.panelClick({ bggBack: '1' });
+    check('mixed chain: Cancel overwrite clears nothing', () => { assert.equal(t.F('tt-coverUrl').value, A.coverUrl); assert.equal(t.F('tt-year').value, '2025'); assert.equal(t.F('tt-designer').value, 'Designer A'); });
+  }
+  {
+    const t = boot([A], [B]); t.edit('g1'); t.F('tt-year').value = '2030'; t.F('tt-form').trigger('input', { target: t.F('tt-year') });
+    const w = await direct(t, '200');
+    check('hand-edited year is kept and named as kept; A-bound fields cleared', () => { assert.match(w, /Kept as you typed: year\./); assert.doesNotMatch(w, /has no year/); assert.equal(t.F('tt-year').value, '2030'); assert.equal(t.F('tt-coverUrl').value, ''); });
   }
   const core = require('../tabletop.js');
   const old = core.normalize({ id: 'o', title: 'T', bggId: '5', bggType: 'boardgameexpansion', bggIsExpansion: true });
