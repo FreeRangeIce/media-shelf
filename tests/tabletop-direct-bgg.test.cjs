@@ -113,7 +113,7 @@ function harness(initial = {}) {
     F('tt-bggId').value = '382229'; F('tt-subtype').value = 'board';
     // The initial setup uses missing-button as its idempotence gate.
     const lookupF = id => id === 'tt-bgg-go' && !elements.has('tt-bgg-panel') ? null : F(id);
-    const ctx = { F: lookupF, document: { createElement: () => { F('tt-bgg-panel'); return new Element('row'); } }, barcodeLookupConfig: () => ({ relay: 'https://relay.example' }), createBggIdLookup: core.createBggIdLookup, fetch: async () => response(), resetBarcodeLookup: () => { resets++; }, syncExpansionRows: () => { syncs++; }, esc: value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'), bggLogo: () => '<a>BGG credit</a>', console };
+    const ctx = { F: lookupF, document: { createElement: () => { F('tt-bgg-panel'); return new Element('row'); } }, barcodeLookupConfig: () => ({ relay: 'https://relay.example' }), createBggIdLookup: core.createBggIdLookup, fetch: async () => response(), resetBarcodeLookup: () => { resets++; }, syncExpansionRows: () => { syncs++; }, esc: value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'), bggLogo: () => '<a>BGG credit</a>', str: v => (v == null ? '' : String(v).trim()), console };
     vm.createContext(ctx); vm.runInContext(source.slice(start, end), ctx); ctx.setupBggIdLookup();
     F('tt-bgg-go').trigger('click'); await new Promise(resolve => setImmediate(resolve));
     check('DOM button is bound and renders a result without autofilling', () => { assert.match(F('tt-bgg-panel').innerHTML, /Use this match/); assert.match(F('tt-bgg-panel').innerHTML, / disabled/); assert.equal(F('tt-title').value, ''); });
