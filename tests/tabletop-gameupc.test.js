@@ -1,13 +1,23 @@
 // Barcode lookup (GameUPC via the relay) — browser tests + shots. LOCAL ONLY.
-// Needs: the page served at TT_ORIGIN, v39 (origin/main) at MAIN_ORIGIN, and the relay shim
-// (relay/dev-shim.mjs, KEEP_CACHE=1, POSTs mocked) at RELAY, with DEV_ORIGIN = TT_ORIGIN.
+// Needs: the page served at TT_ORIGIN and the v44 baseline at MAIN_ORIGIN.
+// All relay GETs and POSTs are fulfilled locally by Playwright; no upstream calls.
 // NODE_PATH=<dir with playwright-core> TT_ORIGIN=http://127.0.0.1:8861 MAIN_ORIGIN=http://127.0.0.1:8862 \
 //   RELAY=http://127.0.0.1:8795 SHOTS=./shots node tests/tabletop-gameupc.test.js
 const { chromium } = require("playwright-core");
 const fs = require("fs");
 const ORIGIN = process.env.TT_ORIGIN, MAIN = process.env.MAIN_ORIGIN, RELAY = process.env.RELAY || "http://127.0.0.1:8795";
 const SHOTS = process.env.SHOTS || "";
+for (const value of [ORIGIN, MAIN, RELAY]) {
+  const u = new URL(value);
+  if (u.protocol !== "http:" || !["127.0.0.1", "localhost", "[::1]"].includes(u.hostname)) throw new Error("Local HTTP origins only");
+}
 const FLAG_ON = 'const GAMEUPC_LOOKUP = { enabled: true, relay: "https://frm-tabletop.freerangeice.workers.dev" };';
+// Relay normalizeBarcode serializes candidate bggId as a string (tabletop-worker.js).
+const MOCK = {
+  "111111111117": { upc: "111111111117", status: "verified", name: "Splendor", searchedFor: "", candidates: [{ bggId: "148228", name: "Splendor", year: "2014", thumbnail: "" }] },
+  "222222222224": { upc: "222222222224", status: "choose", name: "Tiny Towns", searchedFor: "Tiny Towns", candidates: [{ bggId: "265736", name: "Tiny Towns", year: "2019", thumbnail: "" }, { bggId: "310792", name: "Greatest Little Cities", year: "2019", thumbnail: "" }] },
+  "333333333331": { upc: "333333333331", status: "none", name: "", searchedFor: "", candidates: [] },
+};
 const liveReqs = []; // requests aimed at the live relay (aborted; must stay empty)
 if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
 let pass = 0, fail = 0;
@@ -29,23 +39,26 @@ async function open(browser, { lookup, width = 390, height = 844, origin = ORIGI
   const relayReqs = [];
   await ctx.route("**/*", async (r) => {
     const u = r.request().url();
-    if (u.startsWith(RELAY)) {
+    if (new URL(u).origin === new URL(RELAY).origin) {
+      if (r.request().method() === "OPTIONS") return r.fulfill({ status: 204, headers: { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Accept" } });
       relayReqs.push({ method: r.request().method(), url: u.slice(RELAY.length), body: r.request().postData() });
       if (r.request().method() === "POST" && failPost) return r.fulfill({ status: failPost === true ? 502 : failPost, headers: { "Access-Control-Allow-Origin": origin, "Access-Control-Expose-Headers": "Retry-After", "Retry-After": "3600" }, body: JSON.stringify({ error: failPost === 429 ? "slow down" : failPost === 503 ? "not configured" : "upstream" }) });
       if (failGet && r.request().method() === "GET") return r.fulfill({ status: failGet, headers: { "Access-Control-Allow-Origin": origin, "Retry-After": "30" }, body: "{}" });
       if (relayDelay && r.request().method() === "GET") await new Promise((s) => setTimeout(s, relayDelay));
-      return r.continue();
+      if (r.request().method() === "POST") return r.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": origin }, body: JSON.stringify({ status: "ok", mocked: true }) });
+      const code = new URL(u).searchParams.get("upc");
+      return r.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": origin }, body: JSON.stringify(MOCK[code] || MOCK["333333333331"]) });
     }
     if (/^https:\/\/frm-tabletop\.freerangeice\.workers\.dev/.test(u)) { liveReqs.push(u); return r.abort(); } // the live Worker: never contacted from tests
     // v43 ships with Lookup on. "lookup: false" serves this branch's tabletop.js with the flag
-    // forced off (test only), so the flag-off checks keep comparing against v39.
-    if (!lookup && origin === ORIGIN && u.startsWith(ORIGIN + "/tabletop.js")) {
-      const res = await r.fetch();
+    // forced off (test only), on both local origins for an exact v44 flag-off comparison.
+    if (!lookup && u.startsWith(origin + "/tabletop.js")) {
+      const res = await r.fetch({ maxRedirects: 0 });
       const body = await res.text();
       if (!body.includes(FLAG_ON)) throw new Error("flag line not found in tabletop.js");
       return r.fulfill({ response: res, body: body.replace(FLAG_ON, 'const GAMEUPC_LOOKUP = { enabled: false, relay: "" };') });
     }
-    return u.startsWith(origin) || u.startsWith("data:") ? r.continue() : r.abort(); // thumbnails (BGG CDN) are not loaded in tests
+    return new URL(u).origin === new URL(origin).origin || u.startsWith("data:") ? r.continue() : r.abort(); // thumbnails (BGG CDN) are not loaded in tests
   });
   const page = await ctx.newPage();
   const errors = [];
@@ -82,7 +95,7 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME || undefined, args: ["--no-sandbox"], headless: true });
 
-  /* ---------- flag OFF: same as v39, zero relay requests ---------- */
+  /* ---------- flag OFF: same as v44, zero relay requests ---------- */
   {
     const { ctx, page, relayReqs, errors } = await open(browser, { lookup: false });
     await addForm(page);
@@ -96,7 +109,7 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     check("flag off: no page errors", errors.length === 0, errors.join(" | "));
     const formNow = await page.evaluate(() => { document.querySelector("#tt-btn-reset"); return document.querySelector("#tt-form-modal").outerHTML.length; });
     await ctx.close();
-    // DOM of the add sheet, freshly opened, against live v39 (origin/main).
+    // DOM of the add sheet, freshly opened, against the local v44 baseline.
     const grab = async (origin) => {
       const o = await open(browser, { lookup: false, origin });
       await addForm(o.page);
@@ -106,11 +119,9 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
       return { h, lk, n: o.relayReqs.length };
     };
     const a = await grab(ORIGIN), b = await grab(MAIN);
-    // v44 removed the title-search row (title search isn't connected, so its button is hidden);
-    // otherwise the flag-off sheet is v39's.
-    const strip = (h) => h.replace(/ ?<div class="form-row tt-lookup-row">.*?<\/div>/, "").replace(/ ?<!-- "Look up on BoardGameGeek".*?-->/, "");
-    check("flag off: Add sheet markup identical to v39 (apart from the removed title-search row)", strip(a.h) === strip(b.h), `${strip(a.h).length} vs ${strip(b.h).length}`);
-    check("flag off: no title-search button (v39 had one)", a.lk === null && typeof b.lk === "string", String(a.lk));
+    // v44 intentionally removed v39's unconnected title-search button.
+    check("flag off: Add sheet markup identical to v44", a.h === b.h, `${a.h.length} vs ${b.h.length}`);
+    check("flag off: title-search button absent, matching v44", a.lk === null && b.lk === null, String(a.lk));
     void formNow;
   }
 
@@ -160,7 +171,7 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     // Option A: this device's own random id, kept in its own key, sent as userId.
     const devId = await page.evaluate(() => localStorage.getItem("frm-gameupc-device-id"));
     check("device id: made on first send, 8 to 64 letters/digits/dashes", /^[A-Za-z0-9-]{8,64}$/.test(devId || ""), String(devId));
-    check("device id: sent as userId with the match", JSON.parse(p[0].body).userId === devId, p[0].body);
+    check("device id: sent as userId with the match", JSON.parse(p[0]?.body || "{}").userId === devId && Boolean(devId), p[0]?.body || "no POST");
     // Backups and exports never carry it.
     await page.evaluate(() => {
       const lib = JSON.parse(localStorage.getItem("media-tracker-v1"));
