@@ -577,12 +577,15 @@
    * writes storage: the store was already rewritten by an older app, so the stored string
    * is no longer what this version saved.
    */
+  /** Set when a sync/repair wrote storage; commitItems uses it so a later failure isn't called "nothing changed". */
+  let repairWrote = false;
   function applyComicRepair() {
     const fix = repairComicsFromShadow(items);
     if (!fix) return false;
     items = fix.items;
     try {
       saveStore();
+      repairWrote = true;
     } catch {
       /* storage full: repaired in memory; the next successful save writes it */
     }
@@ -612,7 +615,9 @@
    * @param {(list: object[]) => (object[] | void)} mutate
    */
   function commitItems(mutate, failMsg) {
+    repairWrote = false;
     syncFromStorage();
+    const storageChangedBefore = repairWrote; // sync's comic repair may already have saved
     // Nathan risk 4: `mutate` changes the in-memory list before anything is written. Keep
     // the list as it was, so a failed write (storage full) can put it back: memory then
     // matches what is still stored, and nothing half-saved is shown or later re-saved.
@@ -622,6 +627,7 @@
       if (Array.isArray(next)) items = next;
     } catch (err) {
       items = before;
+      if (storageChangedBefore && err && typeof err === "object") err.storageChanged = true;
       throw err;
     }
     try {
@@ -659,14 +665,15 @@
     import: "Import didn’t finish and some items may have changed. Check your shelf.",
     other: "This change didn’t finish and may have been partly saved. Check your shelf.",
   };
+  /** The exact message the last storage failure showed, so inline notes repeat it instead of contradicting it. */
+  let lastStorageFailureMsg = "";
   function showStorageFailure(err, kind) {
-    if (err && err.rollbackFailed) {
-      showToast(STORAGE_UNCERTAIN_MESSAGES[kind] || STORAGE_UNCERTAIN_MESSAGES.other, { duration: 8000 });
-      return;
-    }
-    const msg = isQuotaError(err)
-      ? STORAGE_FAIL_MESSAGES[kind] || STORAGE_FAIL_MESSAGES.change
-      : STORAGE_FAIL_MESSAGES.other;
+    const msg = err && err.rollbackFailed
+      ? STORAGE_UNCERTAIN_MESSAGES[kind] || STORAGE_UNCERTAIN_MESSAGES.other
+      : isQuotaError(err)
+        ? STORAGE_FAIL_MESSAGES[kind] || STORAGE_FAIL_MESSAGES.change
+        : STORAGE_FAIL_MESSAGES.other;
+    lastStorageFailureMsg = msg;
     showToast(msg, { duration: 8000 });
   }
 
@@ -2489,6 +2496,8 @@
   }
 
   function parseTime(iso) {
+    // Only strings/numbers are dates; anything else (e.g. a JSON object in a backup) is "no date", never a throw.
+    if (typeof iso !== "string" && typeof iso !== "number") return 0;
     const t = Date.parse(String(iso || ""));
     return Number.isFinite(t) ? t : 0;
   }
@@ -2785,10 +2794,14 @@
       };
       const ttUnknownLine = "Tabletop restore didn’t finish and some games may have changed. Check your tabletop shelf."; // PENDING BEREAN
       const ttRefreshLine = "The tabletop shelf didn’t refresh; reopen the app to see it."; // PENDING BEREAN
+      // "Nothing was changed" only when no write happened before the failure (sync's repair may have saved).
+      const restoreThrewMsg = (err) => (err && err.storageChanged
+        ? "Restore didn’t finish. Your shelf was refreshed from storage first, so some items may have changed. Check your shelf." // PENDING BEREAN
+        : "Restore failed. Nothing was changed."); // PENDING BEREAN
       const ttFailedLine = "Tabletop games couldn’t be restored, so your tabletop shelf is unchanged. You can restore this backup again."; // PENDING BEREAN
       const doReplace = () => {
         let ok;
-        try { ok = commitItems(() => incoming.slice(), "restore"); } catch { ok = false; showToast("Restore failed. Nothing was changed."); } // PENDING BEREAN
+        try { ok = commitItems(() => incoming.slice(), "restore"); } catch (err) { ok = false; showToast(restoreThrewMsg(err)); }
         closeConfirm();
         if (!ok) return;
         // A backup with no tabletop block leaves the tabletop shelf as it is.
@@ -2841,9 +2854,9 @@
             res = mergeItems(list, incoming);
             return res.items;
           }, "restore");
-        } catch {
+        } catch (err) {
           ok = false;
-          showToast("Restore failed. Nothing was changed."); // PENDING BEREAN
+          showToast(restoreThrewMsg(err));
         }
         if (!ok) return;
         let ttFailed = false, ttUnknown = false, ttRender = false;
@@ -7105,8 +7118,8 @@
       return [...toAdd, ...next];
     }, "import");
     if (!ok) {
-      // Nothing was written; the preview stays so the user can try again after freeing space.
-      setImportMessage(STORAGE_FAIL_MESSAGES.import);
+      // Same message as the toast (it may be the "may have changed" one); the preview stays.
+      setImportMessage(lastStorageFailureMsg || STORAGE_FAIL_MESSAGES.import);
       return;
     }
     importUndo = {
@@ -7922,7 +7935,7 @@
       return [...toAdd, ...next];
     }, "import");
     if (!ok) {
-      setClzMessage(STORAGE_FAIL_MESSAGES.import); // the preview stays; nothing was written
+      setClzMessage(lastStorageFailureMsg || STORAGE_FAIL_MESSAGES.import); // same as the toast; the preview stays
       return;
     }
     importUndo = {
