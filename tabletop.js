@@ -73,6 +73,27 @@
     const s = str(v);
     return s === "" || s === "0" ? "" : s;
   };
+  /**
+   * Field provenance (bggSrc): for each filled ID-bound field, where its value came from.
+   *   "382229"  filled by a BGG/GameUPC lookup for that BGG id
+   *   ""        typed by hand
+   *   "?382229" origin unknown, but it sat on the entry while it had that BGG id
+   *   "?"       origin unknown, no BGG id at the time
+   * A missing key = unknown (entries saved before v48 carry no bggSrc; they are not migrated).
+   */
+  const BGG_ID_BOUND = ["year", "designer", "players", "playTime", "coverUrl"];
+  const SRC_RE = /^(\?([1-9]\d{0,8})?|[1-9]\d{0,8})?$/;
+  function cleanBggSrc(src, fields) {
+    const out = {};
+    if (!src || typeof src !== "object" || Array.isArray(src)) return out;
+    BGG_ID_BOUND.forEach((k) => {
+      const v = src[k];
+      if (typeof v === "string" && SRC_RE.test(v) && str(fields[k]) && str(fields[k]) !== "0") out[k] = v;
+    });
+    return out;
+  }
+  /** The BGG id a source tag ties a field to ("" for hand-typed or unknown-without-id). */
+  const srcId = (v) => (typeof v === "string" ? v.replace(/^\?/, "") : "");
   const normTitle = (t) => str(t).toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/\s+/g, " ");
   let idSeq = 0;
   const newId = () => `tt-${Date.now().toString(36)}-${(idSeq++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -99,9 +120,11 @@
       parentId: subtype === "expansion" ? str(r.parentId) : "",
       parentBggId: subtype === "expansion" ? bggNum(r.parentBggId) : "",
       parentTitle: subtype === "expansion" ? str(r.parentTitle) : "",
+      bggSrc: {},
       dateAdded: str(r.dateAdded) || nowIso(),
       dateUpdated: str(r.dateUpdated) || str(r.dateAdded) || nowIso(),
     };
+    e.bggSrc = cleanBggSrc(r.bggSrc, e);
     return e;
   }
 
@@ -167,9 +190,17 @@
   /** Update `old` with `incoming`: an empty (or BGG 0) incoming field keeps the old value. */
   function mergeUpdate(old, incoming) {
     const out = { ...old };
+    const oldSrc = cleanBggSrc(old && old.bggSrc, old || {});
+    const incSrc = cleanBggSrc(incoming && incoming.bggSrc, incoming || {});
+    const incId = bggNum(incoming.bggId);
+    out.bggSrc = { ...oldSrc };
     KEEP_FIELDS.forEach((k) => {
       const v = ["bggId", "year", "parentBggId"].includes(k) ? bggNum(incoming[k]) : str(incoming[k]);
-      if (v) out[k] = v;
+      if (v) {
+        out[k] = v;
+        // A replaced field takes the incoming field's source (unknown when it has none).
+        if (BGG_ID_BOUND.includes(k)) out.bggSrc[k] = k in incSrc ? incSrc[k] : `?${incId}`;
+      }
     });
     if (SUBTYPES.includes(incoming.subtype)) out.subtype = incoming.subtype;
     if (STATUSES.includes(incoming.status)) out.status = incoming.status;
@@ -357,7 +388,6 @@
       year: bggNum(value.year), designer: str(value.designer), players: str(value.players), playTime: bggNum(value.playTime),
       coverUrl: bggImageUrl(value.image) || bggImageUrl(value.thumbnail) };
   }
-  const BGG_ID_BOUND = ["year", "designer", "players", "playTime", "coverUrl"];
   /**
    * Patch for an accepted result. `sources` says, per ID-bound field, which BGG id filled it ("" =
    * typed by hand); a string applies to every field. Never the typed ID input. A field the result
@@ -366,14 +396,16 @@
    */
   function bggIdPatch(record, sources) {
     const patch = Object.fromEntries(Object.entries(record).filter(([, v]) => v !== ""));
-    const srcOf = (k) => str(typeof sources === "object" && sources ? sources[k] : sources);
-    const cleared = [], kept = [];
+    const srcOf = (k) => (typeof sources === "object" && sources ? (typeof sources[k] === "string" ? sources[k] : "?") : str(sources));
+    const cleared = [], kept = [], unchanged = [];
     BGG_ID_BOUND.forEach((k) => {
       if (k in patch) return;
-      const from = srcOf(k);
-      if (from && from !== record.bggId) { patch[k] = ""; cleared.push(k); } else if (!from) kept.push(k);
+      const src = srcOf(k), from = srcId(src);
+      if (from && from !== record.bggId) { patch[k] = ""; cleared.push(k); }
+      else if (src === "") kept.push(k); // known hand-typed
+      else unchanged.push(k); // same BGG id, or origin unknown with no BGG id
     });
-    return { patch, cleared, kept };
+    return { patch, cleared, kept, unchanged };
   }
   function createBggIdLookup({ relay, fetcher, current, isOpen, onState, confirm, apply, identity = () => "", timers = globalThis }) {
     let seq = 0, controller = null, timer = null, candidate = null, selected = false, busy = false, activeId = "";
@@ -425,16 +457,17 @@
         emit({ status: "used", message: "Game details filled in. Check them, then save." });
       };
       const sources = identity();
-      const { patch, cleared, kept } = bggIdPatch(record, sources);
+      const { patch, cleared, kept, unchanged } = bggIdPatch(record, sources);
       const clears = cleared.filter((k) => str(before[k]));
       const keeps = kept.filter((k) => str(before[k]));
+      const holds = unchanged.filter((k) => str(before[k]));
       const conflicts = Object.entries(patch).some(([k, v]) => str(before[k]) && str(before[k]) !== v);
-      if (conflicts) confirm(finish, { clears, keeps }); else finish();
+      if (conflicts) confirm(finish, { clears, keeps, holds }); else finish();
     }
     return { lookup, reset, select, use };
   }
 
-  const core = { validBggId, bggImageUrl, bggIdRecord, bggIdPatch, createBggIdLookup, STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
+  const core = { validBggId, bggImageUrl, bggIdRecord, bggIdPatch, cleanBggSrc, BGG_ID_BOUND, createBggIdLookup, STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
   if (typeof document === "undefined") return;
 
@@ -607,8 +640,10 @@
     resetBggIdLookup();
     resetBarcodeLookup();
     F("tt-bggType").value = entry ? e.bggType || "" : "";
+    // Durable sources from the saved entry; a field without one is unknown, tied to the saved id.
     bggFieldSrc = {};
-    tagBggFields(BGG_ID_BOUND, entry ? e.bggId : "");
+    const savedSrc = entry ? cleanBggSrc(e.bggSrc, e) : {};
+    BGG_ID_BOUND.forEach((k) => { if (str(F(`tt-${k}`).value)) bggFieldSrc[k] = k in savedSrc ? savedSrc[k] : `?${entry ? bggNum(e.bggId) : ""}`; });
     syncExpansionRows();
     closeModal("tt-detail-modal");
     openModal("tt-form-modal");
@@ -634,6 +669,7 @@
       players: v("players"),
       playTime: v("playTime"),
       coverUrl: v("coverUrl"),
+      bggSrc: Object.fromEntries(BGG_ID_BOUND.filter((k) => str(v(k))).map((k) => [k, typeof bggFieldSrc[k] === "string" ? bggFieldSrc[k] : "?"])),
       barcode: v("barcode"),
       notes: v("notes"),
       parentId,
@@ -960,7 +996,8 @@
       confirm: (done, info = {}) => {
         const names = (ks) => ks.map((k) => BGG_FIELD_LABELS[k]).join(", ");
         const clearNote = (info.clears && info.clears.length ? ` This BGG result has no ${names(info.clears)}. Those fields will be cleared to avoid mixing details from different games.` : "")
-          + (info.keeps && info.keeps.length ? ` Kept as you typed: ${names(info.keeps)}.` : "");
+          + (info.keeps && info.keeps.length ? ` Kept as you typed: ${names(info.keeps)}.` : "")
+          + (info.holds && info.holds.length ? ` Kept unchanged: ${names(info.holds)}.` : "");
         bggConfirmDone = done;
         panel.innerHTML = `<div class="tt-bgg-confirm" role="group" aria-labelledby="tt-bgg-overwrite-title"><h3 id="tt-bgg-overwrite-title" class="tt-upc-h">Overwrite filled details?</h3><p class="field-hint">Use this BGG result to replace the filled game details?${clearNote} Your barcode, notes and ownership details stay as entered.</p><div class="tt-upc-actions"><button type="button" class="btn btn-outline" data-bgg-back="1">Cancel</button><button type="button" class="btn btn-primary" data-bgg-overwrite="1">Overwrite</button></div></div>${bggLogo()}`;
         panel.querySelector("[data-bgg-back]").focus();
