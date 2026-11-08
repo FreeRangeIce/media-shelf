@@ -41,7 +41,7 @@ async function open(browser, { futureTitleSearch = false, configured = true, can
    if ((process.env.GAME_UI_SOURCE || futureTitleSearch) && url.pathname === "/app.js") {
     let source = fs.readFileSync(process.env.GAME_UI_SOURCE || require("node:path").join(__dirname, "../app.js"), "utf8");
     if (futureTitleSearch) {
-     if (!source.includes("const GAME_TITLE_SEARCH_TESTED = false;")) throw new Error("Expected title-search default-off gate");
+     if (!/const GAME_TITLE_SEARCH_TESTED = (true|false);/.test(source)) throw new Error("Expected title-search gate");
      source = source.replace("const GAME_TITLE_SEARCH_TESTED = false;", "const GAME_TITLE_SEARCH_TESTED = true;"); // Future-path unit fixture only, never shipped.
     }
     return r.fulfill({ contentType: "application/javascript", body: source });

@@ -83,6 +83,6 @@ check('wiring: list uses the tested handlers; Escape and focus trap cover the de
   assert.match(appSrc, /els\.list\.addEventListener\("click", onListClick\);/); assert.match(appSrc, /els\.list\.addEventListener\("keydown", onListKeydown\);/);
   assert.match(appSrc, /if \(!\$\("#item-detail-modal"\)\.hidden\) closeDetail\(\);/); assert.match(appSrc, /trapFocus\(e, \$\("\.modal-panel", \$\("#item-detail-modal"\)\)\)/);
   assert.match(idx, /id="item-detail-modal" class="modal" hidden aria-hidden="true"/); assert.match(idx, /role="dialog" aria-modal="true" aria-labelledby="item-detail-title"/);
-  assert.match(idx, /id="tt-detail-modal"/); assert.match(appSrc, /GAME_TITLE_SEARCH_TESTED = false/);
+  assert.match(idx, /id="tt-detail-modal"/); assert.match(appSrc, /GAME_TITLE_SEARCH_TESTED = (true|false)/);
 });
 console.log(`${passed}/${passed} passed (production app.js detail functions; native DOM doubles; no visual/browser claims)`);

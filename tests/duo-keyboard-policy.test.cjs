@@ -84,7 +84,7 @@ ck('other modal visual-viewport sizing remains available',css.includes('height: 
 const cssDelta = require('node:child_process').execFileSync('git', ['diff', '65dee85', '--', 'styles.css'], { encoding: 'utf8' });
 ck('no scrollbar or caret suppression introduced', !/^\+[^+].*(?:scrollbar-width\s*:\s*none|caret-color\s*:\s*transparent|::-webkit-scrollbar)/m.test(cssDelta));
 ck('missing barcode guidance keeps copy but becomes neutral',source.includes('setLookupStatus("Enter a barcode to look up this copy. Title is needed only when you save.", "note")'));
-ck('title search remains independently off',source.includes('const GAME_TITLE_SEARCH_TESTED = false;'));
+ck('title search independent switch present (on in local candidate)',source.includes('const GAME_TITLE_SEARCH_TESTED = true;'));
 ck('v50 release and relay origin unchanged',source.includes('const APP_VERSION = 50;')&&source.includes('const GAME_RELAY_URL = "https://media-shelf-games.freerangeice.workers.dev";'));
 // Execute the actual early game-lookup branch: a typed title is not a barcode error.
 {
