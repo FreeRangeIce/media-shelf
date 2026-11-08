@@ -487,6 +487,21 @@
     </div>
   </div>
 
+  <!-- Media item: read-only detail sheet (Edit opens #modal for the same item) -->
+  <div id="item-detail-modal" class="modal" hidden aria-hidden="true">
+    <div class="modal-backdrop" id="item-detail-backdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="item-detail-title">
+      <div class="modal-header">
+        <h2 id="item-detail-title"></h2>
+        <button type="button" class="btn-icon" id="item-detail-close" aria-label="Close">&times;</button>
+      </div>
+      <div id="item-detail-body" class="tt-detail-body"></div>
+      <div class="form-actions-right">
+        <button type="button" class="btn btn-primary" id="item-detail-edit">Edit</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Tabletop: detail sheet (a base lists its expansions; an expansion shows its base) -->
   <div id="tt-detail-modal" class="modal" hidden aria-hidden="true">
     <div class="modal-backdrop" data-tt-close="tt-detail-modal"></div>

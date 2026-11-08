@@ -3377,6 +3377,13 @@ body.modal-open {
   .tt-detail-top { flex-direction: column; }
 }
 
+.item-detail-label {
+  color: var(--text-dim);
+}
+.item-detail-notes {
+  white-space: pre-wrap;
+}
+
 .tt-detail-badges {
   display: flex;
   gap: var(--space-1);

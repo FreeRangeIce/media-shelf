@@ -2366,7 +2366,7 @@
             : "";
         return `
 <li>
-  <article class="item-card" tabindex="0" data-id="${escapeHtml(item.id)}" role="button" aria-label="Edit ${escapeHtml(name)}">
+  <article class="item-card" tabindex="0" data-id="${escapeHtml(item.id)}" role="button" aria-label="Details for ${escapeHtml(name)}">
     ${coverMarkup(item)}
     <div class="item-body">
       <div class="item-top">
@@ -2395,6 +2395,102 @@
 </li>`;
       })
       .join("");
+  }
+
+  /* ---------- Read-only item detail (Books, Video games, Movies, Music, Comics) ----------
+     A card opens this sheet first, like Tabletop; Edit opens the existing edit form for the same
+     item. Opening or closing it never writes storage. Delete stays in the edit form. */
+  let detailId = null;
+  let detailReturn = null;
+  function detailHtml(item) {
+    const row = (label, value) => (value ? `<p class="tt-detail-line"><span class="item-detail-label">${escapeHtml(label)}</span> ${escapeHtml(value)}</p>` : "");
+    const creatorText = item.type === "comic"
+      ? [comicCreatorNames(item.writer, item.artist).join(", "), item.publisher].filter(Boolean).join("\u00a0· ")
+      : String(item.creator || "").trim();
+    const yearText = item.year != null && String(item.year).trim() !== "" ? String(item.year).trim() : "";
+    const meta = [creatorText, yearText].filter(Boolean).join("\u00a0· ");
+    const head =
+      `<div class="tt-detail-badges"><span class="badge badge-type ${escapeHtml(item.type)}">${escapeHtml(TYPE_LABELS[item.type] || item.type)}</span>` +
+      `<span class="badge badge-status ${escapeHtml(item.status)}">${escapeHtml(STATUS_LABELS[item.status] || item.status)}</span>` +
+      `<span class="badge badge-format">${escapeHtml(formatBadgeText(item))}</span></div>` +
+      (meta ? `<p class="tt-detail-line">${escapeHtml(meta)}</p>` : "");
+    const url = comicImageSuppressed(item.type, item.coverUrl) ? "" : String(item.coverUrl || "").trim();
+    const rows = [url
+      ? `<div class="tt-detail-top"><span class="tt-detail-cover"><img src="${escapeHtml(url)}" alt="" referrerpolicy="no-referrer" /></span><div class="tt-detail-meta">${head}</div></div>`
+      : head];
+    if (item.type === "comic") rows.push(row("Cover", item.coverLabel));
+    const starStr = stars(item.rating);
+    if (starStr) rows.push(`<p class="tt-detail-line"><span class="item-detail-label">Rating</span> <span class="stars" aria-label="Rating ${escapeHtml(item.rating)} of 5">${starStr}</span></p>`);
+    rows.push(row("Progress", item.progress));
+    if (item.type === "game" && item.playtimeMinutes != null) rows.push(row("Play time", `${item.playtimeMinutes} min`));
+    rows.push(row("Barcode", item.barcode));
+    if ((item.tags || []).length) rows.push(row("Tags", item.tags.join(", ")));
+    if (item.notes) rows.push(`<p class="tt-detail-line item-detail-notes">${escapeHtml(item.notes)}</p>`);
+    const refs = [];
+    if (item.type === "movie") refs.push(["IMDb", buildImdbUrl(item.title, item.year)]);
+    if (item.type === "book") refs.push(["ISFDB", buildIsfdbUrl(item.title)]);
+    if (item.type === "game") refs.push(["IGDB", buildIgdbUrl(item.title)]);
+    const refLinks = refs.filter((r) => r[1]).map(([n, u]) => `<a class="card-ref" href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer">${n}</a>`);
+    if (refLinks.length) rows.push(`<div class="card-refs">${refLinks.join("")}</div>`);
+    const gbUrl = item.coverSource === "googlebooks" ? safeGoogleBooksUrl(item.googleBooksUrl) : "";
+    if (gbUrl) rows.push(`<p class="card-credit"><a class="card-credit-link" href="${escapeHtml(gbUrl)}" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">Cover from Google Books</span></a></p>`);
+    return rows.filter(Boolean).join("");
+  }
+  function openDetail(item) {
+    const m = $("#item-detail-modal");
+    if (!m || !item) return;
+    if (m.hidden) detailReturn = document.activeElement;
+    dismissPlainToast();
+    detailId = item.id;
+    $("#item-detail-title").textContent = displayTitle(item);
+    const body = $("#item-detail-body");
+    body.innerHTML = detailHtml(item);
+    const cov = body.querySelector(".tt-detail-cover img");
+    if (cov) cov.addEventListener("error", () => { const w = cov.closest(".tt-detail-cover"); if (w) w.remove(); }, { once: true });
+    m.hidden = false;
+    m.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+    $("#item-detail-close").focus();
+  }
+  function closeDetail(restoreFocus = true) {
+    const m = $("#item-detail-modal");
+    if (!m || m.hidden) return;
+    m.hidden = true;
+    m.setAttribute("aria-hidden", "true");
+    detailId = null;
+    releaseModalOpen();
+    const back = detailReturn;
+    detailReturn = null;
+    if (restoreFocus && back && typeof back.focus === "function") back.focus();
+  }
+  function editFromDetail() {
+    const item = items.find((i) => i.id === detailId);
+    const back = detailReturn;
+    closeDetail(false);
+    if (!item) return;
+    openModal(item);
+    lastFocus = back; // closing the edit form returns focus to the card, not the hidden Edit button
+  }
+  function activateCard(card) {
+    const item = card ? items.find((i) => i.id === card.dataset.id) : null;
+    if (item) openDetail(item);
+  }
+  function onListClick(e) {
+    if (e.target.closest("a.card-ref, a.ref-link, a.card-credit-link")) return;
+    const pick = e.target.closest(".btn-pick-cover");
+    if (pick) {
+      pickCoverFor(pick.dataset.pickCover);
+      return;
+    }
+    activateCard(e.target.closest(".item-card"));
+  }
+  function onListKeydown(e) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    if (e.target.closest("a, .btn-pick-cover")) return; // a focused link or Pick cover follows its own click
+    const card = e.target.closest(".item-card");
+    if (!card) return;
+    e.preventDefault();
+    activateCard(card);
   }
 
   /** Tabletop tab (tabletop.js): its own shelf replaces the media list while it is active. */
@@ -5973,27 +6069,11 @@
       els.importFile.value = "";
     });
 
-    els.list.addEventListener("click", (e) => {
-      if (e.target.closest("a.card-ref, a.ref-link, a.card-credit-link")) return;
-      const pick = e.target.closest(".btn-pick-cover");
-      if (pick) {
-        pickCoverFor(pick.dataset.pickCover);
-        return;
-      }
-      const card = e.target.closest(".item-card");
-      if (!card) return;
-      const item = items.find((i) => i.id === card.dataset.id);
-      if (item) openModal(item);
-    });
-    els.list.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter" && e.key !== " ") return;
-      if (e.target.closest("a, .btn-pick-cover")) return; // a focused link or Pick cover follows its own click
-      const card = e.target.closest(".item-card");
-      if (!card) return;
-      e.preventDefault();
-      const item = items.find((i) => i.id === card.dataset.id);
-      if (item) openModal(item);
-    });
+    els.list.addEventListener("click", onListClick);
+    els.list.addEventListener("keydown", onListKeydown);
+    $("#item-detail-close").addEventListener("click", () => closeDetail());
+    $("#item-detail-backdrop").addEventListener("click", () => closeDetail());
+    $("#item-detail-edit").addEventListener("click", editFromDetail);
 
     els.form.addEventListener("submit", saveItem);
     // Blocked Save (aria-disabled): stop the tap before submit and constraint validation.
@@ -6244,7 +6324,8 @@
           closeSettingsModal();
           return;
         }
-        if (!els.modal.hidden) closeModal();
+        if (!els.modal.hidden) { closeModal(); return; }
+        if (!$("#item-detail-modal").hidden) closeDetail();
         return;
       }
       if (!els.confirm.hidden) {
@@ -6258,6 +6339,7 @@
       if (!els.modal.hidden) {
         trapFocus(e, $(".modal-panel", els.modal));
       }
+      else if (!$("#item-detail-modal").hidden) trapFocus(e, $(".modal-panel", $("#item-detail-modal")));
     });
   }
 
