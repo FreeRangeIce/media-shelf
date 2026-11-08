@@ -1,0 +1,18 @@
+# REVIEW TEMPLATE ONLY. Do not deploy without approval and real resource bindings.
+name = "media-shelf-games"
+main = "game-worker.js"
+compatibility_date = "2026-11-08"
+[vars]
+ALLOWED_ORIGINS = "https://freerangeice.github.io"
+IGDB_APP_DAILY_CAP = "500" # app-owned safety guard, NOT an IGDB provider quota (1..10000)
+[[kv_namespaces]]
+binding = "GAME_LIMITS"
+id = "REPLACE_WITH_APPROVED_KV_NAMESPACE_ID"
+[[durable_objects.bindings]]
+name = "GAME_COORDINATOR"
+class_name = "GameCoordinator"
+[[migrations]]
+tag = "games-v1"
+new_sqlite_classes = ["GameCoordinator"]
+# Required server-side secret bindings: TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET.
+# Never add secret values here or in the browser. No resource has been created/deployed.
