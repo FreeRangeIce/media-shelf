@@ -296,7 +296,11 @@
     const handMatches = [];
     let added = 0;
     let updated = 0;
-    incoming.map(normalize).forEach((inc) => {
+    incoming.forEach((raw) => {
+      const inc = normalize(raw);
+      // Freshness comes from the backup's OWN date. normalize() stamps a missing date with "now";
+      // that stamp must never make an undated (or invalid-dated) entry win over a dated one.
+      const incTime = Date.parse(str(raw && raw.dateUpdated) || str(raw && raw.dateAdded));
       let i = out.findIndex((e) => e.id === inc.id);
       if (i < 0 && inc.bggId) i = out.findIndex((e) => e.bggId === inc.bggId);
       // Hand match: same title + subtype where at least one side has no BGG id (hand-entered on
@@ -330,7 +334,7 @@
         return;
       }
       remap.set(inc.id, out[i].id);
-      if (Date.parse(inc.dateUpdated) > Date.parse(out[i].dateUpdated)) {
+      if (Number.isFinite(incTime) && incTime > Date.parse(out[i].dateUpdated)) {
         out[i] = { ...inc, id: out[i].id };
         updated += 1;
       }
@@ -343,7 +347,13 @@
   function parseBackupBlock(data) {
     const block = data && typeof data === "object" && !Array.isArray(data) ? data.tabletop : null;
     if (!block || !Array.isArray(block.entries)) return null; // older backups: no tabletop block
-    return block.entries.filter((r) => r && typeof r === "object" && r.title).map(normalize);
+    // Keep a missing date missing (not "now"), so restore can tell an undated entry from a newer one;
+    // mergeRestore dates it when it is added as a new entry.
+    return block.entries.filter((r) => r && typeof r === "object" && r.title).map((r) => {
+      const e = normalize(r);
+      if (!str(r.dateUpdated) && !str(r.dateAdded)) { e.dateUpdated = ""; e.dateAdded = ""; }
+      return e;
+    });
   }
 
   /** UPC-A / EAN-13 / EAN-8 with a valid check digit (the debounce only fires on these). */
