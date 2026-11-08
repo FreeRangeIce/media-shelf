@@ -496,18 +496,23 @@
     }
     return entries;
   }
+  /** Returned by a commit mutation to cancel the write: nothing is stored. */
+  const ABORT = Symbol("abort");
+  /** Outcome: "committed" (stored), "aborted" (mutation declined; storage untouched), "failed" (storage error). */
   function commit(mutate) {
     load(); // another tab may have written since we last read
     const next = mutate(entries.slice());
+    if (next === ABORT) return "aborted";
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(next));
       entries = next;
-      return true;
+      return "committed";
     } catch {
       host.toast && host.toast("Couldn’t save — storage may be full");
-      return false;
+      return "failed";
     }
   }
+  const snap = (e) => (e ? JSON.stringify(normalize(e)) : "");
 
   /* ---------------- UI ---------------- */
 
@@ -597,6 +602,7 @@
   const F = (id) => document.getElementById(id);
   let returnFocus = null;
   let pendingDup = null;
+  const SAVE_ABORTED = "Not saved: this game changed in another tab. Your entries are still here; check them and save again.";
   function clearDupPrompt() { pendingDup = null; F("tt-dup").hidden = true; }
 
   // v41: Tabletop sheets set body.modal-open too, so app.js pins the page behind them while
@@ -651,6 +657,7 @@
     });
     F("tt-dup").hidden = true;
     F("tt-title-error").hidden = true;
+    F("tt-save-status").hidden = true;
     resetBggIdLookup();
     resetBarcodeLookup();
     F("tt-bggType").value = entry ? e.bggType || "" : "";
@@ -703,7 +710,8 @@
     }
     F("tt-title").removeAttribute("aria-invalid");
     load();
-    // Update / Add-copy answer a duplicate prompt: re-check it against the current form and shelf.
+    // What this save was checked against; the final write aborts if it changed in between (another tab).
+    const editBase = data.id ? snap(entries.find((e) => e.id === data.id)) : "";    // Update / Add-copy answer a duplicate prompt: re-check it against the current form and shelf.
     // If the match changed (id/title edited, target deleted or replaced, a new match), ask again.
     if (mode) {
       const fresh = findDuplicate(entries, normalize({ ...data, id: data.id || "__new__" }));
@@ -736,19 +744,31 @@
       }
     }
     let savedId = data.id;
-    const ok = commit((list) => {
+    const dupBase = mode === "update" && pendingDup ? snap(pendingDup.match) : "";
+    const outcome = commit((list) => {
+      if (data.id && snap(list.find((e) => e.id === data.id)) !== editBase) return ABORT; // edited entry changed/deleted
       if (mode === "update" && pendingDup) {
         const target = list.find((e) => e.id === pendingDup.match.id);
-        if (!target) return list; // target vanished (another tab) since the check: write nothing
+        if (!target || snap(target) !== dupBase) return ABORT; // target vanished or changed since the check
         const merged = mergeUpdate(target, data);
         savedId = merged.id;
         return upsert(list, merged);
       }
+      if (!mode && findDuplicate(list, normalize({ ...data, id: data.id || "__new__" }))) return ABORT; // a match appeared
       const e = normalize({ ...data, id: data.id || newId(), dateAdded: data.dateAdded || nowIso() });
       savedId = e.id;
       return upsert(list, e);
     });
-    if (!ok) return;
+    if (outcome === "aborted") {
+      // Not saved: keep the sheet and everything typed; no success message, no barcode send. Save again re-checks.
+      clearDupPrompt();
+      load();
+      host.toast && host.toast(SAVE_ABORTED);
+      F("tt-save-status").textContent = SAVE_ABORTED;
+      F("tt-save-status").hidden = false;
+      return;
+    }
+    if (outcome !== "committed") return;
     closeModal("tt-form-modal");
     render();
     host.renderStats && host.renderStats();
@@ -1279,7 +1299,7 @@
     if (!e) return;
     const n = isBase(e) ? expansionsOf(entries, e).length : 0;
     const go = () => {
-      if (!commit((list) => remove(list, id))) return;
+      if (commit((list) => remove(list, id)) !== "committed") return;
       host.closeConfirm && host.closeConfirm();
       closeModal("tt-detail-modal");
       render();
@@ -1367,7 +1387,7 @@
     /** Restore: "replace" swaps the tabletop shelf, "merge" folds in by id / BGG id. */
     restore(incoming, mode, opts) {
       let res = { added: incoming.length, updated: 0, handMatches: [] };
-      const ok = commit((list) => {
+      const ok = "committed" === commit((list) => {
         if (mode === "replace") return mergeRestore([], incoming).list;
         res = mergeRestore(list, incoming, opts);
         return res.list;
