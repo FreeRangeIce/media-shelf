@@ -97,6 +97,18 @@
     }
   })();
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
+  const GAME_RELAY_URL = ""; // Set only after the tested relay is deployed and approved.
+  const GAME_TITLE_SEARCH_TESTED = true;
+  function gameRelayUrl() {
+    const local = ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
+    const value = local ? (window.__FRM_GAME_RELAY__ || GAME_RELAY_URL) : GAME_RELAY_URL;
+    try {
+      const u = new URL(value);
+      if (u.username || u.password || u.search || u.hash || u.pathname !== "/") return "";
+      if (u.protocol !== "https:" && !(local && u.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(u.hostname))) return "";
+      return u.origin;
+    } catch { return ""; }
+  }
   const RAWG_KEY_STORAGE = "media-shelf-rawg-key";
   const LAST_BACKUP_STORAGE = "media-shelf-last-backup";
   const BACKUP_REMINDER_DISMISSED_STORAGE = "media-shelf-backup-reminder-dismissed";
@@ -1093,6 +1105,7 @@
       ownsManual: triState(raw.ownsManual),
       sources: sources.length ? sources : ["manual"],
       rawgId: String(raw.rawgId ?? "").trim(),
+      igdbId: /^[1-9]\d{0,9}$/.test(String(raw.igdbId ?? "")) ? String(raw.igdbId) : "",
       authors,
       signed,
       googleBooksUrl: safeGoogleBooksUrl(raw.googleBooksUrl),
@@ -1634,6 +1647,7 @@
    *   duplicate prompt opens the existing item pre-filled with incoming values)
    */
   function openModal(item, snapshot, { focusTitle = true } = {}) {
+    resetGameLookup();
     if (els.modal.hidden) lastFocus = document.activeElement;
     dismissPlainToast();
     syncTabletopTypeOption(!item);
@@ -1681,6 +1695,7 @@
     els.fieldCover.value = item ? item.coverUrl || "" : "";
     els.fieldCoverSource.value = item ? item.coverSource || "" : "";
     if (els.fieldCoverSourceId) els.fieldCoverSourceId.value = item ? item.coverSourceId || "" : "";
+    $("#field-igdb-id").value = item ? item.igdbId || "" : "";
     if (els.fieldCoverPlatform) els.fieldCoverPlatform.value = item ? item.coverPlatform || "" : "";
     els.fieldGbUrl.value = item ? item.googleBooksUrl || "" : "";
     lookupYearLoose = false;
@@ -1764,6 +1779,7 @@
   }
 
   function closeModal() {
+    resetGameLookup();
     stopScanner();
     closeScanModal(true);
     els.modal.hidden = true;
@@ -1928,6 +1944,7 @@
       coverUrl: els.fieldCover.value.trim(),
       coverSource: els.fieldCoverSource.value.trim(),
       coverSourceId: els.fieldCoverSourceId ? els.fieldCoverSourceId.value.trim() : "",
+      igdbId: type === "game" ? $("#field-igdb-id").value : "",
       coverPlatform: els.fieldCoverPlatform ? els.fieldCoverPlatform.value.trim() : "",
       googleBooksUrl: type === "book" ? safeGoogleBooksUrl(els.fieldGbUrl.value) : "",
       platform: type === "game" ? normalizePlatform(els.fieldPlatform.value) : "",
@@ -1970,6 +1987,11 @@
 
   function saveItem(e) {
     e.preventDefault();
+    if (els.fieldType.value === "game" && !$("#game-match-picker").hidden) {
+      setLookupStatus("Choose and use a match, or cancel the selection before saving your own details.", "note");
+      $("#game-match-heading").focus();
+      return;
+    }
     const data = collectFormWithCoverIds();
     if (comicSaveBlocked()) {
       onBlockedSave(); // the line under Save turns red
@@ -2260,7 +2282,7 @@
           }
         }
         if (item.type === "game") {
-          const rawg = buildRawgSearchUrl(item.title);
+          const rawg = ""; // RAWG reference retired; legacy stored IDs/URLs stay unchanged.
           const igdb = buildIgdbUrl(item.title);
           if (rawg) {
             cardRefs.push(
@@ -2381,12 +2403,14 @@
   }
 
   function updateReferenceLinks() {
+    const gameTitleButton = $("#btn-game-title-lookup");
+    if (gameTitleButton) gameTitleButton.hidden = !(els.fieldType.value === "game" && GAME_TITLE_SEARCH_TESTED && gameRelayUrl());
     const type = els.fieldType.value;
     const title = els.fieldTitle.value.trim();
     const year = els.fieldYear.value.trim();
     const imdb = type === "movie" ? buildImdbUrl(title, year) : "";
     const isfdb = type === "book" ? buildIsfdbUrl(title) : "";
-    const rawg = type === "game" ? buildRawgSearchUrl(title) : "";
+    const rawg = "";
     const igdb = type === "game" ? buildIgdbUrl(title) : "";
     setRefLink(els.refImdb, imdb);
     setRefLink(els.refIsfdb, isfdb);
@@ -2783,6 +2807,7 @@
   }
 
   function applyLookupFields(data, { overwrite } = { overwrite: false }) {
+    if (els.fieldType.value === "game" && /^[1-9]\d{0,9}$/.test(String(data.igdbId || ""))) $("#field-igdb-id").value = String(data.igdbId);
     const fill = (el, value) => {
       if (value == null || value === "") return false;
       const cur = el.value.trim();
@@ -2903,7 +2928,8 @@
     googlebooks: "Google Books",
     wikipedia: "Wikipedia",
     omdb: "OMDb",
-    rawg: "RAWG",
+    rawg: "RAWG", // legacy cover provenance
+    igdb: "IGDB.com",
     microsoft: "Microsoft Store",
     musicbrainz: "MusicBrainz",
     coverartarchive: "Cover Art Archive",
@@ -3062,7 +3088,8 @@
     if (!els.settingsModal) return;
     dismissPlainToast();
     els.fieldOmdbKey.value = getOmdbKey();
-    els.fieldRawgKey.value = getRawgKey();
+    if (els.fieldRawgKey) els.fieldRawgKey.value = getRawgKey();
+    $("#game-relay-status").textContent = gameRelayUrl() ? "Game title lookup is configured through the IGDB relay. No personal key is needed." : "IGDB title lookup is not configured yet. Barcode lookup and manual entry remain available.";
     setKeyVisibility("omdb", false);
     setKeyVisibility("rawg", false);
     clearTestStatus("omdb");
@@ -3227,13 +3254,7 @@
       }
       els.apiKeyHint.hidden = false;
       els.apiKeyHint.dataset.focus = "omdb";
-    } else if (type === "game" && !getRawgKey()) {
-      if (els.apiKeyHintText) {
-        els.apiKeyHintText.textContent =
-          "Add a free RAWG key in Settings and game Lookup will try RAWG first.";
-      }
-      els.apiKeyHint.hidden = false;
-      els.apiKeyHint.dataset.focus = "rawg";
+
     }
   }
 
@@ -3242,7 +3263,7 @@
     const type = els.fieldType ? els.fieldType.value : "";
     if (type === "movie" && getOmdbKey()) {
       els.apiKeyHint.hidden = true;
-    } else if (type === "game" && getRawgKey()) {
+    } else if (type === "game") {
       els.apiKeyHint.hidden = true;
     } else if (type !== "movie" && type !== "game") {
       els.apiKeyHint.hidden = true;
@@ -3905,7 +3926,7 @@
   }
 
   /**
-   * Movie covers come from OMDb only and game covers from RAWG only (v1.2: the App Store
+   * Movie covers come from OMDb only and new game covers from IGDB only (v1.2: the App Store
    * artwork fallback is gone). Other sources may still fill title, year and creator.
    */
   function withoutCover(data) {
@@ -4343,7 +4364,7 @@
     return { ...result, data: { ...d, ...coverFields } };
   }
 
-  async function resolveGameBarcode(raw, selectedPlatform) {
+  async function resolveGameBarcode(raw, signal) {
     const digits = String(raw || "").replace(/\D/g, "");
     if (digits.length < 8 || digits.length > 14) return null;
     const variants = new Set(barcodeVariants(digits));
@@ -4355,30 +4376,30 @@
         "SELECT ?itemLabel ?platLabel WHERE { VALUES ?gtin { " + values +
         " } ?item wdt:P3962 ?gtin. OPTIONAL { ?item wdt:P400 ?plat. } " +
         "SERVICE wikibase:label { bd:serviceParam wikibase:language \"en\". } } LIMIT 8";
-      const data = await fetchJsonQuiet(
-        "https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(query)
+      const data = await fetchGameBarcodeJson(
+        "https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(query), signal
       );
       const rows = data && data.results && data.results.bindings;
       if (Array.isArray(rows) && rows.length) {
-        const title = titleFromBarcodeProduct(rows[0].itemLabel && rows[0].itemLabel.value);
+        const title = usableGameTitle(rows[0].itemLabel && rows[0].itemLabel.value);
         let platform = "";
         for (const row of rows) {
           platform = mapExternalPlatform(row.platLabel && row.platLabel.value);
           if (platform) break;
         }
-        if (title) return { title, platform, barcodeSource: "Wikidata" };
+        if (title) return { title, rawTitle: String(rows[0].itemLabel.value), platform, barcodeSource: "Wikidata" };
       }
     }
-    const upc = await fetchJsonQuiet(
-      "https://api.upcitemdb.com/prod/trial/lookup?upc=" + encodeURIComponent(digits)
+    const upc = await fetchGameBarcodeJson(
+      "https://api.upcitemdb.com/prod/trial/lookup?upc=" + encodeURIComponent(digits), signal
     );
     const item = upc && Array.isArray(upc.items) ? upc.items[0] : null;
     if (item && item.title) {
       const blob = `${item.title} ${item.description || ""} ${item.brand || ""}`;
-      const title = titleFromBarcodeProduct(item.title);
-      if (title) return { title, platform: mapExternalPlatform(blob), barcodeSource: "UPCitemdb" };
+      const title = usableGameTitle(item.title);
+      if (title) return { title, rawTitle: String(item.title), platform: mapExternalPlatform(blob), barcodeSource: "UPCitemdb" };
     }
-    return fetchPriceChartingBarcode(digits, selectedPlatform);
+    return null; // Only the existing Wikidata + UPCitemdb barcode-to-title step is used.
   }
 
   function clearCoverChoices() {
@@ -5339,8 +5360,103 @@
     }
   }
 
+  let gameBusy = false, gameSeq = 0, gameAbort = null, gameCandidates = [], gamePick = null;
+  const gameCooldowns = new Map();
+  function usableGameTitle(value) {
+    const s = typeof value === "string" ? value.normalize("NFKC").replace(/\s+/g, " ").trim() : "";
+    return s.length >= 2 && s.length <= 160 && /\p{L}/u.test(s) && !/[\u0000-\u001f\u007f]/.test(String(value)) && !/https?:\/\//i.test(s) ? s : "";
+  }
+  function gamePlatformMatches(platforms, selected) {
+    const aliases = { Switch: ["nintendo switch"], PS1: ["playstation"], PS2: ["playstation 2"], PS3: ["playstation 3"], PS4: ["playstation 4"], PS5: ["playstation 5"], Xbox: ["xbox"], "Xbox 360": ["xbox 360"], "Xbox One": ["xbox one"], "Series X|S": ["xbox series x|s", "xbox series x", "xbox series s"], GameCube: ["nintendo gamecube"], Wii: ["wii"], "Wii U": ["wii u"], PC: ["pc (microsoft windows)", "linux", "mac"], Steam: ["pc (microsoft windows)", "linux", "mac"] };
+    if (!selected || selected === "Other") return true;
+    if (selected === "PSN") return platforms.some(p => /^playstation/i.test(p));
+    const expected = aliases[selected];
+    // Unknown/store labels are not evidence of platform compatibility.
+    return Boolean(expected && platforms.some(p => expected.includes(String(p).toLowerCase())));
+  }
+  function resetGameLookup() {
+    gameSeq++;
+    if (gameAbort) gameAbort.abort();
+    gameAbort = null; gameBusy = false; gameCandidates = []; gamePick = null;
+    const panel = $("#game-match-picker");
+    if (panel) { panel.hidden = true; panel.innerHTML = ""; }
+    if (els.btnLookup && !lookupBusy) els.btnLookup.disabled = false;
+    const button = $("#btn-game-title-lookup"); if (button) button.disabled = false;
+  }
+  async function gameJson(url, signal) {
+    const key = new URL(url).origin, until = gameCooldowns.get(key) || 0;
+    if (until > Date.now()) throw new Error(`This source is limiting requests. Try again in ${Math.ceil((until - Date.now()) / 1000)} seconds. What you typed is kept.`);
+    let res;
+    try { res = await fetch(url, { signal, headers: { Accept: "application/json" } }); }
+    catch (e) {
+      if (signal?.aborted) throw e;
+      throw new Error("Game lookup couldn’t connect. Try again, or enter the details yourself. What you typed is kept.");
+    }
+    if (res.status === 429) {
+      const header = res.headers.get("Retry-After"), reset = Number(res.headers.get("X-RateLimit-Reset"));
+      const n = header && /^\d+$/.test(header) ? Number(header) : header ? (Date.parse(header) - Date.now()) / 1000 : reset ? (reset * 1000 - Date.now()) / 1000 : 60;
+      const seconds = Number.isFinite(n) ? Math.max(1, Math.ceil(n)) : 60;
+      gameCooldowns.set(key, Date.now() + seconds * 1000);
+      throw new Error(`This source is limiting requests. Try again in ${seconds} seconds. What you typed is kept.`);
+    }
+    if (!res.ok) throw new Error(res.status === 503 || res.status === 401 || res.status === 403 ? "Game lookup is unavailable or not configured. Try again later, or enter the details yourself. What you typed is kept." : "Game lookup couldn’t finish. Try again, or enter the details yourself. What you typed is kept.");
+    try { return await res.json(); }
+    catch { throw new Error("Game lookup returned unreadable details. Try again, or enter the details yourself. What you typed is kept."); }
+  }
+  async function fetchGameBarcodeJson(url, signal) { return gameJson(url, signal); }
+  async function runGameLookup(byTitle) {
+    if (gameBusy || lookupBusy || els.fieldType.value !== "game") return;
+    resetGameLookup();
+    const seq = gameSeq, relay = gameRelayUrl();
+    const raw = els.fieldBarcode.value.trim();
+    const typed = usableGameTitle(els.fieldTitle.value);
+    if (byTitle && (!GAME_TITLE_SEARCH_TESTED || !relay)) { setLookupStatus("IGDB title lookup is not configured yet. What you typed is kept.", "error"); return; }
+    if (byTitle && !typed) { setLookupStatus("Enter a usable game title, not a barcode, to search IGDB.", "error"); return; }
+    if (!byTitle && !/^\d[\d -]{6,20}\d$/.test(raw)) { setLookupStatus("Enter a barcode to look up this copy. Title is needed only when you save.", "error"); return; }
+    gameBusy = true; gameAbort = new AbortController();
+    const controller = gameAbort, signal = controller.signal;
+    const timer = setTimeout(() => controller.abort(), 12000);
+    els.btnLookup.disabled = true; $("#btn-game-title-lookup").disabled = true;
+    clearCoverChoices(); setLookupStatus(byTitle ? "Searching IGDB.com…" : "Looking up this barcode…");
+    try {
+      let title = typed;
+      if (!byTitle) {
+        const hit = await resolveGameBarcode(raw, signal);
+        if (seq !== gameSeq) return;
+        title = usableGameTitle(hit?.title);
+        if (!title) { setLookupStatus("No usable title matched this barcode. What you typed is kept; enter the details yourself.", "error"); return; }
+        const selected = els.fieldPlatform.value, known = mapExternalPlatform(selected);
+        const compatible = known === hit.platform || (selected === "Steam" && hit.platform === "PC") || (selected === "PSN" && /^PS[1-5]$/.test(hit.platform));
+        if (hit.platform && known && !compatible) { setLookupStatus("This barcode matched a different platform. What you typed is kept.", "error"); return; }
+        if (!relay) { setLookupStatus(`Barcode title: ${title}. IGDB details are not configured yet. What you typed is kept.`, "note"); return; }
+      }
+      if (!title) return; // No empty search or barcode masquerading as a title, on either side.
+      const data = await gameJson(`${relay}/game/search?title=${encodeURIComponent(title)}`, signal);
+      if (seq !== gameSeq || els.modal.hidden || els.fieldType.value !== "game") return;
+      gameCandidates = (Array.isArray(data.candidates) ? data.candidates : []).slice(0, 10).filter(c => /^[1-9]\d{0,9}$/.test(String(c.igdbId || "")) && usableGameTitle(c.title)).map(c => ({
+        igdbId: String(c.igdbId), title: usableGameTitle(c.title), creator: String(c.creator || "").slice(0, 200), year: Number.isInteger(c.year) && c.year >= 1900 && c.year <= 2200 ? c.year : null,
+        platforms: Array.isArray(c.platforms) ? c.platforms.filter(p => typeof p === "string").slice(0, 30) : [],
+        coverUrl: /^https:\/\/images\.igdb\.com\/igdb\/image\/upload\/t_cover_big\/[A-Za-z0-9_-]+\.jpg$/.test(c.coverUrl || "") ? c.coverUrl : "", coverSource: "igdb", coverSourceId: String(c.igdbId)
+      }));
+      if (!gameCandidates.length) { setLookupStatus("No IGDB match. What you typed is kept; enter the details yourself.", "error"); return; }
+      const panel = $("#game-match-picker"); panel.hidden = false;
+      panel.innerHTML = `<h3 id="game-match-heading" tabindex="-1">Choose your game</h3><p class="field-hint">Check the title, year and platform. Nothing is saved until you press Save.</p><div class="game-match-list">${gameCandidates.map((c, i) => {
+        const matches = gamePlatformMatches(c.platforms, els.fieldPlatform.value);
+        return `<button type="button" class="game-match" data-game-pick="${i}" aria-pressed="false" ${matches ? "" : "disabled"}><span class="game-match-cover">${c.coverUrl ? `<img src="${escapeHtml(c.coverUrl)}" alt="" width="43" height="64" onerror="this.hidden=true;this.nextElementSibling.hidden=false" />` : ""}<span class="game-match-no-cover" ${c.coverUrl ? "hidden" : ""} aria-hidden="true">VIDEO GAME</span></span><span class="game-match-text"><span class="game-match-name">${escapeHtml(c.title)}</span><span class="game-match-meta">${c.year || "Year unknown"} · ${escapeHtml(c.platforms.join(", ") || "Platform unknown")}${matches ? "" : " — does not match the selected platform"}</span></span></button>`;
+      }).join("")}</div><div class="form-actions-right"><button type="button" class="btn btn-ghost" id="game-match-cancel">Cancel</button><button type="button" class="btn btn-primary" id="game-match-use" disabled>Use this match</button></div>`;
+      $("#game-match-heading").focus();
+      setLookupStatus("Choose a match before filling the form. What you typed is kept.");
+    } catch (e) {
+      if (seq === gameSeq) setLookupStatus(signal.aborted ? "Game lookup timed out. Try again, or enter the details yourself. What you typed is kept." : e.message || "Game lookup couldn’t finish. What you typed is kept.", "error");
+    } finally {
+      clearTimeout(timer);
+      if (seq === gameSeq) { gameBusy = false; gameAbort = null; els.btnLookup.disabled = false; $("#btn-game-title-lookup").disabled = false; }
+    }
+  }
+
   async function runLookup() {
     if (lookupBusy) return;
+    if (els.fieldType.value === "game") return runGameLookup(false);
     if (els.fieldType.value === "comic") return runComicLookup();
     const type = els.fieldType.value;
     const barcode = els.fieldBarcode.value.trim();
@@ -5434,84 +5550,6 @@
             ),
         });
         result = await runLookupWaterfall(steps, tried);
-      } else if (type === "game") {
-        let term = title || "";
-        let platform = els.fieldPlatform.value;
-        const digits = barcode.replace(/\D/g, "");
-        const upcLike = digits.length >= 8 && digits.length <= 14;
-        let barcodeHit = null;
-        if (upcLike && !looksLikeIsbn(barcode)) {
-          barcodeHit = await resolveGameBarcode(barcode, platform);
-          if (barcodeHit) {
-            if (!term && barcodeHit.title) term = barcodeHit.title;
-            if (barcodeHit.platform && !platform) {
-              syncPlatformSelect(barcodeHit.platform);
-              platform = els.fieldPlatform.value;
-            }
-          }
-        }
-        const steps = [];
-        if (term && getRawgKey()) {
-          const rawgTerm = term;
-          const rawgPlatform = platform;
-          steps.push({
-            label: "RAWG",
-            slug: "rawg",
-            run: () => fetchRawg(rawgTerm, rawgPlatform),
-          });
-        }
-        if (term) {
-          steps.push({
-            label: "Wikipedia",
-            slug: "wikipedia",
-            run: async (knownTitle) =>
-              withoutCover(
-                await fetchWikipedia({
-                  title: term || knownTitle || "",
-                  kind: "game",
-                  year: els.fieldYear.value.trim(),
-                })
-              ),
-          });
-        }
-        if (isbnShaped) {
-          steps.push({
-            label: "Open Library",
-            slug: "openlibrary",
-            run: async () => withoutCover(await fetchOpenLibraryByIsbn(barcode)),
-          });
-        }
-        if (!steps.length) {
-          // A code is already in the form: never ask for a title.
-          setLookupStatus(
-            barcode.trim()
-              ? BARCODE_MISS
-              : "Enter a game title to search, or paste a cover URL.",
-            "error"
-          );
-          return;
-        }
-        result = attachBarcodeCover(await runLookupWaterfall(steps, tried), barcodeHit);
-        // Name the source that matched the barcode. A later title search
-        // (Wikipedia) must not take the line, and PriceCharting must not
-        // be named for a Wikidata or UPCitemdb hit.
-        if (barcodeHit && barcodeHit.barcodeSource && barcodeHit.title && !title && result) {
-          result = { ...result, label: barcodeHit.barcodeSource };
-        }
-        if (!(result && lookupHasUsefulFields(result.data)) && barcodeHit && barcodeHit.barcodeSource && barcodeHit.title && !title) {
-          commitLookup(
-            {
-              title: barcodeHit.title,
-              coverUrl: barcodeHit.coverUrl || "",
-              coverSource: barcodeHit.coverSource || "",
-              coverPlatform: barcodeHit.coverPlatform || barcodeHit.platform || "",
-              covers: barcodeHit.covers || [],
-            },
-            "Matched via " + barcodeHit.barcodeSource,
-            "ok"
-          );
-          return;
-        }
       } else if (type === "music") {
         // Music: MusicBrainz for details, Cover Art Archive for the front cover (step 7c).
         if (!barcodeVariants(barcode).length && !title) {
@@ -6025,6 +6063,35 @@
       }
     });
 
+    $("#btn-game-title-lookup").addEventListener("click", () => runGameLookup(true));
+    const cancelGameOnEdit = e => {
+      if (e.target.closest("#game-match-picker")) return;
+      if (gameBusy || !$("#game-match-picker").hidden) {
+        resetGameLookup();
+        setLookupStatus("Details changed. Look up again to choose a match.", "note");
+      }
+      if (e.target === els.fieldTitle || e.target === els.fieldPlatform) $("#field-igdb-id").value = "";
+    };
+    els.form.addEventListener("input", cancelGameOnEdit);
+    els.form.addEventListener("change", cancelGameOnEdit);
+    $("#game-match-picker").addEventListener("click", e => {
+      const pick = e.target.closest("[data-game-pick]");
+      if (pick) {
+        const index = Number(pick.dataset.gamePick);
+        const candidate = gameCandidates[index];
+        if (!candidate || !gamePlatformMatches(candidate.platforms, els.fieldPlatform.value)) return;
+        gamePick = candidate;
+        $("#game-match-use").disabled = false;
+        $$("[data-game-pick]").forEach(b => b.setAttribute("aria-pressed", String(b === pick)));
+        return;
+      }
+      if (e.target.closest("#game-match-cancel")) { resetGameLookup(); setLookupStatus("Match selection cancelled. What you typed is kept."); return; }
+      if (e.target.closest("#game-match-use") && gamePick) {
+        const candidate = gamePick;
+        resetGameLookup();
+        commitLookup(candidate, "Details from IGDB.com filled in. Check them, then save.");
+      }
+    });
     els.btnLookup.addEventListener("click", () => runLookup());
     els.btnScan.addEventListener("click", () => openScanModal());
     $("#scan-close").addEventListener("click", () => closeScanModal());
@@ -6358,7 +6425,7 @@
   function mergeIncomingIntoExisting(existing, incoming, alsoReplace) {
     const out = { ...existing };
     const empty = (v) => v == null || v === "" || (Array.isArray(v) && !v.length);
-    for (const k of ["creator", "year", "barcode", "progress", "externalId", "rawgId", "acquisition", "lastUsed", "googleBooksUrl"]) {
+    for (const k of ["creator", "year", "barcode", "progress", "externalId", "rawgId", "igdbId", "acquisition", "lastUsed", "googleBooksUrl"]) {
       if (empty(out[k]) && !empty(incoming[k])) out[k] = incoming[k];
     }
     if (empty(out.coverUrl) && !empty(incoming.coverUrl)) {

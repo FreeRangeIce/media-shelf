@@ -63,6 +63,13 @@ async function shot(page, name) {
 }
 const V3 = SHOTS ? `${SHOTS}/v3` : "";
 async function vshot(page, name) { if (!V3) return; fs.mkdirSync(V3, { recursive: true }); await page.waitForTimeout(150); await page.screenshot({ path: `${V3}/${name}.png`, fullPage: false }); }
+// Viewport changes can precede the viewport rAF / panel entrance animation.
+// Settle geometry rather than rely on screenshot delays; assertions stay strict.
+async function resizeMatch(page, width, height) {
+  await page.setViewportSize({ width, height });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.evaluate(() => Promise.all(document.querySelector("#tt-match-modal > .modal-panel").getAnimations().map(a => a.finished.catch(() => {}))));
+}
 const T_parent = (list, id) => { const T = require("../tabletop.js"); const r = T.resolveParent(list.map(T.normalize), T.normalize(list.find((e) => e.id === id))); return r && r.id; };
 // Relative luminance contrast (WCAG 2.x).
 const lum = (rgb) => { const [r, g, b] = rgb.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
@@ -124,7 +131,7 @@ async function addViaForm(page, fields) {
     const ins2 = await page.evaluate(() => { const n = document.querySelector(".type-tabs"); const a = n.querySelector(".chip.active"); const nr = n.getBoundingClientRect(), ar = a.getBoundingClientRect(); return Math.round(nr.right - ar.right); });
     check("tabs at 320: tab hidden on the right comes in with a 16px inset", ins2 >= 15 && ins2 <= 17, String(ins2));
     await tab(page, "tabletop");
-    for (const w of [1440, 390, 320]) { await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 }); await shot(page, `empty-${w}`); }
+    for (const w of [1440, 390, 320]) { await resizeMatch(page, w, w === 1440 ? 900 : 844); await shot(page, `empty-${w}`); }
     check("no page errors (empty)", !errors.length, errors.join("|"));
     await ctx.close();
   }
@@ -236,7 +243,7 @@ async function addViaForm(page, fields) {
       await page.setViewportSize({ width: w, height: 1000 });
       const ov = await page.evaluate(() => document.documentElement.scrollWidth);
       check(`shelf at ${w}: no sideways page scroll`, ov === w, String(ov));
-      await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 });
+      await resizeMatch(page, w, w === 1440 ? 900 : 844);
       await page.$eval("#tabletop-list", (e) => window.scrollTo(0, e.getBoundingClientRect().top + scrollY - 140));
       await shot(page, `shelf-grouped-${w}`);
       await page.evaluate(() => window.scrollTo(0, 0));
@@ -396,22 +403,22 @@ async function addViaForm(page, fields) {
     check("Skip button reads 'Skip backup copy'", (await page.textContent("#tt-match-skip")).trim() === "Skip backup copy");
     check("prompt: Keep both is the filled primary; Update and Skip are outlines, Skip not danger", /btn-primary/.test(p1.primary) && p1.outlines.every((c) => /btn-outline/.test(c) && !/danger/.test(c)));
     check("nothing written while the prompt is open", JSON.stringify(await ttStore(page)) === JSON.stringify(before.tt) && (await page.evaluate(() => localStorage.getItem("media-tracker-v1"))) === before.items);
-    for (const w of [1440, 390, 320]) { await page.setViewportSize({ width: w, height: w === 1440 ? 900 : 844 }); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab"); await vshot(page, `match-1of3-rest-${w}`); await vshot(page, `match-bold-differences-${w}`); }
+    for (const w of [1440, 390, 320]) { await resizeMatch(page, w, w === 1440 ? 900 : 844); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab"); await vshot(page, `match-1of3-rest-${w}`); await vshot(page, `match-bold-differences-${w}`); }
     const lay = async () => page.evaluate(() => { const s = [...document.querySelectorAll(".tt-match-side")].map((x) => x.getBoundingClientRect()); const b = ["tt-match-keep", "tt-match-update", "tt-match-skip", "tt-match-rest"].map((id) => document.getElementById(id).getBoundingClientRect()); return { cols: Math.abs(s[0].top - s[1].top) < 2, stackedShelfTop: s[0].bottom <= s[1].top, oneRow: Math.abs(b[0].top - b[2].top) < 2, primaryTop: b[0].top < b[1].top && b[1].top < b[2].top, fullW: Math.round(b[0].width) === Math.round(b[2].width), minH: Math.min(...b.map((r) => r.height)), docW: document.documentElement.scrollWidth }; });
-    await page.setViewportSize({ width: 1440, height: 900 }); const L1 = await lay();
+    await resizeMatch(page, 1440, 900); const L1 = await lay();
     const fb = async () => page.evaluate(() => { document.getElementById("tt-match-keep").focus(); const r = ["tt-match-keep", "tt-match-update", "tt-match-skip"].map((id) => document.getElementById(id).getBoundingClientRect()); const cs = getComputedStyle(document.getElementById("tt-match-keep")); return { w: r.map((x) => Math.round(x.width)), h: r.map((x) => Math.round(x.height)), focused: document.activeElement.id, tf: cs.transform, ol: cs.outlineWidth + " " + cs.outlineStyle, off: cs.outlineOffset, sh: cs.boxShadow }; });
     for (const w of [390, 320]) {
-      await page.setViewportSize({ width: w, height: 844 });
+      await resizeMatch(page, w, 844);
       const B = await fb();
       check(`${w}: Keep both focused — same width as the others, all 44px, no transform, 2px outline at 2px offset`, B.focused === "tt-match-keep" && new Set(B.w).size === 1 && B.h.every((h) => h === 44) && B.tf === "none" && B.ol === "2px solid" && B.off === "2px" && B.sh === "none", JSON.stringify(B));
     }
-    await page.setViewportSize({ width: 1440, height: 900 });
+    await resizeMatch(page, 1440, 900);
     const B14 = await fb();
     check("1440: focused Keep both same height as the others, no transform", new Set(B14.h).size === 1 && B14.tf === "none", JSON.stringify(B14));
     check("1440: two columns, buttons in one row", L1.cols && L1.oneRow, JSON.stringify(L1));
-    await page.setViewportSize({ width: 320, height: 844 }); const L3 = await lay();
+    await resizeMatch(page, 320, 844); const L3 = await lay();
     check("320: stacked (shelf on top), buttons full width, primary on top, 44px targets, no sideways scroll", L3.stackedShelfTop && L3.primaryTop && L3.fullW && L3.minH >= 44 && L3.docW === 320, JSON.stringify(L3));
-    await page.setViewportSize({ width: 390, height: 844 });
+    await resizeMatch(page, 390, 844);
     check("390: stacked", (await lay()).stackedShelfTop);
     // answer: 1 update, 2 keep, 3 skip (no auto-advance: each tap moves one)
     await page.click("#tt-match-update");
@@ -603,7 +610,7 @@ async function addViaForm(page, fields) {
     if (MAIN) {
       const m = await open(browser, { origin: MAIN, tt: SHELF });
       const mh = await m.page.evaluate(() => document.querySelector(".footer-credits").innerHTML);
-      check("other footer credits identical to origin/main (v45: only Game -> Video game)", mh === foot.html.replace("Video game data from", "Game data from"));
+      check("other footer credits identical to origin/main (only the explicit IGDB game-credit migration)", mh === foot.html.replace('Game data from <a href="https://www.igdb.com/" target="_blank" rel="noopener noreferrer">IGDB.com</a>.', 'Game data from <a href="https://rawg.io" target="_blank" rel="noopener noreferrer">RAWG</a>'));
       await m.ctx.close();
     }
     if (SHOTS) {
@@ -630,7 +637,7 @@ async function addViaForm(page, fields) {
       out.push(await page.$eval("#item-list", (e) => e.innerHTML));
       await ctx.close();
     }
-    check("Video games tab markup identical to origin/main (v45: only the Game -> Video game label)", out[0] === out[1].replace(/Video game/g, "Game"));
+    check("Video games tab markup identical to origin/main (only renamed label and retired RAWG reference)", out[0].replace(/<a class="card-ref" href="https:\/\/rawg\.io\/search\?query=[^"]*" target="_blank" rel="noopener noreferrer">RAWG<\/a>/g, "") === out[1].replace(/Video game/g, "Game"));
   }
   if (SHOT_DIR) {
     fs.writeFileSync(`${SHOT_DIR}/footer-check.json`, JSON.stringify(footerLog, null, 1));

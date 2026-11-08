@@ -3900,3 +3900,19 @@ body.modal-open {
     height: 40px;
   }
 }
+
+/* Game choices use the same restrained, bordered confirmation-row language as Tabletop.
+   A cover and the no-cover tile always occupy the same frame, including image failures. */
+#game-match-picker { margin-block: var(--space-4); }
+.game-match-list { display: grid; gap: var(--space-2); margin-block: var(--space-3); }
+.game-match { display: grid; grid-template-columns: 43px minmax(0, 1fr); align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-elevated); color: var(--text); width: 100%; text-align: left; font: inherit; min-height: 44px; cursor: pointer; }
+.game-match-cover, .game-match-cover img, .game-match-no-cover { width: 43px; height: 64px; border-radius: 4px; }
+.game-match-cover { display: block; flex-shrink: 0; }
+.game-match-cover img { object-fit: cover; display: block; }
+.game-match-no-cover { display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); color: var(--text-muted); font-size: 9px; text-align: center; }
+.game-match-name { display: block; font-size: 14px; color: var(--text); }
+.game-match-meta { display: block; font-size: 13px; color: var(--text-muted); }
+.game-match[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.game-match:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.game-match:disabled { cursor: not-allowed; }
+#modal:has(#game-match-picker:not([hidden])) .form-actions .btn-primary { background: transparent; color: var(--text); border-color: var(--border-strong); transition: none; }

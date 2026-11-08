@@ -128,7 +128,7 @@
 
   <footer class="site-footer">
     <p>Your library is saved in this browser (<code>localStorage</code>). Back up, or Export in Settings, to keep a copy. Hosted on GitHub Pages.</p>
-    <p class="footer-credits"><span class="footer-credit">Video game data from <a href="https://rawg.io" target="_blank" rel="noopener noreferrer">RAWG</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Movie data from <a href="https://www.omdbapi.com" target="_blank" rel="noopener noreferrer">OMDb</a> (<a class="nowrap" href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>)</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Music data from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Covers from the <a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer">Cover Art Archive</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit" id="footer-comic-credit"></span></p>
+    <p class="footer-credits"><span class="footer-credit">Game data from <a href="https://www.igdb.com/" target="_blank" rel="noopener noreferrer">IGDB.com</a>.</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Movie data from <a href="https://www.omdbapi.com" target="_blank" rel="noopener noreferrer">OMDb</a> (<a class="nowrap" href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>)</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Music data from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Covers from the <a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer">Cover Art Archive</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit" id="footer-comic-credit"></span></p>
     <!-- "App version v<APP_VERSION>" (cleared, Berean, Oct 11), same line as in Settings, filled by fillAppVersionLine() -->
     <p class="footer-version" id="footer-version"></p>
   </footer>
@@ -163,6 +163,7 @@
             <button type="button" class="btn btn-ghost" id="btn-lookup" title="Look up cover and details">Lookup</button>
           </div>
           <p class="field-hint" id="camera-hint">Allow camera when Safari asks.</p>
+          <section id="game-match-picker" aria-labelledby="game-match-heading" hidden></section>
           <p id="lookup-status" class="lookup-status" role="status" aria-live="polite" hidden></p>
           <!-- Comic source credit, filled from COMIC_SOURCES (app.js) by the comic's sourceId, plus
                COMIC_IMAGE_SOURCES (Metron) when the cover is one of its pictures. -->
@@ -193,7 +194,7 @@
           </p>
           <input type="hidden" id="field-gb-url" />
           <div id="api-key-hint" class="api-key-hint-banner" hidden>
-            <span id="api-key-hint-text">Add free OMDb or RAWG keys in Settings and Lookup will try those sources first.</span>
+            <span id="api-key-hint-text">An optional OMDb key in Settings improves movie lookup. Game lookup needs no personal key.</span>
             <button type="button" class="btn btn-ghost btn-sm" id="btn-open-api-settings">Open Settings</button>
           </div>
         </div>
@@ -218,6 +219,7 @@
         <div class="form-row">
           <label for="field-title">Title <span class="req" id="label-title-req">*</span></label>
           <input type="text" id="field-title" required maxlength="200" />
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-game-title-lookup" hidden>Search IGDB by title</button>
         </div>
 
         <div class="form-row ref-links-row" id="ref-links-row" hidden>
@@ -225,10 +227,9 @@
           <div class="ref-links" id="ref-links">
             <a class="ref-link" id="ref-imdb" href="#" target="_blank" rel="noopener noreferrer" hidden>IMDb</a>
             <a class="ref-link" id="ref-isfdb" href="#" target="_blank" rel="noopener noreferrer" hidden>ISFDB</a>
-            <a class="ref-link" id="ref-rawg" href="#" target="_blank" rel="noopener noreferrer" hidden>RAWG</a>
             <a class="ref-link" id="ref-igdb" href="#" target="_blank" rel="noopener noreferrer" hidden>IGDB</a>
           </div>
-          <p class="field-hint">Opens a search on that site in a new tab. No API key needed. IMDb: movies and many games. ISFDB: science fiction and fantasy books. RAWG, IGDB: games.</p>
+          <p class="field-hint">Opens a search on that site in a new tab. No API key needed. IMDb: movies and many games. ISFDB: science fiction and fantasy books. IGDB: games. Game covers and details use a server-side relay when configured.</p>
         </div>
 
         <div class="form-row" id="creator-row">
@@ -381,6 +382,7 @@
           <p id="cover-url-error" class="field-error" hidden>Enter a full web address starting with https://, or clear this field.</p>
           <input type="hidden" id="field-cover-source" />
           <input type="hidden" id="field-cover-source-id" />
+          <input type="hidden" id="field-igdb-id" />
           <input type="hidden" id="field-cover-platform" />
           <div id="cover-choices" class="cover-choices" hidden></div>
           <button type="button" id="btn-wrong-cover" class="btn-wrong-cover" hidden>Wrong cover</button>
@@ -713,10 +715,8 @@
 
       <h3 class="settings-section-title">Improve Lookup</h3>
       <p class="settings-intro">
-        Optional free API keys let movie Lookup check OMDb first, and game Lookup try RAWG first.
-        Keys are saved only in this browser and aren’t included in backups. When you use Lookup or Test,
-        your browser sends the key directly to OMDb or RAWG. FreeRangeMedia has no server.
-        Book and music Lookup work without keys. Movie and game Lookup without keys is limited.
+        An optional OMDb key lets movie Lookup check OMDb first. That key stays in this browser, is excluded from backups, and is sent directly to OMDb for Lookup or Test.
+        Video game covers and details use IGDB through a server-side relay when configured; no personal game key is needed. Book and music Lookup need no keys.
       </p>
       <div class="api-key-cards" id="api-key-cards">
         <section class="api-key-card" id="api-card-omdb" data-provider="omdb" tabindex="-1">
@@ -752,38 +752,12 @@
           <p class="api-key-test-status" id="omdb-test-status" role="status" aria-live="polite" hidden></p>
         </section>
 
-        <section class="api-key-card" id="api-card-rawg" data-provider="rawg" tabindex="-1">
-          <div class="api-key-card-head">
-            <h3>Video games (RAWG)</h3>
-            <span class="api-key-status" id="rawg-key-status" data-status="unset">Not set</span>
-          </div>
-          <p class="api-key-blurb">
-            RAWG gives out free API keys for personal projects (up to 20,000 requests a month, credit to
-            RAWG required). With a key, game Lookup tries RAWG first for cover, year and developer. Use <strong>Test</strong> to check it works in this browser.
-            Saved in this browser. Sent only to RAWG, when you use Lookup or Test.
-            <!-- PLACEHOLDER (Berean) -->Without a key, game Lookup checks Wikipedia for the title and year, but finds no cover. Check the match, or paste a cover URL.
-          </p>
-          <ol class="api-key-steps">
-            <li>Tap <strong>Get free key</strong> (opens RAWG’s API page).</li>
-            <li>Tap <strong>Get API Key</strong> and sign in or create a RAWG account.</li>
-            <li>Copy your key.</li>
-            <li>Paste it below, press <strong>Save</strong>, then <strong>Test</strong>.</li>
-          </ol>
-          <div class="form-row api-key-field">
-            <label for="field-rawg-key">RAWG API key</label>
-            <div class="api-key-input-row">
-              <input type="password" id="field-rawg-key" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Paste key here" />
-              <button type="button" class="btn btn-ghost btn-sm" id="btn-toggle-rawg" aria-pressed="false">Show</button>
-            </div>
-          </div>
-          <div class="api-key-actions">
-            <a class="btn btn-ghost btn-sm" id="btn-get-rawg" href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer">Get free key</a>
-            <button type="button" class="btn btn-ghost btn-sm" id="btn-test-rawg">Test</button>
-            <button type="button" class="btn btn-ghost btn-sm" id="btn-clear-rawg">Clear</button>
-            <button type="button" class="btn btn-primary btn-sm" id="btn-save-rawg">Save</button>
-          </div>
-          <p class="api-key-test-status" id="rawg-test-status" role="status" aria-live="polite" hidden></p>
+        <section class="api-key-card" id="api-card-igdb" tabindex="-1">
+          <h3>Video games (IGDB.com)</h3>
+          <p class="api-key-blurb">Barcode lookup checks Wikidata and UPCitemdb for a title first. IGDB searches that title for covers and details; it does not search barcodes. Choose and check a match before saving. Existing RAWG IDs and cover URLs are kept.</p>
+          <p class="api-key-blurb" id="game-relay-status">IGDB title lookup is not configured yet. Barcode lookup and manual entry remain available.</p>
         </section>
+        <!-- Legacy RAWG keys/IDs/cover URLs stay stored, but lookup no longer uses the key. -->
       </div>
       <!-- PLACEHOLDER copy (Berean) -->
       <p class="settings-intro settings-credit" id="music-lookup-credit">
