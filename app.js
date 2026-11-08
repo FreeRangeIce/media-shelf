@@ -2853,6 +2853,7 @@
 
   function wouldOverwrite(data) {
     const checks = [];
+    if (els.fieldType.value === "game" && data.igdbId && $("#field-igdb-id").value && $("#field-igdb-id").value !== String(data.igdbId)) checks.push("IGDB link");
     if (data.title && els.fieldTitle.value.trim() && els.fieldTitle.value.trim() !== data.title) {
       checks.push("title");
     }
@@ -2877,6 +2878,7 @@
     const list = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a[a.length - 1]}` : a[0]);
     const replaced = [];
     const cur = (el) => el.value.trim();
+    if (els.fieldType.value === "game" && data.igdbId && $("#field-igdb-id").value && $("#field-igdb-id").value !== String(data.igdbId)) replaced.push("IGDB link");
     if (data.title && cur(els.fieldTitle) && cur(els.fieldTitle) !== data.title) replaced.push("title");
     if (data.creator && cur(els.fieldCreator) && cur(els.fieldCreator) !== data.creator) replaced.push("creator");
     if (data.year != null && cur(els.fieldYear) && cur(els.fieldYear) !== String(data.year)) replaced.push("year");
@@ -2900,10 +2902,16 @@
         coverPlatform: payload.coverPlatform || pick.platform || "",
       };
     }
+    // A chosen IGDB record and its fields are one decision. Do not adopt its ID
+    // (or fill any fields) until a conflicting overwrite has been accepted.
+    const igdbSelection = els.fieldType.value === "game" && /^[1-9]\d{0,9}$/.test(String(payload.igdbId || ""));
+    const needsOverwrite = wouldOverwrite(payload);
     const applyEmpty = () => applyLookupFields(payload, { overwrite: false });
-    applyEmpty();
-    showCoverChoices(payload.covers, payload.altCovers);
-    if (wouldOverwrite(payload)) {
+    if (!igdbSelection || !needsOverwrite) {
+      applyEmpty();
+      showCoverChoices(payload.covers, payload.altCovers);
+    }
+    if (needsOverwrite) {
       openConfirm(
         "Overwrite filled fields?",
         overwriteLookupText(payload),
@@ -2916,7 +2924,7 @@
         },
         "Overwrite"
       );
-      setLookupStatus("Found a match — empty fields filled. Confirm to overwrite the rest.", "ok");
+      setLookupStatus(igdbSelection ? "Match selected. Confirm Overwrite to apply its details and IGDB link, or Cancel to keep your fields." : "Found a match — empty fields filled. Confirm to overwrite the rest.", "ok");
     } else {
       setLookupStatus(okMsg || "Details filled.", kind);
       checkDuplicateFromForm();

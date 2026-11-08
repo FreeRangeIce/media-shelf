@@ -43,7 +43,10 @@ export function createGameRelay(env, { upstream = fetch, now = Date.now, sleep =
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await upstream(url, { ...init, signal: controller.signal, redirect: "error" });
+      const res = await upstream(url, { ...init, signal: controller.signal, redirect: "manual" });
+      // Workers supports manual, not error. Reject every redirect without following it,
+      // so bearer tokens/client credentials can never be forwarded to a new host.
+      if (res.status >= 300 && res.status < 400) { await res.body?.cancel(); throw new RelayError(502, "provider_redirect_rejected"); }
       if (!res.ok) { await res.body?.cancel(); return { status: res.status, headers: res.headers }; }
       const reader = res.body?.getReader();
       if (!reader) throw new RelayError(502, "invalid_provider_response");
