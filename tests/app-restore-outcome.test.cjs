@@ -23,7 +23,7 @@ function harness({ TT, tabletop, mediaFails = false, mediaThrows = false }) {
     TT, parsed: { items: [{ id: 'm-new' }], tabletop, coverQueueIds: [] }, answers: undefined,
     get items() { return media.items; },
     incoming: [{ id: 'm-new' }],
-    commitItems: (mutate) => { if (mediaThrows) throw new Error('bad'); if (mediaFails) return false; const n = mutate(media.items); if (Array.isArray(n)) media.items = n; return true; },
+    commitItems: (mutate) => { if (mediaThrows) { const e = new Error('bad'); if (mediaThrows === 'changed') e.storageChanged = true; throw e; } if (mediaFails) return false; const n = mutate(media.items); if (Array.isArray(n)) media.items = n; return true; },
     mergeItems: (list, inc) => ({ items: list.concat(inc), added: inc.length, updated: 0 }),
     closeConfirm() {}, restoreCoverQueue() {}, render() {}, showToast: (m) => toasts.push(m),
     countLabel: (n, k) => `${n} ${k === 'item' ? (n === 1 ? 'item' : 'items') : (n === 1 ? 'tabletop game' : 'tabletop games')}`,
@@ -74,6 +74,10 @@ const SUCCESS = /^(Restored|Merged)/;
     {
       let called = 0; const h = harness({ TT: { restore: () => { called++; return {}; }, count: () => 0, previewHandMatches: () => [] }, tabletop: [NEW], mediaThrows: true }); await run(h);
       check(`${mode}: media exception -> truthful failure, nothing else written`, () => { assert.equal(called, 0); assert.equal(h.toasts.at(-1), 'Restore failed. Nothing was changed.'); });
+    }
+    {
+      const h = harness({ TT: { restore: () => ({}), count: () => 0, previewHandMatches: () => [] }, tabletop: [NEW], mediaThrows: 'changed' }); await run(h);
+      check(`${mode}: failure after a storage write (sync repair) -> "may have changed", never "Nothing was changed"`, () => { assert.match(h.toasts.at(-1), /some items may have changed/); assert.doesNotMatch(h.toasts.at(-1), /Nothing was changed/); });
     }
   }
   {

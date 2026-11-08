@@ -21,11 +21,11 @@ function bootApp() {
   ctx.window = ctx; ctx.globalThis = ctx;
   let src = fs.readFileSync(path.join(__dirname, '../../app.js'), 'utf8');
   const tail = '\n  init();\n})();'; assert(src.includes(tail), 'app.js init tail');
-  src = src.replace(tail, `\n  showToast = (m) => globalThis.__toasts.push(m);\n  openConfirm = (title, desc, ok, label, opts) => { globalThis.__pending = { ok, opts }; };\n  closeConfirm = () => {}; render = () => {}; restoreCoverQueue = () => {};\n  globalThis.__app = { normalizeItem, importJson, syncFromStorage, applyComicRepair, getItems: () => items, setItems: (v) => { items = v; }, setSynced: (v) => { lastSyncedRaw = v; } };\n})();`);
+  src = src.replace(tail, `\n  showToast = (m) => globalThis.__toasts.push(m);\n  openConfirm = (title, desc, ok, label, opts) => { globalThis.__pending = { ok, opts }; };\n  closeConfirm = () => {}; render = () => {}; restoreCoverQueue = () => {};\n  globalThis.__app = { normalizeItem, importJson, syncFromStorage, applyComicRepair, commitItems, commitClz, setClz: (v) => { clz = v; }, getItems: () => items, setItems: (v) => { items = v; }, setSynced: (v) => { lastSyncedRaw = v; } };\n})();`);
   vm.createContext(ctx); vm.runInContext(src, ctx);
   const api = ctx.__app;
   return {
-    api, t, store, toasts, ops, MEDIA, SHADOW, TABLE, setPolicy: p => { policy = p; },
+    api, t, store, toasts, ops, el, rawSet, MEDIA, SHADOW, TABLE, setPolicy: p => { policy = p; },
     seed(items, tt = []) { const rows = items.map(api.normalizeItem); const raw = JSON.stringify({ version: 1, items: rows }); rawSet(MEDIA, raw); rawSet(TABLE, JSON.stringify(tt)); rawDel(SHADOW); api.setItems(rows); api.setSynced(raw); ops.length = 0; toasts.length = 0; },
     async restore(mode, backup) { ctx.__pending = null; api.importJson({ size: JSON.stringify(backup).length, content: JSON.stringify(backup) }); assert(ctx.__pending, 'restore confirm opened'); if (mode === 'replace') await ctx.__pending.ok(); else await ctx.__pending.opts.onAlt(); },
     mediaIds: () => JSON.parse(store.get(MEDIA)).items.map(i => i.id).sort(),
