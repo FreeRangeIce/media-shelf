@@ -48,7 +48,7 @@ const SUCCESS = /^(Restored|Merged)/;
     {
       const h = harness({ TT: { restore: () => { throw new Error('boom'); }, count: () => 0, previewHandMatches: () => [] }, tabletop: [NEW] });
       const msg = await run(h);
-      check(`${mode}: TT.restore exception -> partial message, no crash`, () => assert.match(msg, /couldn’t be restored/));
+      check(`${mode}: TT.restore exception -> 'may have changed' (not 'unchanged'), no crash`, () => { assert.match(msg, /didn’t finish and some games may have changed/); assert.doesNotMatch(msg, /unchanged/); });
     }
     {
       const h = harness({ TT: { restore: () => null, count: () => 1, previewHandMatches: () => [] }, tabletop: [NEW] }); const msg = await run(h);
