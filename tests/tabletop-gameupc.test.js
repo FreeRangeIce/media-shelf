@@ -184,6 +184,21 @@ async function shot(page, name) { if (SHOTS) { await page.waitForTimeout(150); a
     check("device id: not in the export file", exported.includes("Export Probe") && !exported.includes(devId) && !/frm-gameupc-device-id|userId|user_id/.test(exported));
     await ctx.close();
   }
+  // Suggestions are not confirmation: manually saving without picking must never send a match.
+  {
+    const { ctx, page, relayReqs } = await open(browser, { lookup: true });
+    await addForm(page);
+    await page.fill("#tt-barcode", "222222222224");
+    await page.click("#tt-upc-go");
+    await page.waitForSelector(".tt-upc-list");
+    await page.fill("#tt-title", "Manually entered without choosing");
+    await page.click("#tt-save");
+    await page.waitForTimeout(500);
+    check("unconfirmed suggestion list: no POST on Save", posts(relayReqs).length === 0);
+    check("unconfirmed suggestion list: no suggested BGG id adopted", (await store(page)).some(e => e.title === "Manually entered without choosing" && !e.bggId));
+    check("unconfirmed suggestion list: no candidate saved as the game", !(await store(page)).some(e => e.bggId === "265736" || e.bggId === "310792"));
+    await ctx.close();
+  }
   // (b') confirmed pick, then the BGG id is changed by hand: nothing sent.
   {
     const { ctx, page, relayReqs } = await open(browser, { lookup: true });
