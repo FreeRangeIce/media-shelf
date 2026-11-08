@@ -27,10 +27,35 @@
     let pinnedY = null;
     const body = document.body;
     const vv = window.visualViewport;
-    const viewportVars = ["--sheet-vv-top", "--sheet-vv-left", "--sheet-vv-width", "--sheet-vv-height"];
-    let frame = null, lastH = null, lastW = null, lowH = null, recovering = false, resetKey = "";
+    const viewportVars = ["--sheet-vv-top", "--sheet-vv-left", "--sheet-vv-width", "--sheet-vv-height", "--add-sheet-height", "--sheet-cover-height", "--sheet-cover-width"];
+    let frame = null, lastH = null, lastW = null, lowH = null, restH = null, layoutH = null, recovering = false, resetKey = "";
     const clearViewport = () => viewportVars.forEach((name) => body.style.removeProperty(name));
-    const resetRecovery = () => { lastH = lastW = lowH = null; recovering = false; resetKey = ""; };
+    const resetRecovery = () => { lastH = lastW = lowH = restH = layoutH = null; recovering = false; resetKey = ""; };
+    // Scroll only the Add panel, never the pinned page. Save may remain behind the keyboard.
+    const revealAddField = () => {
+      const active = document.activeElement;
+      if (!active?.matches?.('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), textarea, select, [contenteditable="true"]')) return;
+      const panel = active.closest("#modal > .modal-panel");
+      if (!panel || document.querySelector?.('.modal:not(#modal):not([hidden])')) return;
+      const rect = active.getBoundingClientRect(), bounds = panel.getBoundingClientRect();
+      let top = Math.max(vv.offsetTop, bounds.top) + 8;
+      let bottom = Math.min(vv.offsetTop + vv.height, bounds.bottom) - 8;
+      const actions = panel.querySelector(".form-actions");
+      const bar = actions?.getBoundingClientRect();
+      // Measure the rem-based fade, including larger default text. Never reserve a bar
+      // that sits behind the keyboard; Option A does not force Save into the visible strip.
+      const measuredFade = actions ? Number.parseFloat(window.getComputedStyle?.(actions, "::before").height) : 0;
+      const fade = Number.isFinite(measuredFade) ? Math.max(0, measuredFade) : 24;
+      if (bar && bar.bottom > top && bar.top < bottom) bottom = Math.min(bottom, bar.top - fade - 8);
+      if (bottom <= top) return;
+      let delta = 0;
+      if (rect.height > bottom - top) {
+        // Don't bounce an oversized control between its two edges.
+        if (rect.top > top || rect.bottom < top) delta = rect.top - top;
+      } else if (rect.top < top) delta = rect.top - top;
+      else if (rect.bottom > bottom) delta = rect.bottom - bottom;
+      if (delta) panel.scrollTop += delta;
+    };
     const updateViewport = () => {
       frame = null;
       if (pinnedY === null || !vv) return;
@@ -42,7 +67,8 @@
       }
       const h = vv.height, w = vv.width;
       if (lastH === null || Math.abs(w - lastW) > 1) {
-        lowH = h;
+        lowH = restH = h;
+        layoutH = Math.max(document.documentElement?.clientHeight || 0, window.innerHeight || 0, h);
         recovering = false;
         resetKey = "";
       } else if (h < lastH - 1) {
@@ -50,18 +76,26 @@
         recovering = false;
         resetKey = "";
       }
+      // Keep Add's layout canvas stable during keyboard occlusion, independently of other dialogs.
+      // Grow for newly exposed browser chrome; a width change starts a new orientation baseline.
+      layoutH = Math.max(layoutH, document.documentElement?.clientHeight || 0, window.innerHeight || 0);
+      body.style.setProperty("--add-sheet-height", `${layoutH}px`);
+      body.style.setProperty("--sheet-cover-height", `${Math.max(layoutH, vv.offsetTop + h)}px`);
+      body.style.setProperty("--sheet-cover-width", `${Math.max(document.documentElement?.clientWidth || 0, window.innerWidth || 0, vv.offsetLeft + w)}px`);
       // Keyboard dismissal can arrive as many small resizes. Compare with the low-water
       // height, not just the preceding event; keep recovery armed for a later offset scroll.
+      // Arming alone is not dismissal: wait for the original unoccluded height before resetting page pan.
       if (h > lowH + 80) recovering = true;
       lastH = h;
       lastW = w;
       [vv.offsetTop, vv.offsetLeft, w, h].forEach((value, i) => body.style.setProperty(viewportVars[i], `${value}px`));
       const key = [h, w, vv.offsetTop, vv.offsetLeft, window.scrollX, window.scrollY].join(":");
-      if (recovering && key !== resetKey && (window.scrollY !== 0 || window.scrollX !== 0 || vv.offsetTop !== 0 || vv.offsetLeft !== 0)) {
+      if (recovering && h >= restH - 2 && key !== resetKey && (window.scrollY !== 0 || window.scrollX !== 0 || vv.offsetTop !== 0 || vv.offsetLeft !== 0)) {
         resetKey = key;
         window.scrollTo(0, 0);
         scheduleViewport(); // remeasure after a synchronous scroll; no timer/polling loop
       }
+      revealAddField();
     };
     const scheduleViewport = () => {
       if (pinnedY !== null && frame === null) frame = requestAnimationFrame(updateViewport);
@@ -94,6 +128,7 @@
       vv.addEventListener("scroll", scheduleViewport);
       window.addEventListener("resize", scheduleViewport);
       body.addEventListener("focusout", scheduleViewport);
+      body.addEventListener("focusin", scheduleViewport);
     }
   })();
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
@@ -5423,7 +5458,7 @@
     const typed = usableGameTitle(els.fieldTitle.value);
     if (byTitle && (!GAME_TITLE_SEARCH_TESTED || !relay)) { setLookupStatus("IGDB title lookup is not configured yet. What you typed is kept.", "error"); return; }
     if (byTitle && !typed) { setLookupStatus("Enter a usable game title, not a barcode, to search IGDB.", "error"); return; }
-    if (!byTitle && !/^\d[\d -]{6,20}\d$/.test(raw)) { setLookupStatus("Enter a barcode to look up this copy. Title is needed only when you save.", "error"); return; }
+    if (!byTitle && !/^\d[\d -]{6,20}\d$/.test(raw)) { setLookupStatus("Enter a barcode to look up this copy. Title is needed only when you save.", "note"); return; }
     gameBusy = true; gameAbort = new AbortController();
     const controller = gameAbort, signal = controller.signal;
     const timer = setTimeout(() => controller.abort(), 12000);

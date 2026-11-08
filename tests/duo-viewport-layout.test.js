@@ -38,16 +38,24 @@ const check = (n, ok, d = "") => { ok ? pass++ : fail++; console.log(`${ok ? "PA
       const set = (values, event) => page.evaluate(async ({ values, event }) => { window.__setVV(values, event); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); }, { values, event });
       const geometry = () => page.evaluate(() => {
         const v = visualViewport, m = document.querySelector("#modal"), b = m.querySelector(".modal-backdrop").getBoundingClientRect(), p = m.querySelector(".modal-panel").getBoundingClientRect();
-        return { cover: b.left <= v.offsetLeft + .5 && b.top <= v.offsetTop + .5 && b.right >= v.offsetLeft + v.width - .5 && b.bottom >= v.offsetTop + v.height - .5, b: [b.left,b.top,b.right,b.bottom], vv: [v.offsetLeft,v.offsetTop,v.width,v.height], panelFits: p.top >= v.offsetTop - .5 && p.bottom <= v.offsetTop + v.height + .5 };
+        const field = document.activeElement.getBoundingClientRect(), actions = m.querySelector(".form-actions"), bar = actions.getBoundingClientRect();
+        const fade = parseFloat(getComputedStyle(actions, "::before").height);
+        const top = Math.max(v.offsetTop, p.top) + 8;
+        let bottom = Math.min(v.offsetTop + v.height, p.bottom) - 8;
+        if (bar.bottom > top && bar.top < bottom) bottom = Math.min(bottom, bar.top - fade - 8);
+        return { cover: b.left <= .5 && b.top <= .5 && b.right >= Math.max(innerWidth, v.offsetLeft + v.width) - .5 && b.bottom >= Math.max(innerHeight, v.offsetTop + v.height) - .5, b: [b.left,b.top,b.right,b.bottom], vv: [v.offsetLeft,v.offsetTop,v.width,v.height], panelHeight: p.height, fieldVisible: field.top >= top - .5 && field.bottom <= bottom + .5 };
       });
+      const baseline = await geometry();
       await set({ height: height - 200 });
-      let g = await geometry(); check(`${width}x${height}: keyboard-only visual resize bounds cover and panel`, g.cover && g.panelFits, JSON.stringify(g));
+      // Option A: the panel must NOT collapse into visualViewport. The focused field,
+      // not the entire panel/Save bar, must remain visible above keyboard occlusion.
+      let g = await geometry(); check(`${width}x${height}: full canvas covered, Add size stable, focused field visible`, g.cover && Math.abs(g.panelHeight - baseline.panelHeight) < .5 && g.fieldVisible, JSON.stringify(g));
       for (const h of [height - 160, height - 120, height - 80, height - 40, height]) await set({ height: h });
       // Emulate a stale fixed-position/layout viewport: visible height grows independently.
       await set({ height: height + 90 });
       g = await geometry(); check(`${width}x${height}: independently expanded visible bottom covered`, g.cover, JSON.stringify(g));
       await set({ offsetTop: 90 }, "scroll");
-      g = await geometry(); check(`${width}x${height}: delayed visual offset covered`, g.cover && g.panelFits, JSON.stringify(g));
+      g = await geometry(); check(`${width}x${height}: delayed visual offset covered`, g.cover && Math.abs(g.panelHeight - baseline.panelHeight) < .5 && g.fieldVisible, JSON.stringify(g));
       const pinned = await page.evaluate(() => ({ top: document.body.style.top, pos: document.body.style.position, focus: document.activeElement.id }));
       check(`${width}x${height}: recovery retains original body pin and field focus`, pinned.top === beforeTop && pinned.pos === "fixed" && pinned.focus === "field-title", JSON.stringify(pinned));
       await set({ height, offsetTop: 0 });

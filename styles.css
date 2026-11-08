@@ -1276,9 +1276,8 @@ body {
   padding: 0;
 }
 
-/* The host and cover share measured visual-viewport bounds while a sheet is open.
-   inset:0 alone follows the browser's fixed-position viewport, which may lag keyboard
-   dismissal. Variables are removed on close and during pinch zoom (native behavior). */
+/* Other sheet hosts retain measured visual-viewport bounds. Add and the full-canvas
+   cover are separated below. Variables clear on close and during pinch zoom. */
 body.modal-open .modal,
 body.modal-open .modal-backdrop {
   top: var(--sheet-vv-top, 0px);
@@ -1287,6 +1286,25 @@ body.modal-open .modal-backdrop {
   bottom: auto;
   width: var(--sheet-vv-width, 100%);
   height: var(--sheet-vv-height, 100%);
+}
+
+/* Add keeps its pre-keyboard layout canvas (Save may sit behind the keyboard).
+   Other dialogs retain their existing visual-viewport fitting policy. */
+body.modal-open #modal {
+  top: 0;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: var(--add-sheet-height, 100%);
+}
+
+/* An opaque full-canvas cover is independent of keyboard-excluded sheet bounds. */
+body.modal-open .modal-backdrop {
+  inset: 0;
+  width: auto;
+  height: auto;
+  min-height: var(--sheet-cover-height, 100lvh);
+  min-width: var(--sheet-cover-width, 100%);
 }
 
 .modal-backdrop {
@@ -1361,6 +1379,16 @@ body.modal-open .modal-backdrop {
   .modal-panel-settings {
     max-height: min(92vh, 860px, calc(100vh - var(--sheet-gap) - var(--space-4))); /* fallback */
     max-height: min(92dvh, 860px, calc(var(--sheet-vv-height, 100dvh) - var(--sheet-gap) - var(--space-4)));
+  }
+}
+
+/* Do not reapply a keyboard-sized dvh/visualViewport cap to the Add canvas. */
+#modal > .modal-panel {
+  max-height: min(calc(var(--add-sheet-height, 100vh) * .92), 720px, calc(var(--add-sheet-height, 100vh) - var(--sheet-gap)));
+}
+@media (min-width: 560px) {
+  #modal > .modal-panel {
+    max-height: min(calc(var(--add-sheet-height, 100vh) * .92), 720px, calc(var(--add-sheet-height, 100vh) - var(--sheet-gap) - var(--space-4)));
   }
 }
 
@@ -1571,6 +1599,9 @@ label.check input[type="checkbox"]:focus-visible {
   padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px)); /* above the home indicator */
   background: var(--bg-elevated);
 }
+
+/* Add-only: preserve the border box and existing fade without a hard cutting rule. */
+#modal .item-form .form-actions { border-top-color: transparent; }
 
 /* Duo fix: the form fades out over 24px above the rule, so a field scrolling under the
    pinned actions never reads as sliced mid-field. Decorative; never takes taps. */
