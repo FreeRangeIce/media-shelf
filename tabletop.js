@@ -191,6 +191,9 @@
   function mergeUpdate(old, incoming) {
     const out = { ...old };
     const oldSrc = cleanBggSrc(old && old.bggSrc, old || {});
+    // Kept fields with no tag (pre-v48 data) stay tied to the OLD entry's id before any id change,
+    // so a merge can never relabel them as the incoming game's.
+    BGG_ID_BOUND.forEach((k) => { if (!(k in oldSrc) && bggNum(old && old[k]) && str(old[k])) oldSrc[k] = `?${bggNum(old.bggId)}`; });
     const incSrc = cleanBggSrc(incoming && incoming.bggSrc, incoming || {});
     const incId = bggNum(incoming.bggId);
     out.bggSrc = { ...oldSrc };
@@ -584,6 +587,7 @@
   const F = (id) => document.getElementById(id);
   let returnFocus = null;
   let pendingDup = null;
+  function clearDupPrompt() { pendingDup = null; F("tt-dup").hidden = true; }
 
   // v41: Tabletop sheets set body.modal-open too, so app.js pins the page behind them while
   // the keyboard is up (the Duo fix). It's cleared only when no other sheet is still open.
@@ -689,6 +693,17 @@
     }
     F("tt-title").removeAttribute("aria-invalid");
     load();
+    // Update / Add-copy answer a duplicate prompt: re-check it against the current form and shelf.
+    // If the match changed (id/title edited, target deleted or replaced, a new match), ask again.
+    if (mode) {
+      const fresh = findDuplicate(entries, normalize({ ...data, id: data.id || "__new__" }));
+      if (!pendingDup || !fresh || fresh.by !== pendingDup.by || fresh.match.id !== pendingDup.match.id) {
+        clearDupPrompt();
+        saveForm(null);
+        return;
+      }
+      pendingDup = fresh;
+    }
     // Barcode match (lookup on only): a hand-entered game with a BGG id asks before anything
     // is sent. Nothing is sent for a verified match or without a BGG id.
     const post = barcodeLookupOn ? barcodePostDecision(look, data) : { send: null };
@@ -713,7 +728,9 @@
     let savedId = data.id;
     const ok = commit((list) => {
       if (mode === "update" && pendingDup) {
-        const merged = mergeUpdate(list.find((e) => e.id === pendingDup.match.id) || pendingDup.match, data);
+        const target = list.find((e) => e.id === pendingDup.match.id);
+        if (!target) return list; // target vanished (another tab) since the check: write nothing
+        const merged = mergeUpdate(target, data);
         savedId = merged.id;
         return upsert(list, merged);
       }
@@ -1284,6 +1301,8 @@
       saveForm(null);
     });
     F("tt-dup-update").addEventListener("click", () => saveForm("update"));
+    // Any edit after the duplicate prompt makes its answer stale: hide it; Save asks again.
+    ["input", "change"].forEach((t) => F("tt-form").addEventListener(t, () => { if (pendingDup) clearDupPrompt(); }));
     F("tt-dup-add").addEventListener("click", () => saveForm("add"));
     document.querySelectorAll("[data-tt-close]").forEach((b) => b.addEventListener("click", () => closeModal(b.dataset.ttClose)));
     F("tt-detail-edit").addEventListener("click", (ev) => openForm(entries.find((e) => e.id === ev.currentTarget.dataset.id)));
