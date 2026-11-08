@@ -359,17 +359,21 @@
   }
   const BGG_ID_BOUND = ["year", "designer", "players", "playTime", "coverUrl"];
   /**
-   * Patch for an accepted result. `fromId` is the BGG id the current details came from (saved entry
-   * or an earlier accepted lookup), never the typed input. On an identity change, ID-bound details the
-   * new result lacks are cleared so the old game's cover/details don't carry over; same id or no
-   * provenance keeps them (manual entries stay).
+   * Patch for an accepted result. `sources` says, per ID-bound field, which BGG id filled it ("" =
+   * typed by hand); a string applies to every field. Never the typed ID input. A field the result
+   * lacks is cleared only when it came from a DIFFERENT BGG id, so details from different games
+   * never mix; same-id and hand-typed values stay. `kept` lists hand-typed fields that stay.
    */
-  function bggIdPatch(record, fromId) {
+  function bggIdPatch(record, sources) {
     const patch = Object.fromEntries(Object.entries(record).filter(([, v]) => v !== ""));
-    const from = str(fromId);
-    const cleared = [];
-    if (from && from !== record.bggId) BGG_ID_BOUND.forEach((k) => { if (!(k in patch)) { patch[k] = ""; cleared.push(k); } });
-    return { patch, cleared };
+    const srcOf = (k) => str(typeof sources === "object" && sources ? sources[k] : sources);
+    const cleared = [], kept = [];
+    BGG_ID_BOUND.forEach((k) => {
+      if (k in patch) return;
+      const from = srcOf(k);
+      if (from && from !== record.bggId) { patch[k] = ""; cleared.push(k); } else if (!from) kept.push(k);
+    });
+    return { patch, cleared, kept };
   }
   function createBggIdLookup({ relay, fetcher, current, isOpen, onState, confirm, apply, identity = () => "", timers = globalThis }) {
     let seq = 0, controller = null, timer = null, candidate = null, selected = false, busy = false, activeId = "";
@@ -416,15 +420,16 @@
       if (!valid(token, record.bggId)) return;
       const finish = () => {
         if (!valid(token, record.bggId) || JSON.stringify(current()) !== snapshot) return;
-        apply(bggIdPatch(record, fromId).patch, record.bggId);
+        apply(bggIdPatch(record, sources).patch, record.bggId);
         ++seq; candidate = null; selected = false;
         emit({ status: "used", message: "Game details filled in. Check them, then save." });
       };
-      const fromId = str(identity());
-      const { patch, cleared } = bggIdPatch(record, fromId);
+      const sources = identity();
+      const { patch, cleared, kept } = bggIdPatch(record, sources);
       const clears = cleared.filter((k) => str(before[k]));
+      const keeps = kept.filter((k) => str(before[k]));
       const conflicts = Object.entries(patch).some(([k, v]) => str(before[k]) && str(before[k]) !== v);
-      if (conflicts) confirm(finish, { clears }); else finish();
+      if (conflicts) confirm(finish, { clears, keeps }); else finish();
     }
     return { lookup, reset, select, use };
   }
@@ -602,7 +607,8 @@
     resetBggIdLookup();
     resetBarcodeLookup();
     F("tt-bggType").value = entry ? e.bggType || "" : "";
-    bggSourceId = entry ? str(e.bggId) : "";
+    bggFieldSrc = {};
+    tagBggFields(BGG_ID_BOUND, entry ? e.bggId : "");
     syncExpansionRows();
     closeModal("tt-detail-modal");
     openModal("tt-form-modal");
@@ -810,7 +816,7 @@
   const candRow = (c) => `${thumb(c)}<span class="tt-upc-cand-text"><span class="tt-upc-cand-name">${esc(c.name)}</span>${c.year ? `<span class="tt-upc-cand-year">${esc(c.year)}</span>` : ""}</span>`;
 
   function fillFromCandidate(c, overwrite) {
-    const set = (k, v) => { const el = F(`tt-${k}`); if (el && v && (overwrite || !str(el.value))) el.value = v; };
+    const set = (k, v) => { const el = F(`tt-${k}`); if (el && v && (overwrite || !str(el.value))) { el.value = v; tagBggFields([k], c.bggId); } };
     const previousBggId = F("tt-bggId").value;
     set("title", c.name);
     set("bggId", c.bggId);
@@ -927,8 +933,10 @@
   let barcodeLookupOn = null;
   /* ----- direct BGG ID: separate from title search and GameUPC posting ----- */
   let bggIdLookup = null, bggConfirmDone = null;
-  /** BGG id the form's provider details belong to: the saved entry's, then the last accepted lookup's. */
-  let bggSourceId = "";
+  /** Per ID-bound field: the BGG id that filled it ("" = typed by hand). Set on open, accepted direct
+   *  lookup, GameUPC fill and hand edits; only fields actually written are tagged. */
+  let bggFieldSrc = {};
+  function tagBggFields(keys, id) { keys.forEach((k) => { if (BGG_ID_BOUND.includes(k)) { if (str(F(`tt-${k}`).value)) bggFieldSrc[k] = str(id); else delete bggFieldSrc[k]; } }); }
   const BGG_FIELD_LABELS = { coverUrl: "cover", year: "year", designer: "designer", players: "players", playTime: "play time" };
   function resetBggIdLookup() {
     bggIdLookup?.reset();
@@ -948,17 +956,19 @@
     const current = () => Object.fromEntries(keys.map((k) => [k, F(`tt-${k}`).value]));
     bggIdLookup = createBggIdLookup({ relay: cfg.relay, fetcher: (...args) => fetch(...args), current,
       isOpen: () => !F("tt-form-modal").hidden,
-      identity: () => bggSourceId,
+      identity: () => ({ ...bggFieldSrc }),
       confirm: (done, info = {}) => {
-        const clearNote = info.clears && info.clears.length ? ` Details this BGG result doesn’t have (${info.clears.map((k) => BGG_FIELD_LABELS[k]).join(", ")}) are cleared, since they belong to the previous BGG id.` : "";
+        const names = (ks) => ks.map((k) => BGG_FIELD_LABELS[k]).join(", ");
+        const clearNote = (info.clears && info.clears.length ? ` This BGG result has no ${names(info.clears)}. Those fields will be cleared to avoid mixing details from different games.` : "")
+          + (info.keeps && info.keeps.length ? ` Kept as you typed: ${names(info.keeps)}.` : "");
         bggConfirmDone = done;
         panel.innerHTML = `<div class="tt-bgg-confirm" role="group" aria-labelledby="tt-bgg-overwrite-title"><h3 id="tt-bgg-overwrite-title" class="tt-upc-h">Overwrite filled details?</h3><p class="field-hint">Use this BGG result to replace the filled game details?${clearNote} Your barcode, notes and ownership details stay as entered.</p><div class="tt-upc-actions"><button type="button" class="btn btn-outline" data-bgg-back="1">Cancel</button><button type="button" class="btn btn-primary" data-bgg-overwrite="1">Overwrite</button></div></div>${bggLogo()}`;
         panel.querySelector("[data-bgg-back]").focus();
       },
       apply: (record, acceptedId) => {
-        bggSourceId = str(acceptedId);
         resetBarcodeLookup(); // no implicit GameUPC confirmation or send from direct ID lookup
         Object.entries(record).forEach(([k, v]) => { F(`tt-${k}`).value = v; });
+        tagBggFields(Object.keys(record), acceptedId);
         syncExpansionRows(); F("tt-title").removeAttribute("aria-invalid"); F("tt-title-error").hidden = true;
       },
       onState: (state) => {
@@ -990,6 +1000,8 @@
     F("tt-form").addEventListener("input", (ev) => {
       resetBggIdLookup();
       if (ev.target === field) F("tt-bggType").value = "";
+      const k = ev.target && typeof ev.target.id === "string" ? ev.target.id.replace(/^tt-/, "") : "";
+      if (BGG_ID_BOUND.includes(k)) tagBggFields([k], ""); // hand edit: the value is now the user's
     });
     F("tt-form").addEventListener("change", () => resetBggIdLookup());
   }
