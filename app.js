@@ -98,7 +98,7 @@
   })();
   const OMDB_KEY_STORAGE = "media-shelf-omdb-key";
   const GAME_RELAY_URL = ""; // Set only after the tested relay is deployed and approved.
-  const GAME_TITLE_SEARCH_TESTED = true;
+  const GAME_TITLE_SEARCH_TESTED = false; // Enable separately only after live title-path review.
   function gameRelayUrl() {
     const local = ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
     const value = local ? (window.__FRM_GAME_RELAY__ || GAME_RELAY_URL) : GAME_RELAY_URL;

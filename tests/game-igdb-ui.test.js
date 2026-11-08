@@ -14,7 +14,7 @@ const shelf = [
 let pass = 0, fail = 0;
 const check = (n, ok, d = "") => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"} ${n}${ok ? "" : " " + d}`); };
 const store = p => p.evaluate(() => JSON.parse(localStorage.getItem("media-tracker-v1")).items);
-async function open(browser, { configured = true, candidates = [result], status = 200, delay = 0, barcodeTitle = "Switchblade - Definitive Edition (Nintendo Switch)", wikidata = false, upcStatus = 200, failNetwork = false, items = shelf } = {}) {
+async function open(browser, { futureTitleSearch = false, configured = true, candidates = [result], status = 200, delay = 0, barcodeTitle = "Switchblade - Definitive Edition (Nintendo Switch)", wikidata = false, upcStatus = 200, failNetwork = false, items = shelf } = {}) {
  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block" });
  await ctx.addInitScript(({ configured, relay, items }) => {
   if (configured) window.__FRM_GAME_RELAY__ = relay;
@@ -38,7 +38,14 @@ async function open(browser, { configured = true, candidates = [result], status 
   if (url.hostname === "query.wikidata.org") { requests.push({ kind: "wikidata" }); return r.fulfill({ contentType: "application/json", headers: { "Access-Control-Allow-Origin": ORIGIN }, body: JSON.stringify({ results: { bindings: wikidata && barcodeTitle ? [{ itemLabel: { value: barcodeTitle }, platLabel: { value: "Nintendo Switch" } }] : [] } }) }); }
   if (url.hostname === "api.upcitemdb.com") { requests.push({ kind: "upc" }); return r.fulfill({ status: upcStatus, contentType: "application/json", headers: { "Access-Control-Allow-Origin": ORIGIN, "Retry-After": "120", "Access-Control-Expose-Headers": "Retry-After" }, body: JSON.stringify({ items: barcodeTitle ? [{ title: barcodeTitle }] : [] }) }); }
   if (url.origin === ORIGIN) {
-   if (process.env.GAME_UI_SOURCE && url.pathname === "/app.js") return r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(process.env.GAME_UI_SOURCE) });
+   if ((process.env.GAME_UI_SOURCE || futureTitleSearch) && url.pathname === "/app.js") {
+    let source = fs.readFileSync(process.env.GAME_UI_SOURCE || require("node:path").join(__dirname, "../app.js"), "utf8");
+    if (futureTitleSearch) {
+     if (!source.includes("const GAME_TITLE_SEARCH_TESTED = false;")) throw new Error("Expected title-search default-off gate");
+     source = source.replace("const GAME_TITLE_SEARCH_TESTED = false;", "const GAME_TITLE_SEARCH_TESTED = true;"); // Future-path unit fixture only, never shipped.
+    }
+    return r.fulfill({ contentType: "application/javascript", body: source });
+   }
    return r.continue();
   }
   requests.push({ kind: "blocked", host: url.hostname }); return r.abort();
@@ -68,6 +75,7 @@ async function choose(p, index = 0) { await p.click(`[data-game-pick="${index}"]
    check("barcode flow is Wikidata then UPCitemdb then IGDB title only", s.requests.filter(r => r.kind !== "blocked").map(r => r.kind).join(",") === "wikidata,upc,igdb");
    check("raw dashed/edition product title retained in conservative query", s.requests.find(r => r.kind === "igdb").title === "Switchblade - Definitive Edition (Nintendo Switch)");
    check("ONE result never autofills cover/details/title", await p.inputValue("#field-title") === "" && await p.inputValue("#field-cover") === "" && await p.inputValue("#field-year") === "");
+   check("configured barcode relay leaves title search hidden", await p.isHidden("#btn-game-title-lookup"));
    check("one-result choice requires a tap before Use", await p.isDisabled("#game-match-use") && await p.locator("[data-game-pick]").count() === 1);
    check("Save becomes outline while choosing", await p.$eval('#modal .form-actions .btn-primary', el => getComputedStyle(el).backgroundColor) === "rgba(0, 0, 0, 0)");
    await p.evaluate(() => { document.querySelector("#field-title").value = "Manual save probe"; document.querySelector("#item-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
@@ -106,12 +114,12 @@ async function choose(p, index = 0) { await p.click(`[data-game-pick="${index}"]
    await s.ctx.close();
   }
   for (const typed of ["", "012345678901"]) {
-   const s = await open(browser); const p = s.page; await form(p); await p.fill("#field-title", typed); await p.click("#btn-game-title-lookup");
+   const s = await open(browser, { futureTitleSearch: true }); const p = s.page; await form(p); await p.fill("#field-title", typed); await p.click("#btn-game-title-lookup");
    check(`title search rejects ${typed || "empty title"} without providers`, !s.requests.some(r => r.kind === "igdb" || r.kind === "upc" || r.kind === "wikidata")); await s.ctx.close();
   }
   {
    const candidates = [{ ...result, igdbId: "43", title: "Wrong platform", platforms: ["PlayStation 5"] }, result, { ...result, igdbId: "44", title: "Another edition", coverUrl: "" }];
-   const s = await open(browser, { candidates }); const p = s.page; await form(p); await p.fill("#field-title", "Manual title"); await p.fill("#field-creator", "Manual creator"); await p.fill("#field-cover", "https://example.invalid/my-cover.jpg");
+   const s = await open(browser, { candidates, futureTitleSearch: true }); const p = s.page; await form(p); await p.fill("#field-title", "Manual title"); await p.fill("#field-creator", "Manual creator"); await p.fill("#field-cover", "https://example.invalid/my-cover.jpg");
    await p.click("#btn-game-title-lookup"); await p.waitForSelector("#game-match-picker:not([hidden])");
    check("title path queries IGDB, never barcode vendors", s.requests.filter(r => r.kind !== "blocked").every(r => r.kind === "igdb"));
    check("wrong-platform candidate cannot be selected", await p.isDisabled('[data-game-pick="0"]'));
