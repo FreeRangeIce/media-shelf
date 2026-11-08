@@ -88,7 +88,7 @@ async function addViaForm(page, fields) {
     check("empty Tabletop tab shows its empty state", await page.isVisible("#tabletop-empty") && /No tabletop games yet/.test(await page.textContent("#tabletop-empty")));
     check("media list hidden on Tabletop tab", await page.isHidden("#item-list"));
     const labels = await page.$$eval(".type-tabs .chip", (b) => b.map((x) => x.textContent.trim()));
-    check("Tabletop is the last tab, after Comics", labels.join(",") === "All,Books,Games,Movies,Music,Comics,Tabletop", labels.join(","));
+    check("Tabletop is the last tab, after Comics", labels.join(",") === "All,Books,Video games,Movies,Music,Comics,Tabletop", labels.join(","));
     for (const w of [390, 320]) {
       await page.setViewportSize({ width: w, height: 1000 });
       const m = await page.evaluate(() => {
@@ -603,7 +603,7 @@ async function addViaForm(page, fields) {
     if (MAIN) {
       const m = await open(browser, { origin: MAIN, tt: SHELF });
       const mh = await m.page.evaluate(() => document.querySelector(".footer-credits").innerHTML);
-      check("other footer credits identical to origin/main", mh === foot.html);
+      check("other footer credits identical to origin/main (v45: only Game -> Video game)", mh === foot.html.replace("Video game data from", "Game data from"));
       await m.ctx.close();
     }
     if (SHOTS) {
@@ -630,7 +630,7 @@ async function addViaForm(page, fields) {
       out.push(await page.$eval("#item-list", (e) => e.innerHTML));
       await ctx.close();
     }
-    check("Games tab markup identical to origin/main", out[0] === out[1]);
+    check("Video games tab markup identical to origin/main (v45: only the Game -> Video game label)", out[0] === out[1].replace(/Video game/g, "Game"));
   }
   if (SHOT_DIR) {
     fs.writeFileSync(`${SHOT_DIR}/footer-check.json`, JSON.stringify(footerLog, null, 1));
