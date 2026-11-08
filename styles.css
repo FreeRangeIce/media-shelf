@@ -3947,3 +3947,41 @@ body.modal-open {
 .game-match:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .game-match:disabled { cursor: not-allowed; }
 #modal:has(#game-match-picker:not([hidden])) .form-actions .btn-primary { background: transparent; color: var(--text); border-color: var(--border-strong); transition: none; }
+
+/* Direct BGG-id result: stable 64px frame, linked credit, no stored cover bytes. */
+.tt-bgg-id-go {
+  margin-top: var(--space-2);
+  min-height: var(--tap);
+}
+
+.tt-bgg-cover {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 96px;
+  display: grid;
+  place-items: center;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.tt-bgg-cover img {
+  display: block;
+  width: 64px;
+  max-height: 96px;
+  height: auto;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.tt-bgg-choice[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+
+#tt-form:has([data-bgg-use], .tt-bgg-confirm) #tt-save {
+  background: transparent;
+  border: 1px solid var(--text-muted);
+  color: var(--text);
+}

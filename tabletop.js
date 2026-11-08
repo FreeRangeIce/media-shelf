@@ -339,7 +339,76 @@
     return none; // verified: never posted
   }
 
-  const core = { STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
+  /** Direct ID lookup is read-only. A result is never applied until Use and, if needed, Overwrite. */
+  const validBggId = (value) => /^[1-9]\d{0,8}$/.test(str(value));
+  const bggImageUrl = (value) => {
+    const raw = typeof value === "string" ? value : "";
+    try { const u = new URL(raw); return /^https?:$/.test(u.protocol) && !u.username && !u.password ? raw : ""; } catch { return ""; }
+  };
+  function bggIdRecord(value, id) {
+    if (!value || str(value.bggId) !== id || !str(value.name)) return null;
+    const type = str(value.bggType);
+    if (!["boardgame", "boardgameexpansion", "rpgitem"].includes(type)) return null;
+    return { title: str(value.name), bggId: id, bggType: type,
+      year: bggNum(value.year), designer: str(value.designer), players: str(value.players), playTime: bggNum(value.playTime),
+      coverUrl: bggImageUrl(value.image) || bggImageUrl(value.thumbnail) };
+  }
+  function createBggIdLookup({ relay, fetcher, current, isOpen, onState, confirm, apply, timers = globalThis }) {
+    let seq = 0, controller = null, timer = null, candidate = null, selected = false, busy = false, activeId = "";
+    const emit = (state) => onState(state);
+    const reset = () => {
+      ++seq; controller?.abort(); controller = null;
+      if (timer !== null) timers.clearTimeout(timer);
+      timer = null; candidate = null; selected = false; busy = false; activeId = ""; emit({ status: "idle" });
+    };
+    const valid = (token, id) => token === seq && isOpen() && str(current().bggId) === id;
+    async function lookup(raw) {
+      const id = str(raw);
+      if (busy && activeId === id) return;
+      reset();
+      if (!validBggId(id)) { emit({ status: "error", message: "Enter a BGG id using digits only." }); return; }
+      const token = seq;
+      controller = new AbortController(); const signal = controller.signal;
+      activeId = id; busy = true; emit({ status: "loading" });
+      timer = timers.setTimeout(() => controller?.abort(), 20000);
+      try {
+        const response = await fetcher(`${relay}/thing?ids=${encodeURIComponent(id)}`, { headers: { Accept: "application/json" }, signal, credentials: "omit", redirect: "error" });
+        if (!valid(token, id)) return;
+        if (!response.ok) {
+          const retry = response.headers?.get("Retry-After");
+          emit({ status: "error", message: response.status === 429 || response.status === 503
+            ? `BGG lookup is unavailable right now.${/^\d{1,6}$/.test(retry || "") ? ` Try again in ${retry} seconds.` : " Try again later."} What you typed is kept.`
+            : "Couldn’t look up this BGG id. What you typed is kept." }); return;
+        }
+        const data = await response.json();
+        if (!valid(token, id)) return;
+        const matches = Array.isArray(data?.things) ? data.things.filter((v) => str(v?.bggId) === id) : [];
+        candidate = matches.length === 1 ? bggIdRecord(matches[0], id) : null;
+        emit(candidate ? { status: "choice", candidate, selected: false } : { status: "none", message: "No supported game found for this BGG id. What you typed is kept." });
+      } catch (error) {
+        if (valid(token, id)) emit({ status: "error", message: signal.aborted ? "BGG lookup timed out. What you typed is kept." : "Couldn’t look up this BGG id. What you typed is kept." });
+      } finally {
+        if (token === seq) { busy = false; timers.clearTimeout(timer); timer = null; controller = null; }
+      }
+    }
+    const select = () => { if (candidate && isOpen()) { selected = true; emit({ status: "choice", candidate, selected: true }); } };
+    function use() {
+      if (!candidate || !selected || busy || !isOpen()) return;
+      const token = seq, record = candidate, before = current(), snapshot = JSON.stringify(before);
+      if (!valid(token, record.bggId)) return;
+      const finish = () => {
+        if (!valid(token, record.bggId) || JSON.stringify(current()) !== snapshot) return;
+        apply(Object.fromEntries(Object.entries(record).filter(([, v]) => v !== "")));
+        ++seq; candidate = null; selected = false;
+        emit({ status: "used", message: "Game details filled in. Check them, then save." });
+      };
+      const conflicts = Object.entries(record).some(([k, v]) => v && str(before[k]) && str(before[k]) !== v);
+      if (conflicts) confirm(finish); else finish();
+    }
+    return { lookup, reset, select, use };
+  }
+
+  const core = { validBggId, bggImageUrl, bggIdRecord, createBggIdLookup, STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
   if (typeof document === "undefined") return;
 
@@ -470,6 +539,7 @@
     document.body.classList.add("modal-open");
   }
   function closeModal(id) {
+    if (id === "tt-form-modal") resetBggIdLookup();
     const m = F(id);
     m.hidden = true;
     m.setAttribute("aria-hidden", "true");
@@ -508,7 +578,9 @@
     });
     F("tt-dup").hidden = true;
     F("tt-title-error").hidden = true;
+    resetBggIdLookup();
     resetBarcodeLookup();
+    F("tt-bggType").value = entry ? e.bggType || "" : "";
     syncExpansionRows();
     closeModal("tt-detail-modal");
     openModal("tt-form-modal");
@@ -527,6 +599,8 @@
       subtype: v("subtype"),
       status: v("status"),
       bggId: v("bggId"),
+      bggType: v("bggType"),
+      bggIsExpansion: v("bggType") ? v("bggType") === "boardgameexpansion" : Boolean(existing && existing.bggId === str(v("bggId")) && existing.bggIsExpansion),
       year: v("year"),
       designer: v("designer"),
       players: v("players"),
@@ -715,8 +789,10 @@
 
   function fillFromCandidate(c, overwrite) {
     const set = (k, v) => { const el = F(`tt-${k}`); if (el && v && (overwrite || !str(el.value))) el.value = v; };
+    const previousBggId = F("tt-bggId").value;
     set("title", c.name);
     set("bggId", c.bggId);
+    if (F("tt-bggId").value !== previousBggId) F("tt-bggType").value = "";
     set("year", c.year);
   }
 
@@ -750,6 +826,7 @@
   }
 
   function runLookup(cfg) {
+    resetBggIdLookup();
     clearTimeout(upcTimer);
     const upc = str(F("tt-barcode").value).replace(/[\s-]/g, "");
     if (!/^\d{8,14}$/.test(upc)) { look = null; upcStatus(UPC_COPY.errBadCode, "tt-upc-err"); return; }
@@ -826,6 +903,69 @@
     barcodeLookupOn = cfg;
   }
   let barcodeLookupOn = null;
+  /* ----- direct BGG ID: separate from title search and GameUPC posting ----- */
+  let bggIdLookup = null, bggConfirmDone = null;
+  function resetBggIdLookup() {
+    bggIdLookup?.reset();
+    bggConfirmDone = null;
+  }
+  function setupBggIdLookup() {
+    const cfg = barcodeLookupConfig();
+    if (!cfg || F("tt-bgg-go")) return;
+    const field = F("tt-bggId"), row = document.createElement("div");
+    row.className = "form-row tt-bgg-id-lookup";
+    row.innerHTML = `<button type="button" class="btn btn-outline tt-bgg-id-go" id="tt-bgg-go" aria-controls="tt-bgg-panel">Look up BGG id</button><div id="tt-bgg-panel" class="tt-upc-panel" aria-live="polite" hidden></div>`;
+    field.closest(".form-grid").after(row);
+    field.setAttribute("aria-describedby", "tt-bgg-panel");
+    const panel = F("tt-bgg-panel"), button = F("tt-bgg-go");
+    field.after(button); // Keep the ID action beside its own field, not the barcode field.
+    const keys = ["title", "bggId", "bggType", "year", "designer", "players", "playTime", "coverUrl", "subtype"];
+    const current = () => Object.fromEntries(keys.map((k) => [k, F(`tt-${k}`).value]));
+    bggIdLookup = createBggIdLookup({ relay: cfg.relay, fetcher: (...args) => fetch(...args), current,
+      isOpen: () => !F("tt-form-modal").hidden,
+      confirm: (done) => {
+        bggConfirmDone = done;
+        panel.innerHTML = `<div class="tt-bgg-confirm" role="group" aria-labelledby="tt-bgg-overwrite-title"><h3 id="tt-bgg-overwrite-title" class="tt-upc-h">Overwrite filled details?</h3><p class="field-hint">Use this BGG result to replace the filled game details? Your barcode, notes and ownership details stay as entered.</p><div class="tt-upc-actions"><button type="button" class="btn btn-outline" data-bgg-back="1">Cancel</button><button type="button" class="btn btn-primary" data-bgg-overwrite="1">Overwrite</button></div></div>${bggLogo()}`;
+        panel.querySelector("[data-bgg-back]").focus();
+      },
+      apply: (record) => {
+        resetBarcodeLookup(); // no implicit GameUPC confirmation or send from direct ID lookup
+        Object.entries(record).forEach(([k, v]) => { F(`tt-${k}`).value = v; });
+        syncExpansionRows(); F("tt-title").removeAttribute("aria-invalid"); F("tt-title-error").hidden = true;
+      },
+      onState: (state) => {
+        button.setAttribute("aria-busy", String(state.status === "loading"));
+        panel.hidden = state.status === "idle";
+        if (state.status === "idle") { bggConfirmDone = null; panel.innerHTML = ""; return; }
+        if (state.status !== "choice") {
+          panel.innerHTML = `<p class="field-hint${state.status === "error" ? " tt-upc-err" : ""}" role="status">${esc(state.message || "Looking up BGG id…")}</p>${state.status === "used" ? bggLogo() : ""}`;
+          return;
+        }
+        const c = state.candidate;
+        const image = c.coverUrl ? `<img src="${esc(c.coverUrl)}" alt="" referrerpolicy="no-referrer" />` : `<span aria-hidden="true">No cover</span>`;
+        panel.innerHTML = `<p class="field-hint">Choose this result, then use it to fill the game details.</p><button type="button" class="tt-upc-cand tt-bgg-choice" data-bgg-pick="1" aria-pressed="${state.selected}"><span class="tt-bgg-cover">${image}</span><span class="tt-upc-cand-text"><span class="tt-upc-cand-name">${esc(c.title)}</span><span class="tt-upc-cand-year">BGG id ${esc(c.bggId)}${c.bggType === "boardgameexpansion" ? " · Expansion" : c.bggType === "rpgitem" ? " · RPG" : ""}${c.year ? ` · ${esc(c.year)}` : ""}</span></span></button><div class="tt-upc-actions"><button type="button" class="btn btn-outline" data-bgg-cancel="1">Cancel lookup</button><button type="button" class="btn btn-primary" data-bgg-use="1"${state.selected ? "" : " disabled"}>Use this match</button></div>${bggLogo()}`;
+        panel.querySelector(".tt-bgg-cover img")?.addEventListener("error", (ev) => {
+          const placeholder = document.createElement("span"); placeholder.textContent = "No cover"; placeholder.setAttribute("aria-hidden", "true"); ev.target.replaceWith(placeholder);
+        }, { once: true });
+        if (state.selected) panel.querySelector("[data-bgg-pick]").focus({ preventScroll: true });
+      }
+    });
+    button.addEventListener("click", () => { resetBarcodeLookup(); bggIdLookup.lookup(field.value); });
+    panel.addEventListener("click", (ev) => {
+      const target = ev.target.closest("button");
+      if (target?.dataset.bggPick) bggIdLookup.select();
+      else if (target?.dataset.bggUse) bggIdLookup.use();
+      else if (target?.dataset.bggCancel) resetBggIdLookup();
+      else if (target?.dataset.bggBack) { bggConfirmDone = null; bggIdLookup.select(); }
+      else if (target?.dataset.bggOverwrite) { const done = bggConfirmDone; bggConfirmDone = null; done?.(); }
+    });
+    F("tt-form").addEventListener("input", (ev) => {
+      resetBggIdLookup();
+      if (ev.target === field) F("tt-bggType").value = "";
+    });
+    F("tt-form").addEventListener("change", () => resetBggIdLookup());
+  }
+
   /**
    * "Look up on BoardGameGeek" (title search): built only when LOOKUP_RELAY_URL is set. While it's
    * empty (today) the button isn't in the page at all: no element, no tab stop, no gap.
@@ -1093,6 +1233,7 @@
       bind();
       setupTitleLookup();
       setupBarcodeLookup();
+      setupBggIdLookup();
       setupBggFooter();
     },
     show,
