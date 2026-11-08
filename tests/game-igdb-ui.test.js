@@ -127,7 +127,7 @@ async function choose(p, index = 0) { await p.click(`[data-game-pick="${index}"]
    await form(p); await barcode(p); await p.waitForSelector("#game-match-picker:not([hidden])"); await p.waitForTimeout(100);
    check("five results still require a deliberate selection", await p.locator("[data-game-pick]").count() === 5 && await p.isDisabled("#game-match-use") && await p.inputValue("#field-title") === "");
    const frames = await p.$$eval('.game-match-cover', els => els.map(e => { const r = e.getBoundingClientRect(); return [r.width, r.height, getComputedStyle(e).borderRadius]; }));
-   check("five-result failed-image and no-cover frames share dimensions and radius", frames.length === 5 && frames.every(x => JSON.stringify(x) === JSON.stringify([43,64,"4px"])), JSON.stringify(frames));
+   check("five-result failed-image and no-cover frames share dimensions and radius", frames.length === 5 && frames.every(x => JSON.stringify(x) === JSON.stringify([64,96,"4px"])), JSON.stringify(frames));
    const typography = await p.evaluate(() => [getComputedStyle(document.querySelector('.game-match-name')).fontSize, getComputedStyle(document.querySelector('.game-match-meta')).fontSize]);
    check("choice title/meta hierarchy is 14px ink and 13px muted", typography.join(',') === '14px,13px');
    await p.click("#game-match-cancel");
