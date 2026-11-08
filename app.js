@@ -475,7 +475,9 @@
           if (prevShadow) localStorage.setItem(COMIC_SHADOW_STORAGE, prevShadow.raw);
           else localStorage.removeItem(COMIC_SHADOW_STORAGE);
         } catch {
-          /* best effort */
+          // Rollback failed too: the shadow may still hold the new comics, which a later sync
+          // can promote. The caller must not claim nothing changed.
+          if (err && typeof err === "object") err.rollbackFailed = true;
         }
       }
       throw err;
@@ -651,7 +653,17 @@
     other: "Couldn’t save to this browser’s storage, so the change wasn’t saved.",
   };
 
+  // NEW COPY (PENDING BEREAN): a failed write whose rollback also failed; something may have changed.
+  const STORAGE_UNCERTAIN_MESSAGES = {
+    restore: "Restore didn’t finish and some items may have changed. Check your shelf.",
+    import: "Import didn’t finish and some items may have changed. Check your shelf.",
+    other: "This change didn’t finish and may have been partly saved. Check your shelf.",
+  };
   function showStorageFailure(err, kind) {
+    if (err && err.rollbackFailed) {
+      showToast(STORAGE_UNCERTAIN_MESSAGES[kind] || STORAGE_UNCERTAIN_MESSAGES.other, { duration: 8000 });
+      return;
+    }
     const msg = isQuotaError(err)
       ? STORAGE_FAIL_MESSAGES[kind] || STORAGE_FAIL_MESSAGES.change
       : STORAGE_FAIL_MESSAGES.other;
@@ -2767,9 +2779,12 @@
         : `${fromLine} Restore it to this browser?`;
       // Tabletop restore outcome: null/throw = not written (its shelf is unchanged); a result
       // object (even all zeros) = committed. Never reported as success when it failed.
+      // An escaping exception does NOT prove nothing was written: report it as unknown, not "unchanged".
       const restoreTabletop = (mode, opts) => {
-        try { return TT.restore(parsed.tabletop, mode, opts) || null; } catch { return null; }
+        try { return TT.restore(parsed.tabletop, mode, opts) || null; } catch { return { unknown: true }; }
       };
+      const ttUnknownLine = "Tabletop restore didn’t finish and some games may have changed. Check your tabletop shelf."; // PENDING BEREAN
+      const ttRefreshLine = "The tabletop shelf didn’t refresh; reopen the app to see it."; // PENDING BEREAN
       const ttFailedLine = "Tabletop games couldn’t be restored, so your tabletop shelf is unchanged. You can restore this backup again."; // PENDING BEREAN
       const doReplace = () => {
         let ok;
@@ -2785,11 +2800,14 @@
           showToast(`Restored ${countLabel(items.length, "item")}. ${ttFailedLine}`); // PENDING BEREAN
           return;
         }
-        showToast(
-          ttRes
-            ? `Restored ${both(items.length, TT.count())}` // Berean cleared
-            : `Restored ${countLabel(items.length, "item")}`
-        );
+        if (ttRes && ttRes.unknown) {
+          showToast(`Restored ${countLabel(items.length, "item")}. ${ttUnknownLine}`); // PENDING BEREAN
+          return;
+        }
+        const msg = ttRes
+          ? `Restored ${both(items.length, TT.count())}` // Berean cleared
+          : `Restored ${countLabel(items.length, "item")}`;
+        showToast(ttRes && ttRes.renderFailed ? `${msg}. ${ttRefreshLine}` : msg);
       };
       const doMerge = async () => {
         // Hand matches (same title + kind, at least one side hand-entered) are asked about one
@@ -2828,10 +2846,12 @@
           showToast("Restore failed. Nothing was changed."); // PENDING BEREAN
         }
         if (!ok) return;
-        let ttFailed = false;
+        let ttFailed = false, ttUnknown = false, ttRender = false;
         if (TT && parsed.tabletop) {
           const t = restoreTabletop("merge", { answers });
-          if (t) {
+          if (t && t.unknown) ttUnknown = true;
+          else if (t) {
+            ttRender = Boolean(t.renderFailed);
             res.added += t.added;
             res.updated += t.updated;
             done = t.handMatches || [];
@@ -2839,10 +2859,10 @@
         }
         restoreCoverQueue(parsed.coverQueueIds, false);
         render();
-        if (ttFailed) {
+        if (ttFailed || ttUnknown) {
           // Partial: the item merge was written; the tabletop merge was not. No "up to date" claim.
           const m = [res.added && `${res.added} added`, res.updated && `${res.updated} updated`].filter(Boolean);
-          showToast(`Items merged${m.length ? ` — ${m.join(", ")}` : ""}. ${ttFailedLine}`); // PENDING BEREAN
+          showToast(`Items merged${m.length ? ` — ${m.join(", ")}` : ""}. ${ttUnknown ? ttUnknownLine : ttFailedLine}`); // PENDING BEREAN
           return;
         }
         // Only the non-zero parts of added / updated; both zero keeps "already up to date".
@@ -2854,7 +2874,8 @@
         const parts = [[n("keep-both"), "kept both"], [n("merge"), "updated"], [n("skip"), "skipped"]]
           .filter(([c]) => c > 0)
           .map(([c, w]) => `${c} ${w}`);
-        showToast(parts.length ? `${base}. Same-title tabletop games: ${parts.join(", ")}` : base); // Berean cleared
+        const full = parts.length ? `${base}. Same-title tabletop games: ${parts.join(", ")}` : base; // Berean cleared
+        showToast(ttRender ? `${full}. ${ttRefreshLine}` : full);
       };
       if (hasCurrent) {
         openConfirm("Restore backup", desc, doReplace, "Replace", {

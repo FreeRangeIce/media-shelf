@@ -1395,8 +1395,10 @@
           return res.list;
         });
       } catch { ok = false; } // malformed input: nothing written
-      if (active) render();
-      return ok ? res : null;
+      if (!ok) return null;
+      // The write is committed; a display failure afterwards must not turn it into "not restored".
+      try { if (active) render(); } catch { return { ...res, renderFailed: true }; }
+      return res;
     },
   };
 })(typeof window !== "undefined" ? window : globalThis);
