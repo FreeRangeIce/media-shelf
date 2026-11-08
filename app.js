@@ -2765,16 +2765,28 @@
       const desc = hasCurrent
         ? `${fromLine} ${hereLine} Merge keeps what’s here and adds anything new (the newer copy wins when both have the same one). ${replaceLine}` // Berean cleared
         : `${fromLine} Restore it to this browser?`;
+      // Tabletop restore outcome: null/throw = not written (its shelf is unchanged); a result
+      // object (even all zeros) = committed. Never reported as success when it failed.
+      const restoreTabletop = (mode, opts) => {
+        try { return TT.restore(parsed.tabletop, mode, opts) || null; } catch { return null; }
+      };
+      const ttFailedLine = "Tabletop games couldn’t be restored, so your tabletop shelf is unchanged. You can restore this backup again."; // PENDING BEREAN
       const doReplace = () => {
-        const ok = commitItems(() => incoming.slice(), "restore");
+        let ok;
+        try { ok = commitItems(() => incoming.slice(), "restore"); } catch { ok = false; showToast("Restore failed. Nothing was changed."); } // PENDING BEREAN
         closeConfirm();
         if (!ok) return;
         // A backup with no tabletop block leaves the tabletop shelf as it is.
-        if (TT && parsed.tabletop) TT.restore(parsed.tabletop, "replace");
+        const ttRes = TT && parsed.tabletop ? restoreTabletop("replace") : undefined;
         restoreCoverQueue(parsed.coverQueueIds, true);
         render();
+        if (ttRes === null) {
+          // Partial: the items were replaced (that write stands); the tabletop write did not happen.
+          showToast(`Restored ${countLabel(items.length, "item")}. ${ttFailedLine}`); // PENDING BEREAN
+          return;
+        }
         showToast(
-          TT && parsed.tabletop
+          ttRes
             ? `Restored ${both(items.length, TT.count())}` // Berean cleared
             : `Restored ${countLabel(items.length, "item")}`
         );
@@ -2805,21 +2817,34 @@
         }
         let res = { added: 0, updated: 0 };
         let done = []; // what the merge actually did with each same-title match
-        const ok = commitItems((list) => {
-          res = mergeItems(list, incoming);
-          return res.items;
-        }, "restore");
+        let ok;
+        try {
+          ok = commitItems((list) => {
+            res = mergeItems(list, incoming);
+            return res.items;
+          }, "restore");
+        } catch {
+          ok = false;
+          showToast("Restore failed. Nothing was changed."); // PENDING BEREAN
+        }
         if (!ok) return;
+        let ttFailed = false;
         if (TT && parsed.tabletop) {
-          const t = TT.restore(parsed.tabletop, "merge", { answers });
+          const t = restoreTabletop("merge", { answers });
           if (t) {
             res.added += t.added;
             res.updated += t.updated;
             done = t.handMatches || [];
-          }
+          } else ttFailed = true;
         }
         restoreCoverQueue(parsed.coverQueueIds, false);
         render();
+        if (ttFailed) {
+          // Partial: the item merge was written; the tabletop merge was not. No "up to date" claim.
+          const m = [res.added && `${res.added} added`, res.updated && `${res.updated} updated`].filter(Boolean);
+          showToast(`Items merged${m.length ? ` — ${m.join(", ")}` : ""}. ${ttFailedLine}`); // PENDING BEREAN
+          return;
+        }
         // Only the non-zero parts of added / updated; both zero keeps "already up to date".
         const merged = [res.added && `${res.added} added`, res.updated && `${res.updated} updated`].filter(Boolean);
         const base = merged.length ? `Merged — ${merged.join(", ")}` : "Merged — already up to date"; // Berean cleared

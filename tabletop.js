@@ -1386,12 +1386,15 @@
     backupBlock: () => ({ v: 1, entries: load().map((e) => ({ ...e })) }),
     /** Restore: "replace" swaps the tabletop shelf, "merge" folds in by id / BGG id. */
     restore(incoming, mode, opts) {
-      let res = { added: incoming.length, updated: 0, handMatches: [] };
-      const ok = "committed" === commit((list) => {
-        if (mode === "replace") return mergeRestore([], incoming).list;
-        res = mergeRestore(list, incoming, opts);
-        return res.list;
-      });
+      let res = { added: Array.isArray(incoming) ? incoming.length : 0, updated: 0, handMatches: [] };
+      let ok = false;
+      try {
+        ok = "committed" === commit((list) => {
+          if (mode === "replace") return mergeRestore([], incoming).list;
+          res = mergeRestore(list, incoming, opts);
+          return res.list;
+        });
+      } catch { ok = false; } // malformed input: nothing written
       if (active) render();
       return ok ? res : null;
     },
