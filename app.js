@@ -1765,6 +1765,7 @@
   }
 
   function swapToTabletop() {
+    if (!els.confirm.hidden) closeConfirm();
     const carry = { title: els.fieldTitle.value.trim(), barcode: els.fieldBarcode.value.trim() };
     const back = lastFocus;
     TT.openAddFrom(carry, back);
@@ -1779,6 +1780,8 @@
   }
 
   function closeModal() {
+    // A closed parent must not retain a lookup/overwrite action for its old fields.
+    if (!els.confirm.hidden) closeConfirm();
     resetGameLookup();
     stopScanner();
     closeScanModal(true);
@@ -5908,6 +5911,7 @@
     });
     els.btnDelete.addEventListener("click", deleteCurrent);
     els.fieldType.addEventListener("change", () => {
+      if (!els.confirm.hidden) closeConfirm();
       if (els.fieldType.value === "tabletop") return swapToTabletop();
       lookupYearLoose = false;
       clearCarriedCreatorAndCover();
