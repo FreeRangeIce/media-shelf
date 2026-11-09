@@ -19,7 +19,8 @@
 
   <header class="site-header frm-site-header">
     <div class="pin-bar" aria-hidden="true"></div>
-    <div class="frm-util-row" role="toolbar" aria-label="Library tools">
+    <!-- Settings / Back up live under Profile; keep hidden targets so existing handlers & Restore stay wired. -->
+    <div class="frm-util-row" hidden>
       <button type="button" class="btn btn-ghost btn-sm frm-util-btn" id="btn-settings" aria-label="Settings" title="Backup, restore, and lookup settings">Settings</button>
       <button type="button" class="btn btn-ghost btn-sm frm-util-btn" id="btn-backup" aria-label="Back up" title="Back up: save a backup file (on iPhone choose Save to Files → iCloud Drive)">Back up</button>
       <button type="button" class="btn btn-primary" id="btn-add" hidden>+ Add</button>
@@ -36,12 +37,12 @@
 
   <div class="toolbar">
     <nav class="type-tabs frm-categories" role="tablist" aria-label="Media type">
-      <div class="type-tabs-row">
+      <div class="type-tabs-row type-tabs-row-3">
         <button type="button" class="chip active" data-type="all" role="tab" aria-selected="true" aria-current="true">All</button>
         <button type="button" class="chip" data-type="book" role="tab" aria-selected="false">Books</button>
         <button type="button" class="chip" data-type="game" role="tab" aria-selected="false">Video games</button>
       </div>
-      <div class="type-tabs-row">
+      <div class="type-tabs-row type-tabs-row-4">
         <button type="button" class="chip" data-type="movie" role="tab" aria-selected="false">Movies</button>
         <button type="button" class="chip" data-type="music" role="tab" aria-selected="false">Music</button>
         <button type="button" class="chip" data-type="comic" role="tab" aria-selected="false">Comics</button>
@@ -472,9 +473,11 @@
             <button type="button" class="btn btn-primary" id="tt-dup-update">Update existing</button>
           </div>
         </div>
-        <div class="form-actions-right">
-          <button type="button" class="btn btn-ghost" data-tt-close="tt-form-modal">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="tt-save">Save</button>
+        <div class="form-actions">
+          <div class="form-actions-right">
+            <button type="button" class="btn btn-ghost" data-tt-close="tt-form-modal">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="tt-save">Save</button>
+          </div>
         </div>
       </form>
     </div>
@@ -799,20 +802,27 @@
       <span class="frm-nav-add-circle" aria-hidden="true">+</span>
       <span class="frm-nav-label">Add</span>
     </button>
-    <button type="button" class="frm-nav-btn" data-nav="wishlist" aria-label="Wishlist (not set up yet)">
+    <button type="button" class="frm-nav-btn" data-nav="wishlist" aria-label="Wishlist">
       <span class="frm-nav-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span>
       <span class="frm-nav-label">Wishlist</span>
     </button>
-    <button type="button" class="frm-nav-btn" data-nav="profile" aria-label="Profile (not set up yet)">
+    <button type="button" class="frm-nav-btn" data-nav="profile" aria-label="Profile">
       <span class="frm-nav-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg></span>
       <span class="frm-nav-label">Profile</span>
     </button>
   </nav>
-  <section id="frm-placeholder" class="frm-placeholder empty-state" hidden>
-    <p class="empty-title" id="frm-placeholder-title"></p>
-    <p class="empty-hint" id="frm-placeholder-hint"></p>
-    <button type="button" class="btn btn-ghost" id="frm-placeholder-back">Back to Library</button>
+  <!-- Profile tab: existing Settings + Back up (Restore stays inside Settings with its confirm step). -->
+  <section id="frm-profile" class="frm-profile" hidden aria-label="Profile">
+    <button type="button" class="frm-profile-row" data-profile-action="settings">
+      <span class="frm-profile-row-title">Settings</span>
+      <span class="frm-profile-row-hint">Backup, restore, and lookup options</span>
+    </button>
+    <button type="button" class="frm-profile-row" data-profile-action="backup">
+      <span class="frm-profile-row-title">Back up</span>
+      <span class="frm-profile-row-hint">Save a backup file of this library</span>
+    </button>
   </section>
+  <section id="frm-placeholder" class="frm-placeholder empty-state" hidden aria-hidden="true"></section>
 
   <script src="./tabletop.js" defer></script>
   <script src="./app.js" defer></script>

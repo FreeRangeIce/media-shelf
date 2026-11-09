@@ -99,9 +99,33 @@
   const newId = () => `tt-${Date.now().toString(36)}-${(idSeq++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const nowIso = () => new Date().toISOString();
 
+  /**
+   * Map Kind/subtype labels (and legacy kind/type spellings) to a canonical subtype.
+   * Read-only mapping for filter/display: does not rewrite localStorage by itself.
+   * Accepts Board/Card/Dice/Miniatures/RPG/Expansion in any common casing, plus aliases.
+   */
+  function mapTabletopKind(raw) {
+    const r = raw && typeof raw === "object" ? raw : {};
+    const cand = str(r.subtype || r.kind || r.Kind || "");
+    if (SUBTYPES.includes(cand)) return cand;
+    const key = cand.toLowerCase().replace(/[\s_-]+/g, "");
+    const aliases = {
+      board: "board", boardgame: "board", boardgames: "board",
+      card: "card", cardgame: "card", cards: "card",
+      dice: "dice", die: "dice",
+      miniatures: "miniatures", miniature: "miniatures", mini: "miniatures", minis: "miniatures",
+      rpg: "rpg", roleplaying: "rpg", roleplay: "rpg",
+      expansion: "expansion", exp: "expansion", expansions: "expansion",
+    };
+    if (aliases[key]) return aliases[key];
+    // Title-case labels from the Kind dropdown ("Board", "Card", …)
+    const label = Object.keys(SUBTYPE_LABELS).find((k) => SUBTYPE_LABELS[k].toLowerCase() === cand.toLowerCase());
+    return label || "board";
+  }
+
   function normalize(raw) {
     const r = raw && typeof raw === "object" ? raw : {};
-    const subtype = SUBTYPES.includes(r.subtype) ? r.subtype : "board";
+    const subtype = mapTabletopKind(r);
     const e = {
       id: str(r.id) || newId(),
       title: str(r.title),
@@ -481,7 +505,7 @@
     return { lookup, reset, select, use };
   }
 
-  const core = { validBggId, bggImageUrl, bggIdRecord, bggIdPatch, cleanBggSrc, BGG_ID_BOUND, createBggIdLookup, STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
+  const core = { validBggId, bggImageUrl, bggIdRecord, bggIdPatch, cleanBggSrc, BGG_ID_BOUND, createBggIdLookup, STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, SUBTYPE_LABELS, mapTabletopKind, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
   if (typeof document === "undefined") return;
 
@@ -571,22 +595,40 @@
     if (!view) return;
     load();
     const q = normTitle(host.search ? host.search() : "");
-    const status = host.status ? host.status() : "all";
+    // Wishlist mode (host.wishlist) forces Want-only. Expansion rows only appear when they
+    // themselves match; an Owned expansion under a Want base stays out of Wishlist.
+    const wishlist = Boolean(host.wishlist && host.wishlist());
+    const status = wishlist ? "want" : (host.status ? host.status() : "all");
     let list = entries;
     const groups = groupShelf(list, host.sort && host.sort() === "updated" ? "updated" : "title").filter((g) => {
       const hit = (e) => (!q || [e.title, e.designer, e.notes].some((s) => normTitle(s).includes(q))) && (status === "all" || e.status === status);
+      if (wishlist) {
+        // Base must be Want to appear; expansions listed only when they are Want too.
+        return hit(g.entry);
+      }
       return hit(g.entry) || g.expansions.some(hit);
+    }).map((g) => {
+      if (!wishlist) return g;
+      return { entry: g.entry, expansions: g.expansions.filter((e) => e.status === "want") };
     });
     $("#tabletop-list").innerHTML = groups.map(cardHtml).join("");
     const empty = $("#tabletop-empty");
     empty.hidden = groups.length > 0;
     if (!groups.length) {
       const filtered = entries.length > 0;
-      $(".empty-title", empty).textContent = filtered ? "No matches" : "No tabletop games yet";
-      $(".empty-hint", empty).textContent = filtered
-        ? "Try a different filter or search."
-        : "Add the board, card, dice, miniatures and RPG games on your shelf. Linked expansions sit under their base game."; // Berean cleared
-      $("#tt-empty-add").hidden = filtered;
+      if (wishlist) {
+        $(".empty-title", empty).textContent = "No tabletop wants yet";
+        $(".empty-hint", empty).textContent = filtered
+          ? "Nothing on this Tabletop wishlist matches your search."
+          : "Mark a tabletop game as Want to see it here.";
+        $("#tt-empty-add").hidden = true;
+      } else {
+        $(".empty-title", empty).textContent = filtered ? "No matches" : "No tabletop games yet";
+        $(".empty-hint", empty).textContent = filtered
+          ? "Try a different filter or search."
+          : "Add the board, card, dice, miniatures and RPG games on your shelf. Linked expansions sit under their base game."; // Berean cleared
+        $("#tt-empty-add").hidden = filtered;
+      }
     }
   }
 

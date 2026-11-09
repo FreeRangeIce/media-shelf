@@ -266,6 +266,8 @@
   /** @type {Array<object>} */
   let items = [];
   let filterType = "all";
+  /** Bottom-nav shelf mode: library (default), wishlist (Want-only), or profile (Settings/Back up). */
+  let shelfMode = "library";
   let filterNeedsCover = false; // the 'Needs a cover' list (CLZ cover fill)
   let filterStatus = "all";
   let sortMode = "updated";
@@ -2218,7 +2220,10 @@
     if (filterType !== "all") {
       list = list.filter((i) => i.type === filterType);
     }
-    if (filterStatus !== "all") {
+    // Wishlist tab: Want only. Still respects the active category pill. Status dropdown is ignored here.
+    if (shelfMode === "wishlist") {
+      list = list.filter((i) => i.status === "want");
+    } else if (filterStatus !== "all") {
       list = list.filter((i) => i.status === filterStatus);
     }
     if (filterNeedsCover) list = list.filter((i) => i.type === "comic" && i.coverNeeded === true);
@@ -2290,6 +2295,14 @@
       els.list.innerHTML = "";
       els.empty.hidden = false;
       const totalFilteredOut = items.length > 0;
+      if (shelfMode === "wishlist") {
+        $(".empty-title", els.empty).textContent = "No wants yet";
+        $(".empty-hint", els.empty).textContent = filterType === "all"
+          ? "Items marked Want show up here. Add one, or set an item’s status to Want."
+          : `No ${filterType === "game" ? "video game" : filterType} wants on this shelf.`;
+        $("#btn-empty-add").hidden = true;
+        return;
+      }
       $(".empty-title", els.empty).textContent = filterNeedsCover
         ? "No comics need a cover"
         : totalFilteredOut
@@ -2428,14 +2441,30 @@
 
   function render() {
     renderStats();
+    const profile = $("#frm-profile");
+    const placeholder = $("#frm-placeholder");
+    if (shelfMode === "profile") {
+      if (TT) TT.show(false);
+      els.list.hidden = true;
+      els.empty.hidden = true;
+      els.seedBanner.hidden = true;
+      if (placeholder) placeholder.hidden = true;
+      if (profile) profile.hidden = false;
+      updateBackupUi();
+      renderCoverQueueUi();
+      return;
+    }
+    if (profile) profile.hidden = true;
     if (TT) TT.show(ttActive());
     if (ttActive()) {
       els.list.hidden = true;
       els.empty.hidden = true;
       els.seedBanner.hidden = true;
+      if (placeholder) placeholder.hidden = true;
     } else {
       els.list.hidden = false;
       renderList();
+      if (placeholder) placeholder.hidden = true;
     }
     updateBackupUi();
     renderCoverQueueUi();
@@ -5914,6 +5943,19 @@
           if (on) b.setAttribute("aria-current", "true");
           else b.removeAttribute("aria-current");
         });
+        // Leaving Profile for a category returns to Library (Wishlist keeps Want filter).
+        if (shelfMode === "profile") {
+          shelfMode = "library";
+          const nav = $(".frm-bottom-nav");
+          if (nav) {
+            $$(".frm-nav-btn", nav).forEach((b) => {
+              const on = b.dataset.nav === "library";
+              b.classList.toggle("active", on);
+              if (on) b.setAttribute("aria-current", "page");
+              else b.removeAttribute("aria-current");
+            });
+          }
+        }
         // Phones: the strip scrolls sideways; keep the picked tab in view.
         revealActiveTab();
         render();
@@ -5929,11 +5971,10 @@
       }
     }
 
-    /* Redesign bottom nav: Library = shelf, Search = existing #search, Add = existing Add,
-       Wishlist/Profile = honest "not set up yet" (no existing feature). */
+    /* Redesign bottom nav: Library = full shelf, Search = #search, Add = existing Add,
+       Wishlist = Want-only (respects category), Profile = Settings + Back up (existing features). */
     (function bindBottomNav() {
       const nav = $(".frm-bottom-nav");
-      const placeholder = $("#frm-placeholder");
       if (!nav) return;
       const setActive = (key) => {
         $$(".frm-nav-btn", nav).forEach((b) => {
@@ -5944,16 +5985,10 @@
         });
       };
       const showLibrary = () => {
-        if (placeholder) placeholder.hidden = true;
+        shelfMode = "library";
         setActive("library");
         document.body.classList.remove("frm-search-focus");
-      };
-      const showPlaceholder = (title, hint) => {
-        if (!placeholder) return;
-        $("#frm-placeholder-title").textContent = title;
-        $("#frm-placeholder-hint").textContent = hint;
-        placeholder.hidden = false;
-        setActive(title.toLowerCase().includes("wish") ? "wishlist" : "profile");
+        render();
       };
       nav.addEventListener("click", (e) => {
         const btn = e.target.closest("[data-nav]");
@@ -5961,30 +5996,45 @@
         const key = btn.dataset.nav;
         if (key === "library") { showLibrary(); return; }
         if (key === "search") {
-          showLibrary();
+          shelfMode = "library";
           setActive("search");
+          document.body.classList.remove("frm-profile-open");
           document.body.classList.add("frm-search-focus");
+          render();
           const input = els.search;
           if (input) { input.focus(); input.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
           return;
         }
         if (key === "add") {
-          // Reuse the existing Add button handler path.
           const add = $("#btn-add");
           if (add) add.click();
           return;
         }
         if (key === "wishlist") {
-          showPlaceholder("Wishlist is not set up yet", "There is no separate wishlist feature yet. Use the Want status filter on the Library shelf for items you want.");
+          shelfMode = "wishlist";
+          setActive("wishlist");
+          document.body.classList.remove("frm-search-focus");
+          render();
           return;
         }
         if (key === "profile") {
-          showPlaceholder("Profile is not set up yet", "There is no profile screen yet. Use Settings (top of the page) for backup, restore, and lookup options.");
+          shelfMode = "profile";
+          setActive("profile");
+          document.body.classList.remove("frm-search-focus");
+          render();
           return;
         }
       });
-      const back = $("#frm-placeholder-back");
-      if (back) back.addEventListener("click", showLibrary);
+      const profile = $("#frm-profile");
+      if (profile) {
+        profile.addEventListener("click", (e) => {
+          const row = e.target.closest("[data-profile-action]");
+          if (!row) return;
+          const act = row.dataset.profileAction;
+          if (act === "settings") openSettingsModal();
+          else if (act === "backup") backupToICloud();
+        });
+      }
     })();
 
     els.statusFilter.addEventListener("change", () => {
@@ -8605,6 +8655,7 @@
         renderStats: () => renderStats(),
         search: () => (els.search ? els.search.value : ""),
         status: () => filterStatus,
+        wishlist: () => shelfMode === "wishlist",
         sort: () => (els.sortSelect ? els.sortSelect.value : "title"),
       });
     }

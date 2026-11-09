@@ -13,9 +13,9 @@ check('approved logo asset present and referenced (900×443 proportions via CSS 
   assert.match(css, /aspect-ratio:\s*900\s*\/\s*443/);
   assert.match(css, /\.frm-logo[\s\S]*object-fit:\s*contain/);
 });
-check('header in normal document flow; util row then logo then name', () => {
+check('header is logo + name only; Settings/Back up IDs kept for Profile wiring', () => {
   assert.match(html, /class="site-header frm-site-header"/);
-  assert.match(html, /class="frm-util-row"/);
+  assert.match(html, /class="frm-util-row"[^>]*hidden/);
   assert.match(html, /id="btn-settings"/);
   assert.match(html, /id="btn-backup"/);
   assert.match(html, /class="brand frm-brand"/);
@@ -25,7 +25,7 @@ check('header in normal document flow; util row then logo then name', () => {
   assert.match(css, /\.stats[\s\S]*margin:\s*16px/);
 });
 check('two non-scrolling category rows with existing filter types', () => {
-  const rows = [...html.matchAll(/class="type-tabs-row"/g)];
+  const rows = [...html.matchAll(/class="type-tabs-row[^"]*"/g)];
   assert.equal(rows.length, 2);
   assert.match(html, /data-type="all"[\s\S]*data-type="book"[\s\S]*data-type="game"/);
   assert.match(html, /data-type="movie"[\s\S]*data-type="music"[\s\S]*data-type="comic"[\s\S]*data-type="tabletop"/);
@@ -78,12 +78,19 @@ check('bottom nav Library/Search/Add/Wishlist/Profile; Library active', () => {
   assert.match(app, /els\.search/);
   assert.match(app, /\$\("#btn-add"\)/);
 });
-check('Wishlist and Profile are honest placeholders (not invented features)', () => {
-  assert.match(html, /aria-label="Wishlist \(not set up yet\)"/);
-  assert.match(html, /aria-label="Profile \(not set up yet\)"/);
-  assert.match(app, /Wishlist is not set up yet/);
-  assert.match(app, /Profile is not set up yet/);
-  assert.match(html, /id="frm-placeholder"/);
+check('Wishlist filters Want; Profile opens Settings and Back up (no placeholder screens)', () => {
+  assert.match(html, /aria-label="Wishlist"/);
+  assert.match(html, /aria-label="Profile"/);
+  assert.doesNotMatch(app, /Wishlist is not set up yet/);
+  assert.doesNotMatch(app, /Profile is not set up yet/);
+  assert.match(app, /shelfMode === "wishlist"/);
+  assert.match(app, /i\.status === "want"/);
+  assert.match(html, /id="frm-profile"/);
+  assert.match(html, /data-profile-action="settings"/);
+  assert.match(html, /data-profile-action="backup"/);
+  assert.match(app, /openSettingsModal/);
+  assert.match(app, /backupToICloud/);
+  assert.match(html, /id="btn-restore"/); // Restore still inside Settings
 });
 check('covers use contain (uncropped); no external-link arrows; flat #1a1a1a; accent #8B5E3C', () => {
   assert.match(css, /object-fit:\s*contain;\s*\/\* complete cover/);
@@ -163,6 +170,37 @@ check('rev6: Add sheet seals bottom — no panel padding under sticky bar', () =
   assert.match(css, /#modal \.item-form \.form-actions[\s\S]*background:\s*#fffdf8\s*!important/);
   assert.match(css, /#modal \.item-form \.form-actions[\s\S]*border-top:\s*1px solid/);
   assert.match(css, /#modal > \.modal-panel[\s\S]*scroll-padding-bottom:/);
+});
+
+
+check('rev7: two explicit pill grids (3 + 4), 40px / 14px / 8px gap', () => {
+  assert.match(html, /type-tabs-row-3/);
+  assert.match(html, /type-tabs-row-4/);
+  assert.match(css, /type-tabs-row-3\s*\{\s*grid-template-columns:\s*repeat\(3/);
+  assert.match(css, /type-tabs-row-4\s*\{\s*grid-template-columns:\s*repeat\(4/);
+  assert.match(css, /height:\s*40px\s*!important/);
+  assert.match(css, /font-size:\s*14px\s*!important/);
+  assert.match(css, /\.type-tabs\.frm-categories[\s\S]*gap:\s*8px\s*!important/);
+});
+check('rev7: bottom nav fixed + safe-area; body padding clears nav; no scroll transform', () => {
+  assert.match(css, /\.frm-bottom-nav[\s\S]*position:\s*fixed\s*!important[\s\S]*bottom:\s*0\s*!important/);
+  assert.match(css, /\.frm-bottom-nav[\s\S]*padding-bottom:\s*env\(safe-area-inset-bottom/);
+  assert.match(css, /body\s*\{[\s\S]*padding-bottom:\s*calc\(64px \+ env\(safe-area-inset-bottom/);
+  assert.match(css, /\.frm-bottom-nav[\s\S]*transform:\s*none\s*!important/);
+});
+check('rev7: Add/TT sheet solid #fffdf8; full-width divider; 24px action inset', () => {
+  assert.match(css, /#tt-form-modal > \.modal-panel[\s\S]*background:\s*#fffdf8\s*!important/);
+  assert.match(css, /#modal \.item-form \.form-actions[\s\S]*padding:\s*16px 24px/);
+  assert.match(css, /#modal \.item-form \.form-actions[\s\S]*margin:\s*0 -24px 0/);
+  assert.match(html, /id="tt-form"[\s\S]*class="form-actions"[\s\S]*tt-save/);
+  for (const id of ['tt-title','tt-subtype','tt-status','tt-designer','tt-year','tt-players','tt-playTime','tt-bggId','tt-barcode']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+});
+check('rev7: flat #1a1a1a (no category vignette); covers contain; accent roles sparse', () => {
+  assert.match(css, /\.type-tabs::before[\s\S]*display:\s*none\s*!important/);
+  assert.match(css, /body[\s\S]*background:\s*#1a1a1a\s*!important/);
+  assert.match(css, /\.item-cover[\s\S]*object-fit:\s*contain\s*!important/);
 });
 
 console.log(`${passed}/${passed} passed (redesign shell: categories, nav, logo; production file text; no browser)`);

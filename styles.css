@@ -4821,3 +4821,194 @@ body.frm-search-focus .filters-row .search {
   content: none !important;
   display: none !important;
 }
+
+/* ========== Redesign rev7 (Micah/Oholiab/Nathan workshop fixes on v52) ========== */
+
+/* Header: logo + FreeRangeMedia only (Settings/Back up moved under Profile). */
+.frm-util-row[hidden] { display: none !important; }
+
+/* Category pills: two explicit grids (3 + 4), never a third wrap row. */
+.type-tabs.frm-categories {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  overflow: visible !important;
+}
+.type-tabs.frm-categories .type-tabs-row,
+.type-tabs.frm-categories .type-tabs-row-3,
+.type-tabs.frm-categories .type-tabs-row-4 {
+  display: grid !important;
+  gap: 8px !important;
+  flex-wrap: nowrap !important;
+  justify-content: stretch !important;
+  width: 100%;
+}
+.type-tabs.frm-categories .type-tabs-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+.type-tabs.frm-categories .type-tabs-row-4 { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+.type-tabs.frm-categories .chip,
+.type-tabs.frm-categories .chip:first-of-type,
+.type-tabs.frm-categories .chip:last-of-type,
+.type-tabs.frm-categories .chip + .chip {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  max-height: 40px !important;
+  padding: 0 10px !important;
+  font-size: 14px !important;
+  line-height: 1.1 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+}
+/* At 344px folded Duo, "Video games" and "Tabletop" stay one line at 14px. */
+@media (max-width: 360px) {
+  .type-tabs.frm-categories .chip {
+    font-size: 14px !important; /* never below 14px per Oholiab */
+    padding: 0 6px !important;
+  }
+}
+
+/* Flat #1a1a1a — kill leftover category spotlight / vignette. */
+body,
+.site-header,
+.frm-site-header,
+.toolbar,
+main#main,
+.stats {
+  background: #1a1a1a !important;
+  background-image: none !important;
+}
+.type-tabs::before,
+.type-tabs.frm-categories::before {
+  display: none !important;
+  content: none !important;
+  background: none !important;
+}
+
+/* Bottom nav: fixed, safe-area, no scroll transform/animation; content clears it. */
+.frm-bottom-nav {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  transform: none !important;
+  animation: none !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  padding-top: 0.35rem !important;
+  min-height: 64px;
+  background: #1a1a1a !important;
+  border-top: 1px solid #2e2e2e;
+  backdrop-filter: none !important;
+  z-index: 50;
+}
+body {
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)) !important;
+}
+.item-list,
+.tt-list,
+#main {
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 12px) !important;
+}
+.frm-nav-btn,
+.frm-nav-add,
+.frm-nav-add-circle {
+  transition: none !important;
+  transform: none !important;
+}
+.frm-nav-add { top: -10px; } /* lift only; no scroll-linked motion */
+
+/* Accent #8B5E3C only on: active pill, active bottom-nav item, central Add. */
+body.frm-search-focus .filters-row .search {
+  border-color: #4a4a4a !important;
+  box-shadow: none !important;
+}
+.skip-link:focus { background: #333 !important; }
+/* Keep focus ring accessible but not a filled accent wash on non-allowed chrome */
+.type-tabs.frm-categories .chip.active,
+.type-tabs.frm-categories .chip[aria-current="true"],
+.frm-nav-btn.active,
+.frm-nav-btn[aria-current="page"],
+.frm-nav-add-circle {
+  /* allowed accent roles — leave redesign rules in place */
+}
+
+/* Profile: two full-width rows (Settings, Back up). Restore stays inside Settings. */
+.frm-profile {
+  margin: 0.75rem var(--space-3) calc(64px + env(safe-area-inset-bottom, 0px) + 12px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.frm-profile-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  width: 100%;
+  min-height: 56px;
+  padding: 0.9rem 1rem;
+  border: 1px solid #3a3a3a;
+  border-radius: 12px;
+  background: #242424;
+  color: #f5f5f5;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.frm-profile-row:focus-visible { outline: none; box-shadow: var(--focus); }
+.frm-profile-row-title { font-weight: 700; font-size: 1rem; color: #fff; }
+.frm-profile-row-hint { font-size: 0.85rem; color: #b0b0b0; }
+
+/* Add / Tabletop sheet: solid #fffdf8; full-width divider; Cancel/Save right-aligned to 24px inset. */
+#modal > .modal-panel,
+#tt-form-modal > .modal-panel,
+#modal .modal-panel,
+#tt-form-modal .modal-panel {
+  background: #fffdf8 !important;
+  background-image: none !important;
+}
+#modal .item-form,
+#tt-form-modal .item-form,
+#tt-form {
+  background: #fffdf8 !important;
+}
+#modal .item-form .form-actions,
+#tt-form-modal .item-form .form-actions,
+.modal-panel .item-form .form-actions {
+  display: flex !important;
+  justify-content: flex-end !important;
+  align-items: center !important;
+  width: auto !important;
+  margin: 0 -24px 0 !important; /* full-bleed divider across the sheet */
+  padding: 16px 24px calc(16px + env(safe-area-inset-bottom, 0px)) !important; /* 24px field inset */
+  border-top: 1px solid var(--border-strong) !important;
+  background: #fffdf8 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  outline: 12px solid #fffdf8;
+}
+#modal .item-form .form-actions .form-actions-right,
+#tt-form-modal .item-form .form-actions .form-actions-right {
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 0.5rem;
+  margin-left: auto !important;
+}
+#modal .item-form .form-actions::before,
+#tt-form-modal .item-form .form-actions::before,
+.modal-panel .item-form .form-actions::before {
+  content: none !important;
+  display: none !important;
+  background: none !important;
+}
+
+/* Covers stay uncropped */
+.item-cover,
+.tt-card .item-cover {
+  object-fit: contain !important;
+}
