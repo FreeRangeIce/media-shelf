@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Bump it with the service worker cache each release: it must match sw.js's CACHE name
-  // (media-shelf-v52), which the tests check.
-  const APP_VERSION = 52;
+  // (media-shelf-v53), which the tests check.
+  const APP_VERSION = 53;
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -697,7 +697,7 @@
    * PLATFORM_SUGGESTIONS stays for the game-import datalist only.
    */
   const PLATFORM_CHOICES = [
-    "Steam", "PSN", "Xbox", "Xbox 360", "Xbox One", "Series X|S", "Switch",
+    "Steam", "PSN", "Xbox", "Xbox 360", "Xbox One", "Series X|S", "Switch", "Switch 2",
     "PS1", "PS2", "PS3", "PS4", "PS5", "GameCube", "Wii", "Wii U", "PC", "Other",
   ];
   /** RAWG platform ids. Steam is a store; PSN is the PlayStation parent. Unknown labels are unfiltered. */
@@ -4347,6 +4347,8 @@
       ["series x", "Series X|S"],
       ["xbox 360", "Xbox 360"],
       ["xbox one", "Xbox One"],
+      ["nintendo switch 2", "Switch 2"],
+      ["switch 2", "Switch 2"],
       ["nintendo switch", "Switch"],
       ["gamecube", "GameCube"],
       ["game cube", "GameCube"],
@@ -4377,7 +4379,7 @@
     let t = String(title || "").replace(/\s+/g, " ").trim();
     if (!t) return "";
     t = t.replace(
-      /\b(?:for\s+)?(?:xbox\s*series(?:\s*x(?:\|s|\/s)?)?|xbox\s*360|xbox\s*one|xbox|nintendo\s*switch|switch|playstation\s*[1-5]|ps[1-5]|playstation(?:\s*network)?|psn|wii\s*u|wii|gamecube|game\s*cube|steam|dvd|blu-ray|ntsc|pal)\b/ig,
+      /\b(?:for\s+)?(?:xbox\s*series(?:\s*x(?:\|s|\/s)?)?|xbox\s*360|xbox\s*one|xbox|nintendo\s*switch\s*2|nintendo\s*switch|switch\s*2|switch|playstation\s*[1-5]|ps[1-5]|playstation(?:\s*network)?|psn|wii\s*u|wii|gamecube|game\s*cube|steam|dvd|blu-ray|ntsc|pal)\b/ig,
       " "
     );
     t = t.replace(/[\(\[\{].*$/, " ");
@@ -5527,7 +5529,7 @@
     return s.length >= 2 && s.length <= 160 && /\p{L}/u.test(s) && !/[\u0000-\u001f\u007f]/.test(String(value)) && !/https?:\/\//i.test(s) ? s : "";
   }
   function gamePlatformMatches(platforms, selected) {
-    const aliases = { Switch: ["nintendo switch"], PS1: ["playstation"], PS2: ["playstation 2"], PS3: ["playstation 3"], PS4: ["playstation 4"], PS5: ["playstation 5"], Xbox: ["xbox"], "Xbox 360": ["xbox 360"], "Xbox One": ["xbox one"], "Series X|S": ["xbox series x|s", "xbox series x", "xbox series s"], GameCube: ["nintendo gamecube"], Wii: ["wii"], "Wii U": ["wii u"], PC: ["pc (microsoft windows)", "linux", "mac"], Steam: ["pc (microsoft windows)", "linux", "mac"] };
+    const aliases = { Switch: ["nintendo switch"], "Switch 2": ["nintendo switch", "nintendo switch 2"], PS1: ["playstation"], PS2: ["playstation 2"], PS3: ["playstation 3"], PS4: ["playstation 4"], PS5: ["playstation 5"], Xbox: ["xbox"], "Xbox 360": ["xbox 360"], "Xbox One": ["xbox one"], "Series X|S": ["xbox series x|s", "xbox series x", "xbox series s"], GameCube: ["nintendo gamecube"], Wii: ["wii"], "Wii U": ["wii u"], PC: ["pc (microsoft windows)", "linux", "mac"], Steam: ["pc (microsoft windows)", "linux", "mac"] };
     if (!selected || selected === "Other") return true;
     if (selected === "PSN") return platforms.some(p => /^playstation/i.test(p));
     const expected = aliases[selected];
@@ -5586,7 +5588,8 @@
         title = usableGameTitle(hit?.title);
         if (!title) { setLookupStatus("No usable title matched this barcode. What you typed is kept; enter the details yourself.", "error"); return; }
         const selected = els.fieldPlatform.value, known = mapExternalPlatform(selected);
-        const compatible = known === hit.platform || (selected === "Steam" && hit.platform === "PC") || (selected === "PSN" && /^PS[1-5]$/.test(hit.platform));
+        // Switch 2 can also play Switch games; plain Switch stays strict. Keep title-list and barcode rules aligned.
+        const compatible = known === hit.platform || (selected === "Steam" && hit.platform === "PC") || (selected === "PSN" && /^PS[1-5]$/.test(hit.platform)) || (selected === "Switch 2" && hit.platform === "Switch");
         if (hit.platform && known && !compatible) { setLookupStatus("This barcode matched a different platform. What you typed is kept.", "error"); return; }
         if (!relay) { setLookupStatus(`Barcode title: ${title}. IGDB details are not configured yet. What you typed is kept.`, "note"); return; }
       }
@@ -5600,12 +5603,20 @@
       }));
       if (!gameCandidates.length) { setLookupStatus("No IGDB match. What you typed is kept; enter the details yourself.", "error"); return; }
       const panel = $("#game-match-picker"); panel.hidden = false;
-      panel.innerHTML = `<h3 id="game-match-heading" tabindex="-1">Choose your game</h3><p class="field-hint">Check the title, year and platform. Nothing is saved until you press Save.</p><div class="game-match-list">${gameCandidates.map((c, i) => {
-        const matches = gamePlatformMatches(c.platforms, els.fieldPlatform.value);
-        return `<button type="button" class="game-match" data-game-pick="${i}" aria-pressed="false" ${matches ? "" : "disabled"}><span class="game-match-cover">${c.coverUrl ? `<img src="${escapeHtml(c.coverUrl)}" alt="" width="64" height="96" onerror="this.hidden=true;this.nextElementSibling.hidden=false" />` : ""}<span class="game-match-no-cover" ${c.coverUrl ? "hidden" : ""} aria-hidden="true">VIDEO GAME</span></span><span class="game-match-text"><span class="game-match-name">${escapeHtml(c.title)}</span><span class="game-match-meta">${c.year || "Year unknown"} · ${escapeHtml(c.platforms.join(", ") || "Platform unknown")}${matches ? "" : " — does not match the selected platform"}</span></span></button>`;
+      const selectedPlat = els.fieldPlatform.value;
+      const anySelectable = gameCandidates.some(c => gamePlatformMatches(c.platforms, selectedPlat));
+      const noneNote = !anySelectable && selectedPlat
+        ? `<p class="game-match-platform-note">None of these are listed for ${escapeHtml(selectedPlat)}. Change the platform or clear it to see them.</p>`
+        : "";
+      panel.innerHTML = `<h3 id="game-match-heading" tabindex="-1">Choose your game</h3><p class="field-hint">Check the title, year and platform. Nothing is saved until you press Save.</p>${noneNote}<div class="game-match-list">${gameCandidates.map((c, i) => {
+        const matches = gamePlatformMatches(c.platforms, selectedPlat);
+        const reason = !matches && selectedPlat ? `<span class="game-match-reason">Not listed for ${escapeHtml(selectedPlat)}.</span>` : "";
+        return `<button type="button" class="game-match" data-game-pick="${i}" aria-pressed="false" ${matches ? "" : "disabled"}><span class="game-match-cover">${c.coverUrl ? `<img src="${escapeHtml(c.coverUrl)}" alt="" width="64" height="96" onerror="this.hidden=true;this.nextElementSibling.hidden=false" />` : ""}<span class="game-match-no-cover" ${c.coverUrl ? "hidden" : ""} aria-hidden="true">VIDEO GAME</span></span><span class="game-match-text"><span class="game-match-name">${escapeHtml(c.title)}</span>${reason}<span class="game-match-meta">${c.year || "Year unknown"} · ${escapeHtml(c.platforms.join(", ") || "Platform unknown")}</span></span></button>`;
       }).join("")}</div><div class="form-actions-right"><button type="button" class="btn btn-ghost" id="game-match-cancel">Cancel</button><button type="button" class="btn btn-primary" id="game-match-use" disabled>Use this match</button></div>`;
       $("#game-match-heading").focus();
-      setLookupStatus("Choose a match before filling the form. What you typed is kept.");
+      setLookupStatus(!anySelectable && selectedPlat
+        ? `None of these are listed for ${selectedPlat}. Change the platform or clear it to see them.`
+        : "Choose a match before filling the form. What you typed is kept.");
     } catch (e) {
       if (seq === gameSeq) setLookupStatus(signal.aborted ? "Game lookup timed out. Try again, or enter the details yourself. What you typed is kept." : e.message || "Game lookup couldn’t finish. What you typed is kept.", "error");
     } finally {

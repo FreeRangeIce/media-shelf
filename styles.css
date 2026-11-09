@@ -3972,16 +3972,71 @@ body.modal-open {
    A cover and the no-cover tile always occupy the same frame, including image failures. */
 #game-match-picker { margin-block: var(--space-4); }
 .game-match-list { display: grid; gap: var(--space-2); margin-block: var(--space-3); }
-.game-match { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-elevated); color: var(--text); width: 100%; text-align: left; font: inherit; min-height: 44px; cursor: pointer; }
+/* Title-search result rows (Oholiab v53): light sheet cards, never near-black blocks. */
+.game-match {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e6dfd3;
+  border-radius: 8px;
+  background: #fff;
+  color: #1a1a1a;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  min-height: 44px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
 .game-match-cover, .game-match-no-cover { width: 64px; height: 96px; border-radius: 4px; }
 .game-match-cover { display: block; flex-shrink: 0; }
 .game-match-cover img { width: 64px; height: auto; max-height: 96px; object-fit: contain; display: block; border-radius: 4px; }
-.game-match-no-cover { display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); color: var(--text-muted); font-size: 9px; text-align: center; }
-.game-match-name { display: block; font-size: 14px; color: var(--text); }
-.game-match-meta { display: block; font-size: 13px; color: var(--text-muted); }
-.game-match[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
-.game-match:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.game-match:disabled { cursor: not-allowed; }
+.game-match-no-cover { display: flex; align-items: center; justify-content: center; border: 1px solid #e6dfd3; color: #6b6158; font-size: 9px; text-align: center; background: #fff; }
+.game-match-name { display: block; font-size: 15px; font-weight: 600; color: #1a1a1a; }
+.game-match-reason { display: block; font-size: 13px; color: #6b6158; margin-top: 2px; }
+.game-match-meta {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 13px;
+  color: #6b6158;
+  margin-top: 2px;
+}
+.game-match-platform-note {
+  margin: var(--space-2) 0 0;
+  font-size: 13px;
+  color: #6b6158;
+  line-height: 1.35;
+}
+.game-match[aria-pressed="true"] {
+  border: 2px solid #8B5E3C;
+  outline: none;
+}
+.game-match:focus-visible { outline: 2px solid #8B5E3C; outline-offset: 2px; }
+.game-match:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: #fff;
+  /* Keep the light row; do not use a dark fill for wrong-platform results. */
+}
+/* Use this match: gray outline while disabled; brown only once a row is picked. */
+#game-match-use:disabled,
+#game-match-use[disabled] {
+  background: transparent !important;
+  border: 1px solid #9a9088 !important;
+  color: #9a9088 !important;
+  cursor: not-allowed;
+  opacity: 1;
+}
+#game-match-use:not(:disabled) {
+  background: #8B5E3C !important;
+  border-color: #8B5E3C !important;
+  color: #fffdf8 !important;
+}
 #modal:has(#game-match-picker:not([hidden])) .form-actions .btn-primary { background: transparent; color: var(--text); border-color: var(--border-strong); transition: none; }
 
 /* Direct BGG-id result: stable 64px frame, linked credit, no stored cover bytes. */
