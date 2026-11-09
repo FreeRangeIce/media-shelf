@@ -506,6 +506,43 @@
   }
 
 
+
+  /**
+   * Library vs Wishlist grouping for the Tabletop shelf.
+   * Library: only non-Want items. A Want base is omitted; its Owned expansions surface as lone cards.
+   * Wishlist: Want bases (with Want expansions under them). A Want expansion under an Owned base
+   * stays visible: the group is marked wishOwnedBase so the UI can show a "Base game:" label +
+   * expansion cards instead of a second Owned card.
+   */
+  function filterGroupsForShelf(groups, { wishlist = false, statusFilter = "all", q = "" } = {}) {
+    const textHit = (e) => !q || [e.title, e.designer, e.notes].some((s) => normTitle(s).includes(q));
+    const hit = (e) => {
+      if (!textHit(e)) return false;
+      if (wishlist) return e.status === "want";
+      if (e.status === "want") return false;
+      if (statusFilter === "all" || statusFilter === "want") return true;
+      return e.status === statusFilter;
+    };
+    const out = [];
+    for (const g of groups || []) {
+      if (wishlist) {
+        const wantExps = (g.expansions || []).filter(hit);
+        const baseWant = hit(g.entry);
+        if (baseWant) out.push({ entry: g.entry, expansions: wantExps });
+        else if (wantExps.length) out.push({ entry: g.entry, expansions: wantExps, wishOwnedBase: true });
+        continue;
+      }
+      const baseOk = hit(g.entry);
+      const expsOk = (g.expansions || []).filter(hit);
+      if (baseOk) out.push({ entry: g.entry, expansions: expsOk });
+      else if (expsOk.length) {
+        // Want base excluded from Library; Owned expansions appear alone.
+        expsOk.forEach((e) => out.push({ entry: e, expansions: [] }));
+      }
+    }
+    return out;
+  }
+
   /** Status tallies for the header stats strip (Want + Owned). Unknown/missing → owned. */
   function countByStatus(list) {
     const out = { owned: 0, want: 0 };
@@ -516,7 +553,7 @@
     return out;
   }
 
-  const core = { validBggId, bggImageUrl, bggIdRecord, bggIdPatch, cleanBggSrc, BGG_ID_BOUND, createBggIdLookup, STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, SUBTYPE_LABELS, mapTabletopKind, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, countByStatus, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
+  const core = { validBggId, bggImageUrl, bggIdRecord, bggIdPatch, cleanBggSrc, BGG_ID_BOUND, createBggIdLookup, STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, SUBTYPE_LABELS, mapTabletopKind, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, filterGroupsForShelf, countByStatus, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
   if (typeof document === "undefined") return;
 
@@ -578,8 +615,26 @@
 
   function cardHtml(g) {
     const e = g.entry;
-    const lone = e.subtype === "expansion";
-    const exps = g.expansions;
+    const exps = g.expansions || [];
+    // Wishlist: Want expansion(s) under an Owned base — plain "Base game:" label + expansion cards
+    // (Oholiab). Expansion tag reuses existing subtypeBadge → badge badge-type tabletop ("Expansion").
+    if (g.wishOwnedBase) {
+      const cards = exps
+        .map(
+          (x) => `<article class="item-card tt-card" tabindex="0" role="button" data-tt-open="${esc(x.id)}" aria-label="${esc(`Details for ${x.title}`)}">
+    ${cover(x)}
+    <div class="item-body">
+      <h3 class="item-title" title="${esc(x.title)}">${esc(x.title)}</h3>
+      <div class="item-badges">${subtypeBadge(x)}</div>
+    </div>
+  </article>`
+        )
+        .join("");
+      return `<li class="tt-group tt-group-wish-owned-base">
+  <p class="tt-wish-base-label">Base game: ${esc(e.title)}</p>
+  ${cards}
+</li>`;
+    }
     const shown = exps.slice(0, VISIBLE_EXPANSIONS);
     const more = exps.length - shown.length;
     const expList = exps.length
@@ -606,31 +661,15 @@
     if (!view) return;
     load();
     const q = normTitle(host.search ? host.search() : "");
-    // Wishlist mode (host.wishlist) forces Want-only. Library never shows Want (same rule as
-    // media). Expansion rows only appear when they themselves match; an Owned expansion under a
-    // Want base stays out of Wishlist, and a Want expansion under an Owned base stays out of Library.
+    // Wishlist: Want items only (a Want expansion under an Owned base still appears).
+    // Library: non-Want only (Want base omitted; its Owned expansions surface alone).
     const wishlist = Boolean(host.wishlist && host.wishlist());
     const statusFilter = host.status ? host.status() : "all";
     let list = entries;
-    const groups = groupShelf(list, host.sort && host.sort() === "updated" ? "updated" : "title").filter((g) => {
-      const hit = (e) => {
-        if (q && ![e.title, e.designer, e.notes].some((s) => normTitle(s).includes(q))) return false;
-        if (wishlist) return e.status === "want";
-        // Library: exclude Want always. Status dropdown may further narrow (Want choice disabled in host).
-        if (e.status === "want") return false;
-        if (statusFilter === "all" || statusFilter === "want") return true;
-        return e.status === statusFilter;
-      };
-      if (wishlist) {
-        // Base must be Want to appear; expansions listed only when they are Want too.
-        return hit(g.entry);
-      }
-      return hit(g.entry) || g.expansions.some(hit);
-    }).map((g) => {
-      if (wishlist) return { entry: g.entry, expansions: g.expansions.filter((e) => e.status === "want") };
-      // Library: drop Want expansions under an Owned base.
-      return { entry: g.entry, expansions: g.expansions.filter((e) => e.status !== "want") };
-    });
+    const groups = filterGroupsForShelf(
+      groupShelf(list, host.sort && host.sort() === "updated" ? "updated" : "title"),
+      { wishlist, statusFilter, q }
+    );
     $("#tabletop-list").innerHTML = groups.map(cardHtml).join("");
     const empty = $("#tabletop-empty");
     empty.hidden = groups.length > 0;

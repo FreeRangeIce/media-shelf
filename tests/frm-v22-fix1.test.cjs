@@ -1,4 +1,4 @@
-// V2.2-b2: Library excludes Want, header counts Tabletop Want/Owned, folded Duo close inset.
+// V2.2-b3: Library excludes Want, header counts Tabletop Want/Owned, folded Duo close inset.
 // Native source + light sims. No browser.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -41,9 +41,9 @@ function filterMedia(items, { shelfMode, filterType = 'all', filterStatus = 'all
 
 const CATEGORIES = ['book', 'game', 'movie', 'music', 'comic'];
 
-check('APP_VERSION stays 2.2; sw cache is media-shelf-v2.2-b2 (suffix accepted)', () => {
+check('APP_VERSION stays 2.2; sw cache is media-shelf-v2.2-b3 (suffix accepted)', () => {
   assert.match(app, /const APP_VERSION = "2\.2"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.2-b2"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.2-b3"/);
   assert.match(sw, /const CACHE = "media-shelf-v2\.2(?:-[a-z0-9]+)?"/);
 });
 
@@ -115,26 +115,102 @@ check('quiet Library empty copy + 13px #6b6158 class', () => {
 check('Tabletop Library excludes Want; Wishlist Want-only; empty owned line', () => {
   const baseWant = T.normalize({ id: 'hellas', title: 'Lords of Hellas', subtype: 'board', status: 'want' });
   const baseOwn = T.normalize({ id: 'talisman', title: 'Talisman', subtype: 'board', status: 'owned' });
-  const expWant = T.normalize({ id: 'exp-w', title: 'Want Exp', subtype: 'expansion', status: 'want', parentId: 'talisman' });
-  const groups = T.groupShelf([baseWant, baseOwn, expWant], 'title');
-
-  // Simulate production tabletop.js Library hit rule.
-  const libGroups = groups.filter((g) => g.entry.status !== 'want').map((g) => ({
-    entry: g.entry,
-    expansions: g.expansions.filter((e) => e.status !== 'want'),
-  }));
-  assert.equal(libGroups.length, 1);
-  assert.equal(libGroups[0].entry.title, 'Talisman');
-  assert.equal(libGroups[0].expansions.length, 0);
-
-  const wishGroups = groups.filter((g) => g.entry.status === 'want').map((g) => ({
-    entry: g.entry,
-    expansions: g.expansions.filter((e) => e.status === 'want'),
-  }));
-  assert.equal(wishGroups.length, 1);
-  assert.equal(wishGroups[0].entry.title, 'Lords of Hellas');
-
+  const groups = T.groupShelf([baseWant, baseOwn], 'title');
+  const lib = T.filterGroupsForShelf(groups, { wishlist: false });
+  assert.equal(lib.length, 1);
+  assert.equal(lib[0].entry.title, 'Talisman');
+  const wish = T.filterGroupsForShelf(groups, { wishlist: true });
+  assert.equal(wish.length, 1);
+  assert.equal(wish[0].entry.title, 'Lords of Hellas');
   assert.match(fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8'), /Nothing owned in Tabletop yet\./);
+});
+
+check('four combos: Want/Owned base × Want/Owned expansion in Library and Wishlist', () => {
+  const mk = (id, title, subtype, status, extra = {}) =>
+    T.normalize({ id, title, subtype, status, ...extra });
+
+  // 1) Want base + Owned expansion
+  {
+    const base = mk('b1', 'Want Base', 'board', 'want', { bggId: '1' });
+    const exp = mk('e1', 'Owned Exp', 'expansion', 'owned', { parentBggId: '1', parentId: 'b1' });
+    const g = T.groupShelf([base, exp], 'title');
+    const lib = T.filterGroupsForShelf(g, { wishlist: false });
+    // Library: Want base out; Owned expansion surfaces alone
+    assert.equal(lib.length, 1);
+    assert.equal(lib[0].entry.title, 'Owned Exp');
+    assert.equal(lib[0].entry.subtype, 'expansion');
+    assert.equal(lib[0].expansions.length, 0);
+    const wish = T.filterGroupsForShelf(g, { wishlist: true });
+    assert.equal(wish.length, 1);
+    assert.equal(wish[0].entry.title, 'Want Base');
+    assert.equal(wish[0].expansions.length, 0); // Owned exp out of Wishlist
+    assert.equal(wish[0].wishOwnedBase, undefined);
+  }
+
+  // 2) Owned base + Want expansion
+  {
+    const base = mk('b2', 'Owned Base', 'board', 'owned', { bggId: '2' });
+    const exp = mk('e2', 'Want Exp', 'expansion', 'want', { parentBggId: '2', parentId: 'b2' });
+    const g = T.groupShelf([base, exp], 'title');
+    const lib = T.filterGroupsForShelf(g, { wishlist: false });
+    assert.equal(lib.length, 1);
+    assert.equal(lib[0].entry.title, 'Owned Base');
+    assert.equal(lib[0].expansions.length, 0); // Want exp out of Library
+    const wish = T.filterGroupsForShelf(g, { wishlist: true });
+    assert.equal(wish.length, 1);
+    assert.equal(wish[0].entry.title, 'Owned Base');
+    assert.equal(wish[0].wishOwnedBase, true);
+    assert.equal(wish[0].expansions.length, 1);
+    assert.equal(wish[0].expansions[0].title, 'Want Exp');
+  }
+
+  // 3) Want base + Want expansion
+  {
+    const base = mk('b3', 'Want Base 2', 'board', 'want', { bggId: '3' });
+    const exp = mk('e3', 'Want Exp 2', 'expansion', 'want', { parentBggId: '3', parentId: 'b3' });
+    const g = T.groupShelf([base, exp], 'title');
+    const lib = T.filterGroupsForShelf(g, { wishlist: false });
+    assert.equal(lib.length, 0);
+    const wish = T.filterGroupsForShelf(g, { wishlist: true });
+    assert.equal(wish.length, 1);
+    assert.equal(wish[0].entry.title, 'Want Base 2');
+    assert.equal(wish[0].expansions.length, 1);
+    assert.equal(wish[0].wishOwnedBase, undefined);
+  }
+
+  // 4) Owned base + Owned expansion
+  {
+    const base = mk('b4', 'Owned Base 2', 'board', 'owned', { bggId: '4' });
+    const exp = mk('e4', 'Owned Exp 2', 'expansion', 'owned', { parentBggId: '4', parentId: 'b4' });
+    const g = T.groupShelf([base, exp], 'title');
+    const lib = T.filterGroupsForShelf(g, { wishlist: false });
+    assert.equal(lib.length, 1);
+    assert.equal(lib[0].entry.title, 'Owned Base 2');
+    assert.equal(lib[0].expansions.length, 1);
+    const wish = T.filterGroupsForShelf(g, { wishlist: true });
+    assert.equal(wish.length, 0);
+  }
+});
+
+check('Wishlist Owned-base Want-expansion markup: Base game label + Expansion subtype badge', () => {
+  const src = fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8');
+  assert.match(src, /wishOwnedBase/);
+  assert.match(src, /Base game: \$\{esc\(e\.title\)\}/);
+  assert.match(src, /tt-wish-base-label/);
+  assert.match(src, /subtypeBadge\(x\)/);
+  assert.match(css, /\.tt-wish-base-label[\s\S]*?font-size:\s*13px/);
+  assert.match(css, /\.tt-wish-base-label[\s\S]*?color:\s*#6b6158/);
+  // Tag reuses existing badge-type tabletop → "Expansion" via SUBTYPE_LABELS
+  assert.match(src, /subtypeBadge = \(e\) => `<span class="badge badge-type tabletop">\$\{SUBTYPE_LABELS\[e\.subtype\]\}<\/span>`/);
+  assert.equal(T.SUBTYPE_LABELS.expansion, 'Expansion');
+});
+
+check('countByStatus counts Want expansions as separate Want items', () => {
+  const rows = [
+    T.normalize({ id: 'b', title: 'Base', subtype: 'board', status: 'owned', bggId: '9' }),
+    T.normalize({ id: 'e', title: 'Exp Want', subtype: 'expansion', status: 'want', parentBggId: '9', parentId: 'b' }),
+  ];
+  assert.deepEqual(T.countByStatus(rows), { owned: 1, want: 1 });
 });
 
 check('countByStatus includes Tabletop Want (Lords of Hellas case) and updates with shelf', () => {
@@ -203,4 +279,4 @@ check('Wishlist empty states preserved (no regression of existing copy)', () => 
   assert.match(fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8'), /No tabletop wants yet/);
 });
 
-console.log(`${passed}/${passed} passed (v2.2-b2 library/wishlist/count/duo-close)`);
+console.log(`${passed}/${passed} passed (v2.2-b3 library/wishlist/count/duo-close/expansions)`);

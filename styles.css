@@ -5168,3 +5168,23 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
     padding-right: calc(var(--frm-duo-hub-clearance) - var(--space-5));
   }
 }
+
+
+/* V2.2-b3: Wishlist Want expansion under an Owned base (Oholiab). */
+.tt-wish-base-label {
+  margin: 0 0 var(--space-2);
+  padding: 0 var(--space-1);
+  font-size: 13px;
+  font-weight: var(--fw-regular, 400);
+  color: #6b6158;
+  line-height: 1.4;
+}
+.tt-group-wish-owned-base {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+}
+.tt-group-wish-owned-base .item-card.tt-card .item-badges {
+  margin-top: var(--space-1);
+}

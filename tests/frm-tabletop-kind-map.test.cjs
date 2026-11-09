@@ -90,14 +90,11 @@ check('Wishlist Want filter: Owned expansion under Want base — expansion out, 
   assert.equal(groups.length, 1);
   assert.equal(groups[0].entry.id, 'b1');
   assert.equal(groups[0].expansions.length, 1);
-  // Simulate wishlist filter: base must be want; expansions only when want.
-  const wish = groups.filter((g) => g.entry.status === 'want').map((g) => ({
-    entry: g.entry,
-    expansions: g.expansions.filter((e) => e.status === 'want'),
-  }));
+  const wish = T.filterGroupsForShelf(groups, { wishlist: true });
   assert.equal(wish.length, 1);
   assert.equal(wish[0].entry.title, 'Base Want');
   assert.equal(wish[0].expansions.length, 0);
+  assert.equal(wish[0].wishOwnedBase, undefined);
 });
 
 console.log(`${passed}/${passed} passed (tabletop Kind map + old backup + wishlist expansion rule)`);
