@@ -2265,7 +2265,7 @@
     const label = escapeHtml(TYPE_LABELS[item.type] || item.type);
     const type = escapeHtml(item.type);
     // A stored GCD image URL (and, in names-only mode, a Metron one) is kept but never
-    // requested; the card shows the Comic placeholder and the cover-name line instead.
+    // requested; the card shows the Comic placeholder only (no cover-name line on the card).
     const url = comicImageSuppressed(item.type, item.coverUrl) ? "" : (item.coverUrl || "").trim();
     // The column keeps the 2:3 height for every type, so mixed lists line up; music
     // covers (square album art) sit top-aligned in it as a 1:1 frame.

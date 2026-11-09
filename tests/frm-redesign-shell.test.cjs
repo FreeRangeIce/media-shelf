@@ -131,4 +131,21 @@ check('rev4: Sample Board Game seed with local SVG cover, no BGG id', () => {
   assert.match(tt, /clearSeeds:/);
 });
 
+
+check('real-cover cards emit no caption/kicker/meta under the image (all categories)', () => {
+  const media = app.slice(app.indexOf('Title-only redesign card'), app.indexOf('Title-only redesign card') + 650);
+  assert.match(media, /coverMarkup\(item\)/);
+  assert.match(media, /item-title/);
+  assert.doesNotMatch(media, /item-meta|item-cover-name|badge-|tt-kicker|item-notes|card-ref|Pick cover/);
+  const tt = fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8');
+  const card = tt.slice(tt.indexOf('Title-only card'), tt.indexOf('Title-only card') + 500);
+  assert.match(card, /\$\{cover\(e\)\}/);
+  assert.match(card, /item-title/);
+  assert.doesNotMatch(card, /item-meta|tt-kicker|item-badges|tt-exp-count|subtypeBadge/);
+  // Hidden placeholders cannot be forced visible by a bare display:flex !important rule.
+  assert.doesNotMatch(css, /\.item-cover-placeholder,\s*\.item-cover-col\[data-type\][^\{]*\{[^}]*display:\s*flex\s*!important/);
+  assert.match(css, /\.item-cover-placeholder\[hidden\][\s\S]*display:\s*none\s*!important/);
+  assert.match(app, /coverMarkup[\s\S]*hidden aria-hidden="true"/);
+});
+
 console.log(`${passed}/${passed} passed (redesign shell: categories, nav, logo; production file text; no browser)`);
