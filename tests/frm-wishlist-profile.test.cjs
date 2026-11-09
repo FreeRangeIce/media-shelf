@@ -10,9 +10,10 @@ const check = (n, fn) => { fn(); passed++; console.log('PASS', n); };
 
 check('Wishlist mode filters status===want and respects category filterType', () => {
   assert.match(app, /shelfMode === "wishlist"/);
-  const slice = app.slice(app.indexOf('function filteredItems'), app.indexOf('function filteredItems') + 900);
+  const slice = app.slice(app.indexOf('function filteredItems'), app.indexOf('function filteredItems') + 1200);
   assert.match(slice, /shelfMode === "wishlist"/);
-  assert.match(slice, /i\.status === "want"/);
+  assert.match(slice, /isWantStatus\(i\.status\)/);
+  assert.match(slice, /isLibraryStatus\(i\.status\)/);
   assert.match(slice, /filterType !== "all"/);
 });
 

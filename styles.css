@@ -5098,3 +5098,73 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
   padding-left: var(--space-5);
   padding-right: var(--space-5);
 }
+
+
+/* ===== V2.2-b2: folded Duo sheet close + quiet Library empty (Oholiab) =====
+ * Hub clearance measured from Micah's folded Duo Settings shot (690×1024 ≈ 2× at 344 CSS).
+ * X right edge sits on the same vertical line as the pills/filters/search (~272 CSS px from
+ * the left at 344 wide ≈ 60px in from the sheet's right edge), clearing the status hub by ~17px.
+ * One variable so it stays easy to tune. Unfolded / desktop keep the corner close position.
+ */
+:root {
+  --frm-duo-hub-clearance: 60px; /* inset of close-button (and Settings Due pill) right edge from sheet right */
+}
+
+/* Quiet one-line empty when a Library category has no non-Want items. */
+.empty-state.frm-empty-owned {
+  border: none;
+  background: transparent;
+  padding: var(--space-8) var(--space-5);
+}
+.empty-state.frm-empty-owned .empty-title {
+  font-size: 13px;
+  font-weight: var(--fw-regular, 400);
+  color: #6b6158;
+  line-height: 1.4;
+}
+.empty-state.frm-empty-owned .empty-hint:empty,
+.empty-state.frm-empty-owned .empty-hint:blank {
+  display: none;
+}
+.empty-state.frm-empty-owned .empty-hint {
+  display: none;
+}
+.empty-state.frm-empty-owned #btn-empty-add[hidden],
+.empty-state.frm-empty-owned #tt-empty-add[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 400px) {
+  /* Title ellipsizes before the X; X stays on the header row (not lowered). */
+  .modal-header {
+    gap: var(--space-2);
+  }
+  .modal-header h2 {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: var(--space-2);
+  }
+  /* 44×44 tap target; right edge inset by --frm-duo-hub-clearance from the sheet's right edge.
+     Panel already has --frm-sheet-pad-r / --space-5 padding, so only the remainder is added. */
+  .modal-header .btn-icon {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: calc(var(--frm-duo-hub-clearance) - var(--frm-sheet-pad-r, var(--space-5)));
+  }
+  /* Settings "Due" / "Recent" / "Never" pill sits in the Backup card head, which still falls
+     under the hub's vertical span on a folded Duo. Pull it left onto the same clearance line. */
+  #settings-modal #backup-card .api-key-card-head {
+    padding-right: calc(var(--frm-duo-hub-clearance) - var(--space-5));
+  }
+}

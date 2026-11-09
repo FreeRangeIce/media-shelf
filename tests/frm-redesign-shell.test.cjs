@@ -84,7 +84,8 @@ check('Wishlist filters Want; Profile opens Settings and Back up (no placeholder
   assert.doesNotMatch(app, /Wishlist is not set up yet/);
   assert.doesNotMatch(app, /Profile is not set up yet/);
   assert.match(app, /shelfMode === "wishlist"/);
-  assert.match(app, /i\.status === "want"/);
+  assert.match(app, /isWantStatus\(i\.status\)/);
+  assert.match(app, /isLibraryStatus\(i\.status\)/);
   assert.match(html, /id="frm-profile"/);
   assert.match(html, /data-profile-action="settings"/);
   assert.match(html, /data-profile-action="backup"/);

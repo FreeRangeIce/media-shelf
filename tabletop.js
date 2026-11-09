@@ -505,7 +505,18 @@
     return { lookup, reset, select, use };
   }
 
-  const core = { validBggId, bggImageUrl, bggIdRecord, bggIdPatch, cleanBggSrc, BGG_ID_BOUND, createBggIdLookup, STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, SUBTYPE_LABELS, mapTabletopKind, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
+
+  /** Status tallies for the header stats strip (Want + Owned). Unknown/missing → owned. */
+  function countByStatus(list) {
+    const out = { owned: 0, want: 0 };
+    for (const e of list || []) {
+      if (e && e.status === "want") out.want += 1;
+      else out.owned += 1;
+    }
+    return out;
+  }
+
+  const core = { validBggId, bggImageUrl, bggIdRecord, bggIdPatch, cleanBggSrc, BGG_ID_BOUND, createBggIdLookup, STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, SUBTYPE_LABELS, mapTabletopKind, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, countByStatus, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
   if (typeof document === "undefined") return;
 
@@ -595,34 +606,52 @@
     if (!view) return;
     load();
     const q = normTitle(host.search ? host.search() : "");
-    // Wishlist mode (host.wishlist) forces Want-only. Expansion rows only appear when they
-    // themselves match; an Owned expansion under a Want base stays out of Wishlist.
+    // Wishlist mode (host.wishlist) forces Want-only. Library never shows Want (same rule as
+    // media). Expansion rows only appear when they themselves match; an Owned expansion under a
+    // Want base stays out of Wishlist, and a Want expansion under an Owned base stays out of Library.
     const wishlist = Boolean(host.wishlist && host.wishlist());
-    const status = wishlist ? "want" : (host.status ? host.status() : "all");
+    const statusFilter = host.status ? host.status() : "all";
     let list = entries;
     const groups = groupShelf(list, host.sort && host.sort() === "updated" ? "updated" : "title").filter((g) => {
-      const hit = (e) => (!q || [e.title, e.designer, e.notes].some((s) => normTitle(s).includes(q))) && (status === "all" || e.status === status);
+      const hit = (e) => {
+        if (q && ![e.title, e.designer, e.notes].some((s) => normTitle(s).includes(q))) return false;
+        if (wishlist) return e.status === "want";
+        // Library: exclude Want always. Status dropdown may further narrow (Want choice disabled in host).
+        if (e.status === "want") return false;
+        if (statusFilter === "all" || statusFilter === "want") return true;
+        return e.status === statusFilter;
+      };
       if (wishlist) {
         // Base must be Want to appear; expansions listed only when they are Want too.
         return hit(g.entry);
       }
       return hit(g.entry) || g.expansions.some(hit);
     }).map((g) => {
-      if (!wishlist) return g;
-      return { entry: g.entry, expansions: g.expansions.filter((e) => e.status === "want") };
+      if (wishlist) return { entry: g.entry, expansions: g.expansions.filter((e) => e.status === "want") };
+      // Library: drop Want expansions under an Owned base.
+      return { entry: g.entry, expansions: g.expansions.filter((e) => e.status !== "want") };
     });
     $("#tabletop-list").innerHTML = groups.map(cardHtml).join("");
     const empty = $("#tabletop-empty");
     empty.hidden = groups.length > 0;
     if (!groups.length) {
       const filtered = entries.length > 0;
+      const ownedHere = entries.some((e) => e.status !== "want");
       if (wishlist) {
+        empty.classList.remove("frm-empty-owned");
         $(".empty-title", empty).textContent = "No tabletop wants yet";
         $(".empty-hint", empty).textContent = filtered
           ? "Nothing on this Tabletop wishlist matches your search."
           : "Mark a tabletop game as Want to see it here.";
         $("#tt-empty-add").hidden = true;
+      } else if (!ownedHere && !q && (statusFilter === "all" || statusFilter === "want")) {
+        // Library, no Owned tabletop: one quiet line (Oholiab). Want-only shelves look empty here.
+        empty.classList.add("frm-empty-owned");
+        $(".empty-title", empty).textContent = "Nothing owned in Tabletop yet.";
+        $(".empty-hint", empty).textContent = "";
+        $("#tt-empty-add").hidden = true;
       } else {
+        empty.classList.remove("frm-empty-owned");
         $(".empty-title", empty).textContent = filtered ? "No matches" : "No tabletop games yet";
         $(".empty-hint", empty).textContent = filtered
           ? "Try a different filter or search."
@@ -1420,6 +1449,8 @@
       F("tt-barcode").value = barcode;
     },
     count: () => load().length,
+    /** Header Want/Owned tallies (Tabletop store is separate from media items). */
+    countByStatus: () => countByStatus(load()),
     askHandMatches,
     /** Hand matches a merge of `incoming` would raise, without writing anything. */
     previewHandMatches(incoming) {

@@ -3,8 +3,9 @@
   "use strict";
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
-  // Bump it with the service worker cache each release: it must match sw.js's CACHE name
-  // (media-shelf-v2.2), which the tests check.
+  // Displayed version stays on the minor (V2.2). Small fixes keep APP_VERSION and bump the
+  // service worker cache with a build suffix (media-shelf-v2.2-b2) so the Duo drops old files.
+  // Suffix scheme still awaits Micah's confirmation.
   const APP_VERSION = "2.2";
   const STORAGE_KEY = "media-tracker-v1";
 
@@ -261,6 +262,16 @@
 
   function countLabel(n, key) {
     return `${n} ${countNoun(n, key)}`;
+  }
+
+
+  /** Want vs Library visibility. One rule for media + tabletop filters and the header count. */
+  function isWantStatus(status) {
+    return status === "want";
+  }
+  /** Library shows every non-Want status (owned, in_progress, done, dropped, unknown/missing). */
+  function isLibraryStatus(status) {
+    return !isWantStatus(status);
   }
 
   /** @type {Array<object>} */
@@ -2221,10 +2232,14 @@
       list = list.filter((i) => i.type === filterType);
     }
     // Wishlist tab: Want only. Still respects the active category pill. Status dropdown is ignored here.
+    // Library: never Want (owned / in_progress / done / dropped / unknown stay). Want option is disabled in the dropdown.
     if (shelfMode === "wishlist") {
-      list = list.filter((i) => i.status === "want");
-    } else if (filterStatus !== "all") {
-      list = list.filter((i) => i.status === filterStatus);
+      list = list.filter((i) => isWantStatus(i.status));
+    } else {
+      list = list.filter((i) => isLibraryStatus(i.status));
+      if (filterStatus !== "all" && filterStatus !== "want") {
+        list = list.filter((i) => i.status === filterStatus);
+      }
     }
     if (filterNeedsCover) list = list.filter((i) => i.type === "comic" && i.coverNeeded === true);
     const q = searchQuery.trim().toLowerCase();
@@ -2253,6 +2268,13 @@
     for (const i of items) {
       byType[i.type] = (byType[i.type] || 0) + 1;
       byStatus[i.status] = (byStatus[i.status] || 0) + 1;
+    }
+    // Tabletop lives in its own store (TT). Fold Want/Owned into the header so a Tabletop
+    // Want (e.g. Lords of Hellas) is not reported as "0 want".
+    const ttCounts = TT && typeof TT.countByStatus === "function" ? TT.countByStatus() : null;
+    if (ttCounts) {
+      byStatus.want += ttCounts.want || 0;
+      byStatus.owned += ttCounts.owned || 0;
     }
     // Redesign: one/two quiet muted lines (not coloured pills).
     const bit = (n, key) => `${n} ${countNoun(n, key)}`;
@@ -2296,6 +2318,7 @@
       els.empty.hidden = false;
       const totalFilteredOut = items.length > 0;
       if (shelfMode === "wishlist") {
+        els.empty.classList.remove("frm-empty-owned");
         $(".empty-title", els.empty).textContent = "No wants yet";
         $(".empty-hint", els.empty).textContent = filterType === "all"
           ? "Items marked Want show up here. Add one, or set an item’s status to Want."
@@ -2303,6 +2326,32 @@
         $("#btn-empty-add").hidden = true;
         return;
       }
+      // Library: one quiet line when a category has no Owned (non-Want) items (Oholiab).
+      const quietOwnedEmpty =
+        !filterNeedsCover &&
+        !searchQuery.trim() &&
+        (filterStatus === "all" || filterStatus === "want") &&
+        filterType !== "all";
+      if (quietOwnedEmpty) {
+        const label =
+          filterType === "game"
+            ? "Video games"
+            : filterType === "comic"
+            ? "Comics"
+            : filterType === "book"
+            ? "Books"
+            : filterType === "movie"
+            ? "Movies"
+            : filterType === "music"
+            ? "Music"
+            : TYPE_LABELS[filterType] || filterType;
+        els.empty.classList.add("frm-empty-owned");
+        $(".empty-title", els.empty).textContent = `Nothing owned in ${label} yet.`;
+        $(".empty-hint", els.empty).textContent = "";
+        $("#btn-empty-add").hidden = true;
+        return;
+      }
+      els.empty.classList.remove("frm-empty-owned");
       $(".empty-title", els.empty).textContent = filterNeedsCover
         ? "No comics need a cover"
         : totalFilteredOut
@@ -2439,7 +2488,25 @@
     return Boolean(TT) && filterType === "tabletop";
   }
 
+
+  /** Library must never re-admit Want via the status dropdown. Want stays available only as a
+   *  status on the item form; duplicate detection still sees Want items in `items`. */
+  function syncStatusFilterOptions() {
+    if (!els.statusFilter) return;
+    const wantOpt = els.statusFilter.querySelector('option[value="want"]');
+    const inWishlist = shelfMode === "wishlist";
+    if (wantOpt) {
+      wantOpt.disabled = !inWishlist;
+      wantOpt.hidden = !inWishlist;
+    }
+    if (!inWishlist && filterStatus === "want") {
+      filterStatus = "all";
+      els.statusFilter.value = "all";
+    }
+  }
+
   function render() {
+    syncStatusFilterOptions();
     renderStats();
     const profile = $("#frm-profile");
     const placeholder = $("#frm-placeholder");
