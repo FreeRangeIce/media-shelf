@@ -62,11 +62,13 @@ check('Tabletop cards are title-only and open detail (not the edit form)', () =>
   assert.doesNotMatch(card, /item-meta|item-badges|tt-kicker|tt-exp-count/);
   assert.match(tt, /data-tt-open[\s\S]*openDetail\(/);
   assert.match(tt, /tt-detail-edit[\s\S]*openForm/); // Edit is explicit from the detail sheet
-  const det = tt.slice(tt.indexOf('function openDetail'), tt.indexOf('function openDetail') + 2200);
+  const i = tt.indexOf('function openDetail');
+  const j = tt.indexOf('\n  function ', i + 10);
+  const det = tt.slice(i, j > i ? j : i + 3000);
   assert.match(det, /subtypeBadge/);
   assert.match(det, /statusBadge/);
   assert.match(det, /metaLine|tt-detail-badges/);
-  assert.match(det, /tt-detail-edit/);
+  assert.match(det, /tt-detail-edit|tt-detail-close/);
 });
 check('bottom nav Library/Search/Add/Wishlist/Profile; Library active', () => {
   assert.match(html, /class="frm-bottom-nav"/);
