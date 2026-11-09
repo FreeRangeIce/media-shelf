@@ -13,23 +13,42 @@ check('approved logo asset present and referenced (900×443 proportions via CSS 
   assert.match(css, /aspect-ratio:\s*900\s*\/\s*443/);
   assert.match(css, /\.frm-logo[\s\S]*object-fit:\s*contain/);
 });
-check('header: logo symbol centered above separate FreeRangeMedia text', () => {
+check('header in normal document flow; util row then logo then name', () => {
+  assert.match(html, /class="site-header frm-site-header"/);
+  assert.match(html, /class="frm-util-row"/);
+  assert.match(html, /id="btn-settings"/);
+  assert.match(html, /id="btn-backup"/);
   assert.match(html, /class="brand frm-brand"/);
   assert.match(html, /<h1 class="frm-title">FreeRangeMedia<\/h1>/);
-  assert.match(css, /\.frm-brand[\s\S]*flex-direction:\s*column[\s\S]*align-items:\s*center/);
+  assert.match(css, /\.frm-site-header[\s\S]*position:\s*static/);
+  assert.match(css, /\.frm-brand[\s\S]*gap:\s*8px/);
+  assert.match(css, /\.stats[\s\S]*margin:\s*16px/);
 });
 check('two non-scrolling category rows with existing filter types', () => {
   const rows = [...html.matchAll(/class="type-tabs-row"/g)];
   assert.equal(rows.length, 2);
   assert.match(html, /data-type="all"[\s\S]*data-type="book"[\s\S]*data-type="game"/);
   assert.match(html, /data-type="movie"[\s\S]*data-type="music"[\s\S]*data-type="comic"[\s\S]*data-type="tabletop"/);
-  assert.match(css, /\.type-tabs\.frm-categories[\s\S]*overflow:\s*visible/);
   assert.match(app, /\$\$\("\.type-tabs \.chip"\)\.forEach/);
 });
-check('active category uses sparse #8B5E3C and aria-current', () => {
+check('uniform pills: first/last-of-type phone segmented overrides defeated; active #8B5E3C', () => {
+  assert.match(css, /\.type-tabs\.frm-categories \.chip:first-of-type[\s\S]*border-radius:\s*999px\s*!important/);
+  assert.match(css, /\.type-tabs\.frm-categories \.chip:last-of-type[\s\S]*border-radius:\s*999px\s*!important/);
   assert.match(html, /data-type="all"[^>]*aria-current="true"/);
   assert.match(app, /b\.setAttribute\("aria-current", "true"\)/);
-  assert.match(css, /\.frm-categories \.chip\.active[\s\S]*#8B5E3C/);
+  assert.match(css, /#8B5E3C\s*!important/);
+});
+check('2:3 cover frame; placeholder fills frame (not a tiny dark box)', () => {
+  assert.match(css, /\.item-cover-col[\s\S]*aspect-ratio:\s*2\s*\/\s*3/);
+  assert.match(css, /\.item-cover-placeholder[\s\S]*width:\s*100%\s*!important[\s\S]*height:\s*100%\s*!important/);
+  assert.match(css, /\.item-cover-placeholder[\s\S]*background:\s*#e8e8e8/);
+  assert.match(css, /\.item-cover[\s\S]*object-fit:\s*contain/);
+});
+check('slim cards: title/meta/status only; detail keeps format, notes, rating, refs, credits', () => {
+  assert.match(app, /Slim redesign card/);
+  assert.doesNotMatch(app.slice(app.indexOf('Slim redesign card'), app.indexOf('Slim redesign card')+900), /badge-format|card-ref|card-credit|item-notes|stars/);
+  assert.match(app, /function detailHtml[\s\S]*badge-format[\s\S]*Rating[\s\S]*Progress[\s\S]*Tags[\s\S]*ISFDB[\s\S]*IGDB[\s\S]*Cover from Google Books/);
+  assert.match(app, /frm-stats-line/);
 });
 check('bottom nav Library/Search/Add/Wishlist/Profile; Library active', () => {
   assert.match(html, /class="frm-bottom-nav"/);
