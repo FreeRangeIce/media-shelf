@@ -2229,20 +2229,11 @@
       byType[i.type] = (byType[i.type] || 0) + 1;
       byStatus[i.status] = (byStatus[i.status] || 0) + 1;
     }
-    const pill = (cls, n, key) =>
-      `<span class="stat-pill${cls ? ` ${cls}` : ""}"><strong>${n}</strong> ${countNoun(n, key)}</span>`;
-    els.stats.innerHTML = [
-      pill("book", byType.book, "book"),
-      pill("game", byType.game, "game"),
-      pill("movie", byType.movie, "movie"),
-      pill("music", byType.music, "music"),
-      pill("comic", byType.comic, "comic"),
-      pill("tabletop", TT ? TT.count() : 0, "tabletop"),
-      pill("", byStatus.want, "want"),
-      pill("", byStatus.owned, "owned"),
-      pill("", byStatus.in_progress, "in_progress"),
-      pill("", byStatus.done, "done"),
-    ].join("");
+    // Redesign: one/two quiet muted lines (not coloured pills).
+    const bit = (n, key) => `${n} ${countNoun(n, key)}`;
+    const types = [bit(byType.book, "book"), bit(byType.game, "game"), bit(byType.movie, "movie"), bit(byType.music, "music"), bit(byType.comic, "comic"), bit(TT ? TT.count() : 0, "tabletop")].join(" · ");
+    const statuses = [bit(byStatus.want, "want"), bit(byStatus.owned, "owned"), bit(byStatus.in_progress, "in_progress"), bit(byStatus.done, "done")].join(" · ");
+    els.stats.innerHTML = `<p class="frm-stats-line">${types}</p><p class="frm-stats-line">${statuses}</p>`;
   }
 
   function escapeHtml(s) {
@@ -2296,17 +2287,7 @@
     els.empty.hidden = true;
     els.list.innerHTML = list
       .map((item) => {
-        const starStr = stars(item.rating);
-        const tags = (item.tags || [])
-          .map((t) => `<span class="tag">${escapeHtml(t)}</span>`)
-          .join("");
         const name = displayTitle(item);
-        // A comic card without a picture (names only, or a cover name picked without one): two
-        // variants of one issue are told apart by their cover name.
-        const coverNameLine =
-          item.type === "comic" && item.coverLabel && (!comicCoverImagesOn() || comicImageSuppressed(item.type, item.coverUrl) || !String(item.coverUrl || "").trim())
-            ? `<p class="item-cover-name">${escapeHtml(item.coverLabel)}</p>`
-            : "";
         // Byline: join only the parts that exist ("2002", not "— · 2002"); with no creator and no
         // year it stays the existing lone "—".
         const creatorText =
@@ -2315,51 +2296,8 @@
             : String(item.creator || "").trim();
         const yearText = item.year != null && String(item.year).trim() !== "" ? String(item.year).trim() : "";
         const metaText = [creatorText, yearText].filter(Boolean).join("\u00a0· ") || "—";
-        const progress = item.progress
-          ? `<span class="progress">${escapeHtml(item.progress)}</span>`
-          : "";
-        const notes = item.notes
-          ? `<p class="item-notes">${escapeHtml(item.notes)}</p>`
-          : "";
-        const cardRefs = [];
-        if (item.type === "movie") {
-          const imdb = buildImdbUrl(item.title, item.year);
-          if (imdb) {
-            cardRefs.push(
-              `<a class="card-ref" href="${escapeHtml(imdb)}" target="_blank" rel="noopener noreferrer">IMDb</a>`
-            );
-          }
-        }
-        if (item.type === "book") {
-          const isfdb = buildIsfdbUrl(item.title);
-          if (isfdb) {
-            cardRefs.push(
-              `<a class="card-ref" href="${escapeHtml(isfdb)}" target="_blank" rel="noopener noreferrer">ISFDB</a>`
-            );
-          }
-        }
-        if (item.type === "game") {
-          const rawg = ""; // RAWG reference retired; legacy stored IDs/URLs stay unchanged.
-          const igdb = buildIgdbUrl(item.title);
-          if (rawg) {
-            cardRefs.push(
-              `<a class="card-ref" href="${escapeHtml(rawg)}" target="_blank" rel="noopener noreferrer">RAWG</a>`
-            );
-          }
-          if (igdb) {
-            cardRefs.push(
-              `<a class="card-ref" href="${escapeHtml(igdb)}" target="_blank" rel="noopener noreferrer">IGDB</a>`
-            );
-          }
-        }
-        const refsHtml = cardRefs.length
-          ? `<div class="card-refs">${cardRefs.join("")}</div>`
-          : "";
-        // Google Books credit (Oholiab F2): only for a Google Books cover with a safe link.
-        const gbUrl = item.coverSource === "googlebooks" ? safeGoogleBooksUrl(item.googleBooksUrl) : "";
-        let creditHtml = gbUrl
-          ? `<p class="card-credit"><a class="card-credit-link" href="${escapeHtml(gbUrl)}" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">Cover from Google Books</span></a></p>`
-          : "";
+        // Slim redesign card: title, creator/year, one status chip. Format, notes, rating,
+        // progress, tags, refs and Google Books credit live in the detail view (detailHtml).
         const pickHtml =
           filterNeedsCover && item.coverNeeded === true
             ? `<button type="button" class="btn btn-primary btn-pick-cover" data-pick-cover="${escapeHtml(item.id)}" aria-label="${escapeHtml(`Pick cover for ${name}`)}">Pick cover</button>`
@@ -2369,26 +2307,11 @@
   <article class="item-card" tabindex="0" data-id="${escapeHtml(item.id)}" role="button" aria-label="Details for ${escapeHtml(name)}">
     ${coverMarkup(item)}
     <div class="item-body">
-      <div class="item-top">
-        <div>
-          <h3 class="item-title">${escapeHtml(name)}</h3>
-          ${coverNameLine}
-          <p class="item-meta">${escapeHtml(metaText)}</p>
-        </div>
-        <div class="item-badges">
-          <span class="badge badge-type ${item.type}">${TYPE_LABELS[item.type]}</span>
-          <span class="badge badge-status ${item.status}">${STATUS_LABELS[item.status]}</span>
-          <span class="badge badge-format">${escapeHtml(formatBadgeText(item))}</span>
-        </div>
+      <h3 class="item-title">${escapeHtml(name)}</h3>
+      <p class="item-meta">${escapeHtml(metaText)}</p>
+      <div class="item-badges">
+        <span class="badge badge-status ${item.status}">${STATUS_LABELS[item.status]}</span>
       </div>
-      ${notes}
-      <div class="item-bottom">
-        ${starStr ? `<span class="stars" aria-label="Rating ${item.rating} of 5">${starStr}</span>` : ""}
-        ${progress}
-        ${tags ? `<span class="tags">${tags}</span>` : ""}
-        ${refsHtml}
-      </div>
-      ${creditHtml}
       ${pickHtml}
     </div>
   </article>

@@ -563,7 +563,7 @@
       ${lone ? metaLine(e) : `<p class="item-meta">${esc(meta(e))}</p>`}
       ${exps.length ? `<p class="tt-exp-count">${exps.length} ${exps.length === 1 ? "expansion" : "expansions"}</p>` : ""}
     </div>
-    <div class="item-badges">${lone ? "" : subtypeBadge(e)}${statusBadge(e)}</div></div></div>
+    <div class="item-badges">${statusBadge(e)}</div></div></div>
   </article>${expList}
 </li>`;
   }
