@@ -103,6 +103,17 @@
         <button type="button" class="btn btn-ghost btn-sm cover-queue-btn" id="btn-cover-show-all" hidden>Show all items</button>
       </div>
     </section>
+    <!-- Profile tab: existing Settings + Back up (Restore stays inside Settings with its confirm step). -->
+    <section id="frm-profile" class="frm-profile" hidden aria-label="Profile">
+      <button type="button" class="frm-profile-row" data-profile-action="settings">
+        <span class="frm-profile-row-title">Settings</span>
+        <span class="frm-profile-row-hint">Backup, restore, and lookup options</span>
+      </button>
+      <button type="button" class="frm-profile-row" data-profile-action="backup">
+        <span class="frm-profile-row-title">Back up</span>
+        <span class="frm-profile-row-hint">Save a backup file of this library</span>
+      </button>
+    </section>
     <ul id="item-list" class="item-list" aria-live="polite"></ul>
     <!-- Tabletop tab (tabletop.js): its own shelf, own storage key, own sheets. -->
     <section id="tabletop-view" class="tabletop-view" aria-label="Tabletop games" hidden>
@@ -811,17 +822,6 @@
       <span class="frm-nav-label">Profile</span>
     </button>
   </nav>
-  <!-- Profile tab: existing Settings + Back up (Restore stays inside Settings with its confirm step). -->
-  <section id="frm-profile" class="frm-profile" hidden aria-label="Profile">
-    <button type="button" class="frm-profile-row" data-profile-action="settings">
-      <span class="frm-profile-row-title">Settings</span>
-      <span class="frm-profile-row-hint">Backup, restore, and lookup options</span>
-    </button>
-    <button type="button" class="frm-profile-row" data-profile-action="backup">
-      <span class="frm-profile-row-title">Back up</span>
-      <span class="frm-profile-row-hint">Save a backup file of this library</span>
-    </button>
-  </section>
   <section id="frm-placeholder" class="frm-placeholder empty-state" hidden aria-hidden="true"></section>
 
   <script src="./tabletop.js" defer></script>

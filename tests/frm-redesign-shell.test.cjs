@@ -176,8 +176,8 @@ check('rev6: Add sheet seals bottom — no panel padding under sticky bar', () =
 check('rev7: two explicit pill grids (3 + 4), 40px / 14px / 8px gap', () => {
   assert.match(html, /type-tabs-row-3/);
   assert.match(html, /type-tabs-row-4/);
-  assert.match(css, /type-tabs-row-3\s*\{\s*grid-template-columns:\s*repeat\(3/);
-  assert.match(css, /type-tabs-row-4\s*\{\s*grid-template-columns:\s*repeat\(4/);
+  assert.match(css, /type-tabs-row-3\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\) minmax\(0, 1\.25fr\)/);
+  assert.match(css, /type-tabs-row-4\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\) minmax\(0, 1fr\) minmax\(0, 1\.25fr\)/);
   assert.match(css, /height:\s*40px\s*!important/);
   assert.match(css, /font-size:\s*14px\s*!important/);
   assert.match(css, /\.type-tabs\.frm-categories[\s\S]*gap:\s*8px\s*!important/);
@@ -191,7 +191,7 @@ check('rev7: bottom nav fixed + safe-area; body padding clears nav; no scroll tr
 check('rev7: Add/TT sheet solid #fffdf8; full-width divider; 24px action inset', () => {
   assert.match(css, /#tt-form-modal > \.modal-panel[\s\S]*background:\s*#fffdf8\s*!important/);
   assert.match(css, /#modal \.item-form \.form-actions[\s\S]*padding:\s*16px 24px/);
-  assert.match(css, /#modal \.item-form \.form-actions[\s\S]*margin:\s*0 -24px 0/);
+  assert.match(css, /margin:\s*0 calc\(-1 \* var\(--frm-sheet-pad-r, var\(--space-5\)\)\) 0 calc\(-1 \* var\(--frm-sheet-pad-l, var\(--space-5\)\)\)/);
   assert.match(html, /id="tt-form"[\s\S]*class="form-actions"[\s\S]*tt-save/);
   for (const id of ['tt-title','tt-subtype','tt-status','tt-designer','tt-year','tt-players','tt-playTime','tt-bggId','tt-barcode']) {
     assert.match(html, new RegExp(`id="${id}"`));
@@ -203,4 +203,18 @@ check('rev7: flat #1a1a1a (no category vignette); covers contain; accent roles s
   assert.match(css, /\.item-cover[\s\S]*object-fit:\s*contain\s*!important/);
 });
 
+check('rev8: hidden views take no room; Profile at top; pill padding 8px; sheet-width divider', () => {
+  const tail = css.slice(css.indexOf('Redesign rev8'));
+  assert.ok(css.indexOf('Redesign rev8') > css.lastIndexOf('.item-list {'), 'rev8 [hidden] rule comes after the grid rule');
+  assert.match(tail, /\.item-list\[hidden\][\s\S]*display:\s*none\s*!important/);
+  assert.match(tail, /\.tabletop-view\[hidden\]/);
+  assert.match(tail, /\.frm-profile\[hidden\]/);
+  assert.match(tail, /body\.frm-profile-open \.toolbar/);
+  const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+  assert.ok(main.indexOf('id="frm-profile"') > -1 && main.indexOf('id="frm-profile"') < main.indexOf('id="item-list"'), 'Profile sits at top of main, before the shelf');
+  assert.ok(html.indexOf('id="frm-profile"') < html.indexOf('class="site-footer"'), 'Profile above footer');
+  assert.match(app, /classList\.toggle\("frm-profile-open", shelfMode === "profile"\)/);
+  assert.doesNotMatch(css, /\.type-tabs\.frm-categories \.chip[^{]*\{[^}]*padding:\s*0 (6|10)px/);
+  assert.match(css, /--frm-sheet-pad-l/);
+});
 console.log(`${passed}/${passed} passed (redesign shell: categories, nav, logo; production file text; no browser)`);

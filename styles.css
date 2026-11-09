@@ -4812,7 +4812,6 @@ body.frm-search-focus .filters-row .search {
   border-top-color: var(--border-strong) !important;
   box-shadow: none !important;
   /* Opaque floor under the bar so nothing paints through the rounded sheet edge */
-  outline: 12px solid #fffdf8;
   outline-offset: 0;
 }
 #modal .item-form .form-actions::before,
@@ -4843,8 +4842,8 @@ body.frm-search-focus .filters-row .search {
   justify-content: stretch !important;
   width: 100%;
 }
-.type-tabs.frm-categories .type-tabs-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
-.type-tabs.frm-categories .type-tabs-row-4 { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+.type-tabs.frm-categories .type-tabs-row-3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.25fr) !important; }
+.type-tabs.frm-categories .type-tabs-row-4 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.25fr) !important; }
 .type-tabs.frm-categories .chip,
 .type-tabs.frm-categories .chip:first-of-type,
 .type-tabs.frm-categories .chip:last-of-type,
@@ -4854,7 +4853,7 @@ body.frm-search-focus .filters-row .search {
   height: 40px !important;
   min-height: 40px !important;
   max-height: 40px !important;
-  padding: 0 10px !important;
+  padding: 0 8px !important;
   font-size: 14px !important;
   line-height: 1.1 !important;
   white-space: nowrap !important;
@@ -4869,7 +4868,7 @@ body.frm-search-focus .filters-row .search {
 @media (max-width: 360px) {
   .type-tabs.frm-categories .chip {
     font-size: 14px !important; /* never below 14px per Oholiab */
-    padding: 0 6px !important;
+    padding: 0 8px !important;
   }
 }
 
@@ -4984,8 +4983,11 @@ body.frm-search-focus .filters-row .search {
   justify-content: flex-end !important;
   align-items: center !important;
   width: auto !important;
-  margin: 0 -24px 0 !important; /* full-bleed divider across the sheet */
-  padding: 16px 24px calc(16px + env(safe-area-inset-bottom, 0px)) !important; /* 24px field inset */
+  /* rev8: divider spans exactly the sheet (cancel the panel's own side padding, not a fixed 24px) */
+  margin: 0 calc(-1 * var(--frm-sheet-pad-r, var(--space-5))) 0 calc(-1 * var(--frm-sheet-pad-l, var(--space-5))) !important;
+  padding: 16px 24px calc(16px + env(safe-area-inset-bottom, 0px)) 24px !important;
+  box-sizing: border-box !important;
+  max-width: none !important;
   border-top: 1px solid var(--border-strong) !important;
   background: #fffdf8 !important;
   background-image: none !important;
@@ -5011,4 +5013,33 @@ body.frm-search-focus .filters-row .search {
 .item-cover,
 .tt-card .item-cover {
   object-fit: contain !important;
+}
+
+/* ========== Redesign rev8 (Oholiab rev7 verdict) ========== */
+/* 1. Hidden views take no room: the earlier forced display:grid on the media list beat [hidden]. */
+.item-list[hidden],
+.tt-list[hidden],
+.tabletop-view[hidden],
+.empty-state[hidden],
+.frm-profile[hidden] {
+  display: none !important;
+}
+/* 2. Profile opens with Settings / Back up directly under the header. */
+body.frm-profile-open .stats,
+body.frm-profile-open .toolbar,
+body.frm-profile-open #cover-queue,
+body.frm-profile-open #backup-banner {
+  display: none !important;
+}
+body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
+/* 4. Sheet side padding exposed as vars so the action-bar divider matches the sheet width. */
+#modal > .modal-panel {
+  --frm-sheet-pad-l: max(var(--space-5), env(safe-area-inset-left, 0px));
+  --frm-sheet-pad-r: max(var(--space-5), env(safe-area-inset-right, 0px));
+}
+#tt-form-modal > .modal-panel {
+  --frm-sheet-pad-l: var(--space-5);
+  --frm-sheet-pad-r: var(--space-5);
+  padding-left: var(--space-5);
+  padding-right: var(--space-5);
 }

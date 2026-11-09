@@ -2443,6 +2443,9 @@
     renderStats();
     const profile = $("#frm-profile");
     const placeholder = $("#frm-placeholder");
+    if (typeof document !== "undefined" && document.body && document.body.classList) {
+      document.body.classList.toggle("frm-profile-open", shelfMode === "profile");
+    }
     if (shelfMode === "profile") {
       if (TT) TT.show(false);
       els.list.hidden = true;
