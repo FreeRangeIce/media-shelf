@@ -554,16 +554,13 @@
           )
           .join("")}${more > 0 ? `<li><button type="button" class="tt-exp-more" data-tt-open="${esc(e.id)}">+ ${more} more</button></li>` : ""}</ul>`
       : "";
+    // Title-only card; detail (openDetail) keeps subtype, status, meta, notes, expansions.
     return `<li class="tt-group">
-  <article class="item-card tt-card" tabindex="0" role="button" data-tt-open="${esc(e.id)}" aria-label="${esc(`Open ${e.title}`)}">
+  <article class="item-card tt-card" tabindex="0" role="button" data-tt-open="${esc(e.id)}" aria-label="${esc(`Details for ${e.title}`)}">
     ${cover(e)}
-    <div class="item-body"><div class="item-top"><div>
-      ${lone ? `<p class="tt-kicker">Expansion</p>` : ""}
-      <h3 class="item-title">${esc(e.title)}</h3>
-      ${lone ? metaLine(e) : `<p class="item-meta">${esc(meta(e))}</p>`}
-      ${exps.length ? `<p class="tt-exp-count">${exps.length} ${exps.length === 1 ? "expansion" : "expansions"}</p>` : ""}
+    <div class="item-body">
+      <h3 class="item-title" title="${esc(e.title)}">${esc(e.title)}</h3>
     </div>
-    <div class="item-badges">${statusBadge(e)}</div></div></div>
   </article>${expList}
 </li>`;
   }

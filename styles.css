@@ -4525,3 +4525,46 @@ body.frm-search-focus .filters-row .search {
 }
 .item-body { padding: 0.7rem 0.8rem 0.85rem; gap: 0.3rem; }
 .item-badges { margin-top: 0.15rem; }
+
+
+/* ========== Redesign rev3: title-only grid cards ========== */
+.item-list > li,
+.tt-list > li.tt-group {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.item-card,
+.item-card.tt-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+}
+.item-card .item-body {
+  padding: 8px 0.65rem 0.75rem; /* ~8px from cover to title */
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+.item-card .item-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Reserve two lines so cards in a row share equal title block height */
+  min-height: calc(1.3em * 2);
+}
+.item-card:focus-visible {
+  outline: none;
+  box-shadow: var(--focus), 0 6px 20px rgba(0, 0, 0, 0.28);
+}

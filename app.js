@@ -2288,31 +2288,15 @@
     els.list.innerHTML = list
       .map((item) => {
         const name = displayTitle(item);
-        // Byline: join only the parts that exist ("2002", not "— · 2002"); with no creator and no
-        // year it stays the existing lone "—".
-        const creatorText =
-          item.type === "comic"
-            ? [comicCreatorNames(item.writer, item.artist).join(", "), item.publisher].filter(Boolean).join("\u00a0· ")
-            : String(item.creator || "").trim();
-        const yearText = item.year != null && String(item.year).trim() !== "" ? String(item.year).trim() : "";
-        const metaText = [creatorText, yearText].filter(Boolean).join("\u00a0· ") || "—";
-        // Slim redesign card: title, creator/year, one status chip. Format, notes, rating,
-        // progress, tags, refs and Google Books credit live in the detail view (detailHtml).
-        const pickHtml =
-          filterNeedsCover && item.coverNeeded === true
-            ? `<button type="button" class="btn btn-primary btn-pick-cover" data-pick-cover="${escapeHtml(item.id)}" aria-label="${escapeHtml(`Pick cover for ${name}`)}">Pick cover</button>`
-            : "";
+        // Title-only redesign card: cover/placeholder + title. Creator/year, status, format,
+        // notes, rating, tags, refs and credits live in the detail view (detailHtml). Cover is
+        // still set via the edit form (#field-cover) / comic cover picker after Edit.
         return `
 <li>
   <article class="item-card" tabindex="0" data-id="${escapeHtml(item.id)}" role="button" aria-label="Details for ${escapeHtml(name)}">
     ${coverMarkup(item)}
     <div class="item-body">
-      <h3 class="item-title">${escapeHtml(name)}</h3>
-      <p class="item-meta">${escapeHtml(metaText)}</p>
-      <div class="item-badges">
-        <span class="badge badge-status ${item.status}">${STATUS_LABELS[item.status]}</span>
-      </div>
-      ${pickHtml}
+      <h3 class="item-title" title="${escapeHtml(name)}">${escapeHtml(name)}</h3>
     </div>
   </article>
 </li>`;
