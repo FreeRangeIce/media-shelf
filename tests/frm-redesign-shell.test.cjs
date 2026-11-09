@@ -102,4 +102,33 @@ check('accessibility: 44px targets, focus, reduced motion; existing IDs preserve
   assert.match(app, /GAME_TITLE_SEARCH_TESTED = true/);
   assert.match(app, /const APP_VERSION = 51/);
 });
+
+check('rev4: header static at narrow widths (brand/pin not fixed)', () => {
+  assert.match(css, /@media \(max-width: 559px\)[\s\S]*\.frm-site-header[\s\S]*position:\s*static\s*!important/);
+  assert.match(css, /\.frm-site-header \.brand[\s\S]*position:\s*static\s*!important/);
+  assert.match(css, /\.frm-logo[\s\S]*max-width:\s*200px/);
+});
+check('rev4: grid 2/3/4 columns with ~200px card cap', () => {
+  assert.match(css, /grid-template-columns:\s*repeat\(2, minmax\(0, 200px\)\)/);
+  assert.match(css, /@media \(min-width: 560px\)[\s\S]*repeat\(3, minmax\(0, 200px\)\)/);
+  assert.match(css, /@media \(min-width: 900px\)[\s\S]*repeat\(4, minmax\(0, 200px\)\)/);
+});
+check('rev4: placeholder [hidden] stays hidden; type label only when visible', () => {
+  assert.match(css, /\.item-cover-placeholder\[hidden\][\s\S]*display:\s*none\s*!important/);
+  assert.match(css, /\.item-cover-placeholder:not\(\[hidden\]\)[\s\S]*font-size:\s*0\.62rem/);
+});
+check('rev4: Add sheet action bar uses paper surface; fade band removed', () => {
+  assert.match(css, /#modal \.item-form \.form-actions[\s\S]*background:\s*#fffdf8\s*!important/);
+  assert.match(css, /#modal \.item-form \.form-actions::before[\s\S]*display:\s*none\s*!important/);
+});
+check('rev4: Sample Board Game seed with local SVG cover, no BGG id', () => {
+  assert.match(app, /Sample Board Game/);
+  assert.match(app, /sample-tabletop-cover\.svg/);
+  assert.doesNotMatch(app.slice(app.indexOf('seed-tt-1'), app.indexOf('seed-tt-1')+500), /bggId/);
+  assert.ok(fs.existsSync(path.join(root, 'assets/sample-tabletop-cover.svg')));
+  const tt = fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8');
+  assert.match(tt, /seedSampleIfEmpty/);
+  assert.match(tt, /clearSeeds:/);
+});
+
 console.log(`${passed}/${passed} passed (redesign shell: categories, nav, logo; production file text; no browser)`);
