@@ -125,9 +125,13 @@ const sample = {
     assert.equal(ttRows.length, 1);
     assert.equal(ttRows[0].title, 'Sample Board Game');
     assert.match(ttRows[0].coverUrl, /sample-tabletop-cover\.svg$/);
-    // Open Tabletop detail for the sample (production openDetail).
+    // Tabletop filter/shelf shows the sample card, then detail opens from it.
     t.tt.show(true);
     t.tt.render();
+    const listHtml = t.F('tabletop-list').innerHTML;
+    assert.match(listHtml, /Sample Board Game/);
+    assert.match(listHtml, /sample-tabletop-cover\.svg|item-cover|tt-card/);
+    assert.doesNotMatch(listHtml, /No tabletop games yet/);
     t.F('tabletop-list').trigger('keydown', {
       key: 'Enter',
       target: { matches: () => true, dataset: { ttOpen: ttRows[0].id } },

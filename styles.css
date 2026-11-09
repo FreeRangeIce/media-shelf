@@ -4780,3 +4780,44 @@ body.frm-search-focus .filters-row .search {
   content: none !important;
   display: none !important;
 }
+
+
+/* ========== Redesign rev6: Add sheet action bar seals the bottom ==========
+   Root cause (folded-add y≈990): sticky bar used bottom:0 while #modal > .modal-panel still
+   had padding-bottom: var(--space-6). That padding gutter sits BELOW the sticky bar, so a
+   scrolled field outline peeks under Cancel/Save. The Duo-era negative bottom
+   (bottom: calc(-1 * var(--space-6))) tucked the bar into that padding; rev5's bottom:0
+   left the gutter exposed.
+   Fix: zero the panel's bottom padding; sticky bar at bottom:0 with solid #fffdf8 through
+   the safe area; scroll-padding-bottom kept so keyboard focus still clears the bar. */
+#modal > .modal-panel,
+#tt-form-modal > .modal-panel {
+  padding-bottom: 0 !important;
+}
+#modal > .modal-panel {
+  /* Duo field-reveal: keep clearance for the sticky Cancel/Save + safe area (no fade). */
+  scroll-padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px)) !important;
+}
+#modal .item-form .form-actions,
+#tt-form-modal .item-form .form-actions,
+.modal-panel .item-form .form-actions {
+  position: sticky !important;
+  bottom: 0 !important;
+  z-index: 5 !important;
+  margin: 0 calc(-1 * var(--space-5)) 0 !important; /* span full sheet width over side padding */
+  padding: var(--space-4) var(--space-5) calc(var(--space-4) + env(safe-area-inset-bottom, 0px)) !important;
+  background: #fffdf8 !important;
+  background-color: #fffdf8 !important;
+  border-top: 1px solid var(--border-strong) !important;
+  border-top-color: var(--border-strong) !important;
+  box-shadow: none !important;
+  /* Opaque floor under the bar so nothing paints through the rounded sheet edge */
+  outline: 12px solid #fffdf8;
+  outline-offset: 0;
+}
+#modal .item-form .form-actions::before,
+#tt-form-modal .item-form .form-actions::before,
+.modal-panel .item-form .form-actions::before {
+  content: none !important;
+  display: none !important;
+}

@@ -156,4 +156,13 @@ check('rev5: logo containers transparent; title not sticky; action bar solid pap
   assert.match(css, /box-shadow:\s*0 -12px 16px #fffdf8\s*!important/);
 });
 
+
+check('rev6: Add sheet seals bottom — no panel padding under sticky bar', () => {
+  assert.match(css, /#modal > \.modal-panel[\s\S]*padding-bottom:\s*0\s*!important/);
+  assert.match(css, /#modal \.item-form \.form-actions[\s\S]*position:\s*sticky\s*!important[\s\S]*bottom:\s*0\s*!important/);
+  assert.match(css, /#modal \.item-form \.form-actions[\s\S]*background:\s*#fffdf8\s*!important/);
+  assert.match(css, /#modal \.item-form \.form-actions[\s\S]*border-top:\s*1px solid/);
+  assert.match(css, /#modal > \.modal-panel[\s\S]*scroll-padding-bottom:/);
+});
+
 console.log(`${passed}/${passed} passed (redesign shell: categories, nav, logo; production file text; no browser)`);
