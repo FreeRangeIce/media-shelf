@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Bump it with the service worker cache each release: it must match sw.js's CACHE name
-  // (media-shelf-v53), which the tests check.
-  const APP_VERSION = 53;
+  // (media-shelf-v2.2), which the tests check.
+  const APP_VERSION = "2.2";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -3235,7 +3235,7 @@
 
   // One wording for both places: the end of Settings and the bottom of the page footer.
   function appVersionText() {
-    return `App version v${APP_VERSION}`; // cleared (Berean, Oct 11)
+    return `App version V${APP_VERSION}`; // cleared (Berean, Oct 11)
   }
   function fillAppVersionLine() {
     ["#settings-version", "#footer-version"].forEach((sel) => {
