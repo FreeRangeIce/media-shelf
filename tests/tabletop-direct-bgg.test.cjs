@@ -94,7 +94,7 @@ function harness(initial = {}) {
     let pending; listeners.fetch({ request: { method: 'GET', url: origin + '/media-shelf/styles.css' }, respondWith: value => { pending = value; } });
     await pending; await new Promise(resolve => setImmediate(resolve));
     check('cache exclusion test control: same-origin app file is cached', () => assert.equal(writes.length, 1));
-    check('candidate version and cache are both V2.2; game title search switch on (local candidate)', () => { const app = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8'); assert.match(app, /const APP_VERSION = "2.2";/); assert.match(swSource, /const CACHE = \"media-shelf-v2\.2(?:-[a-z0-9]+)?\"/); assert.match(app, /GAME_TITLE_SEARCH_TESTED = true/); });
+    check('candidate version and cache are both V2.3; game title search switch on (local candidate)', () => { const app = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8'); assert.match(app, /const APP_VERSION = "2.3";/); assert.match(swSource, /const CACHE = \"media-shelf-v2\.3\"/); assert.match(app, /GAME_TITLE_SEARCH_TESTED = true/); });
   }
   // Execute the actual DOM setup with small native element doubles (not a browser/device test).
   {

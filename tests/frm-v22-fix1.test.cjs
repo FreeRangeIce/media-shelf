@@ -1,4 +1,4 @@
-// V2.2-b4: Library excludes Want, header counts Tabletop Want/Owned, folded Duo close inset.
+// V2.3: Library excludes Want, header counts Tabletop Want/Owned, folded Duo close inset.
 // Native source + light sims. No browser.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -41,10 +41,9 @@ function filterMedia(items, { shelfMode, filterType = 'all', filterStatus = 'all
 
 const CATEGORIES = ['book', 'game', 'movie', 'music', 'comic'];
 
-check('APP_VERSION stays 2.2; sw cache is media-shelf-v2.2-b4 (suffix accepted)', () => {
-  assert.match(app, /const APP_VERSION = "2\.2"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.2-b4"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.2(?:-[a-z0-9]+)?"/);
+check('APP_VERSION is 2.3; sw cache is media-shelf-v2.3', () => {
+  assert.match(app, /const APP_VERSION = "2\.3"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.3"/);
 });
 
 check('shared isWantStatus / isLibraryStatus helpers exist and Library excludes Want in filteredItems', () => {
@@ -292,4 +291,4 @@ check('V2.2-b4 CSS: wish-base label #b5aa9c on dark / #6b6158 on cream; exp-row 
   assert.match(css, /\.tt-exp-list\s*\{[^}]*border-left:\s*2px solid/s);
 });
 
-console.log(`${passed}/${passed} passed (v2.2-b4 library/wishlist/count/duo-close/expansions)`);
+console.log(`${passed}/${passed} passed (v2.3 library/wishlist/count/duo-close/expansions)`);

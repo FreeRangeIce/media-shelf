@@ -3,10 +3,9 @@
   "use strict";
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
-  // Displayed version stays on the minor (V2.2). Small fixes keep APP_VERSION and bump the
-  // service worker cache with a build suffix (media-shelf-v2.2-b4) so the Duo drops old files.
-  // Suffix scheme still awaits Micah's confirmation.
-  const APP_VERSION = "2.2";
+  // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5…; bump APP_VERSION and
+  // the service worker cache name together (media-shelf-v2.3) so the Duo drops old files.
+  const APP_VERSION = "2.3";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*

@@ -1,4 +1,4 @@
-// Focused V2.2 checks: Switch 2 matching, mapExternalPlatform order, barcode compatibility,
+// Focused V2.3 checks: Switch 2 matching, mapExternalPlatform order, barcode compatibility,
 // all-greyed-out message, results-list light-theme CSS, Use-button disabled/enabled styles.
 // Native only — extracts production functions into a vm; mock fetch; no browser/network.
 const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path'), assert = require('node:assert/strict');
@@ -65,9 +65,9 @@ const MIXED = { candidates: [
 const tgt = (sel, dataset) => ({ closest: s => (s === sel ? { dataset: dataset || { gamePick: '0' } } : null) });
 
 (async () => {
-  await check('V2.2 version + cache + title search stays on', () => {
-    assert.match(src, /const APP_VERSION = "2.2";/);
-    assert.match(sw, /const CACHE = "media-shelf-v2\.2(?:-[a-z0-9]+)?"/);
+  await check('V2.3 version + cache + title search stays on', () => {
+    assert.match(src, /const APP_VERSION = "2.3";/);
+    assert.match(sw, /const CACHE = "media-shelf-v2\.3"/);
     assert.match(src, /GAME_TITLE_SEARCH_TESTED = true/);
     assert.match(html, /option value="Switch 2"/);
     assert.match(src, /"Switch", "Switch 2"/);
@@ -212,5 +212,5 @@ const tgt = (sel, dataset) => ({ closest: s => (s === sel ? { dataset: dataset |
     assert.match(src, /const extra = current && !known\.has\(current\) \? current : ""/);
   });
 
-  console.log(`${passed}/${passed} passed (Switch 2 + title-search results V2.2; mock fetch; no browser)`);
+  console.log(`${passed}/${passed} passed (Switch 2 + title-search results V2.3; mock fetch; no browser)`);
 })().catch(e => { console.error(e); process.exitCode = 1; });
