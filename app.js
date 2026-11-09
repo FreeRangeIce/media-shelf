@@ -5984,6 +5984,8 @@
           const on = b === btn;
           b.classList.toggle("active", on);
           b.setAttribute("aria-selected", on ? "true" : "false");
+          if (on) b.setAttribute("aria-current", "true");
+          else b.removeAttribute("aria-current");
         });
         // Phones: the strip scrolls sideways; keep the picked tab in view.
         revealActiveTab();
@@ -5992,10 +5994,71 @@
     });
     const strip = $(".type-tabs");
     if (strip) {
-      strip.addEventListener("scroll", updateTabFades, { passive: true });
-      window.addEventListener("resize", () => revealActiveTab());
-      revealActiveTab();
+      // Two fixed category rows: no sideways scroll/fades in the redesign.
+      if (!strip.classList.contains("frm-categories")) {
+        strip.addEventListener("scroll", updateTabFades, { passive: true });
+        window.addEventListener("resize", () => revealActiveTab());
+        revealActiveTab();
+      }
     }
+
+    /* Redesign bottom nav: Library = shelf, Search = existing #search, Add = existing Add,
+       Wishlist/Profile = honest "not set up yet" (no existing feature). */
+    (function bindBottomNav() {
+      const nav = $(".frm-bottom-nav");
+      const placeholder = $("#frm-placeholder");
+      if (!nav) return;
+      const setActive = (key) => {
+        $$(".frm-nav-btn", nav).forEach((b) => {
+          const on = b.dataset.nav === key;
+          b.classList.toggle("active", on);
+          if (on) b.setAttribute("aria-current", "page");
+          else b.removeAttribute("aria-current");
+        });
+      };
+      const showLibrary = () => {
+        if (placeholder) placeholder.hidden = true;
+        setActive("library");
+        document.body.classList.remove("frm-search-focus");
+      };
+      const showPlaceholder = (title, hint) => {
+        if (!placeholder) return;
+        $("#frm-placeholder-title").textContent = title;
+        $("#frm-placeholder-hint").textContent = hint;
+        placeholder.hidden = false;
+        setActive(title.toLowerCase().includes("wish") ? "wishlist" : "profile");
+      };
+      nav.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-nav]");
+        if (!btn) return;
+        const key = btn.dataset.nav;
+        if (key === "library") { showLibrary(); return; }
+        if (key === "search") {
+          showLibrary();
+          setActive("search");
+          document.body.classList.add("frm-search-focus");
+          const input = els.search;
+          if (input) { input.focus(); input.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+          return;
+        }
+        if (key === "add") {
+          // Reuse the existing Add button handler path.
+          const add = $("#btn-add");
+          if (add) add.click();
+          return;
+        }
+        if (key === "wishlist") {
+          showPlaceholder("Wishlist is not set up yet", "There is no separate wishlist feature yet. Use the Want status filter on the Library shelf for items you want.");
+          return;
+        }
+        if (key === "profile") {
+          showPlaceholder("Profile is not set up yet", "There is no profile screen yet. Use Settings (top of the page) for backup, restore, and lookup options.");
+          return;
+        }
+      });
+      const back = $("#frm-placeholder-back");
+      if (back) back.addEventListener("click", showLibrary);
+    })();
 
     els.statusFilter.addEventListener("change", () => {
       filterStatus = els.statusFilter.value;
@@ -8532,6 +8595,8 @@
         const on = b.dataset.type === "comic";
         b.classList.toggle("active", on);
         b.setAttribute("aria-selected", on ? "true" : "false");
+        if (on) b.setAttribute("aria-current", "true");
+        else b.removeAttribute("aria-current");
       });
       revealActiveTab();
       render();

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="description" content="FreeRangeMedia — track books, games, movies, and music in one place." />
-  <meta name="theme-color" content="#14110e" />
+  <meta name="theme-color" content="#1a1a1a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="FreeRange" />
@@ -19,25 +19,15 @@
 
   <header class="site-header">
     <div class="pin-bar" aria-hidden="true"></div>
-    <div class="header-inner">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true">
-          <svg width="34" height="28" viewBox="0 0 39 32" fill="none">
-            <rect x="4" y="6" width="8" height="20" rx="1.5" fill="#e8a87c"/>
-            <rect x="13" y="6" width="6" height="20" rx="1.5" fill="#c38d9e"/>
-            <rect x="20" y="6" width="8" height="20" rx="1.5" fill="#85cfc0"/>
-            <rect x="29" y="6" width="6" height="20" rx="1.5" fill="#a8a0d8"/>
-          </svg>
-        </span>
-        <div>
-          <h1>FreeRangeMedia</h1>
-          <p class="tagline"><span class="nowrap">Books · Video games · Movies · Music</span> <span class="nowrap">— your personal shelf</span></p>
-        </div>
+    <div class="header-inner frm-header">
+      <div class="brand frm-brand">
+        <img class="frm-logo" src="./assets/frm-logo.png" width="180" height="89" alt="" decoding="async" />
+        <h1 class="frm-title">FreeRangeMedia</h1>
       </div>
-      <div class="header-actions">
-        <button type="button" class="btn btn-ghost" id="btn-settings" title="Backup, restore, and lookup settings">Settings</button>
-        <button type="button" class="btn btn-ghost" id="btn-backup" title="Back up: save a backup file (on iPhone choose Save to Files → iCloud Drive)">Back up</button>
-        <button type="button" class="btn btn-primary" id="btn-add">+ Add</button>
+      <div class="header-actions frm-header-actions">
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-settings" title="Backup, restore, and lookup settings">Settings</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-backup" title="Back up: save a backup file (on iPhone choose Save to Files → iCloud Drive)">Back up</button>
+        <button type="button" class="btn btn-primary" id="btn-add" hidden>+ Add</button>
       </div>
     </div>
   </header>
@@ -45,15 +35,18 @@
   <section class="stats" id="stats" aria-label="Library stats"></section>
 
   <div class="toolbar">
-    <nav class="type-tabs" role="tablist" aria-label="Media type">
-      <span class="type-tabs-fade-start" aria-hidden="true"></span>
-      <button type="button" class="chip active" data-type="all" role="tab" aria-selected="true">All</button>
-      <button type="button" class="chip" data-type="book" role="tab" aria-selected="false">Books</button>
-      <button type="button" class="chip" data-type="game" role="tab" aria-selected="false">Video games</button>
-      <button type="button" class="chip" data-type="movie" role="tab" aria-selected="false">Movies</button>
-      <button type="button" class="chip" data-type="music" role="tab" aria-selected="false">Music</button>
-      <button type="button" class="chip" data-type="comic" role="tab" aria-selected="false">Comics</button>
-      <button type="button" class="chip" data-type="tabletop" role="tab" aria-selected="false">Tabletop</button>
+    <nav class="type-tabs frm-categories" role="tablist" aria-label="Media type">
+      <div class="type-tabs-row">
+        <button type="button" class="chip active" data-type="all" role="tab" aria-selected="true" aria-current="true">All</button>
+        <button type="button" class="chip" data-type="book" role="tab" aria-selected="false">Books</button>
+        <button type="button" class="chip" data-type="game" role="tab" aria-selected="false">Video games</button>
+      </div>
+      <div class="type-tabs-row">
+        <button type="button" class="chip" data-type="movie" role="tab" aria-selected="false">Movies</button>
+        <button type="button" class="chip" data-type="music" role="tab" aria-selected="false">Music</button>
+        <button type="button" class="chip" data-type="comic" role="tab" aria-selected="false">Comics</button>
+        <button type="button" class="chip" data-type="tabletop" role="tab" aria-selected="false">Tabletop</button>
+      </div>
     </nav>
 
     <div class="filters-row">
@@ -792,6 +785,34 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <nav class="frm-bottom-nav" aria-label="Primary">
+    <button type="button" class="frm-nav-btn active" data-nav="library" aria-current="page">
+      <span class="frm-nav-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
+      <span class="frm-nav-label">Library</span>
+    </button>
+    <button type="button" class="frm-nav-btn" data-nav="search">
+      <span class="frm-nav-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>
+      <span class="frm-nav-label">Search</span>
+    </button>
+    <button type="button" class="frm-nav-btn frm-nav-add" data-nav="add" aria-label="Add">
+      <span class="frm-nav-add-circle" aria-hidden="true">+</span>
+      <span class="frm-nav-label">Add</span>
+    </button>
+    <button type="button" class="frm-nav-btn" data-nav="wishlist" aria-label="Wishlist (not set up yet)">
+      <span class="frm-nav-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span>
+      <span class="frm-nav-label">Wishlist</span>
+    </button>
+    <button type="button" class="frm-nav-btn" data-nav="profile" aria-label="Profile (not set up yet)">
+      <span class="frm-nav-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg></span>
+      <span class="frm-nav-label">Profile</span>
+    </button>
+  </nav>
+  <section id="frm-placeholder" class="frm-placeholder empty-state" hidden>
+    <p class="empty-title" id="frm-placeholder-title"></p>
+    <p class="empty-hint" id="frm-placeholder-hint"></p>
+    <button type="button" class="btn btn-ghost" id="frm-placeholder-back">Back to Library</button>
+  </section>
 
   <script src="./tabletop.js" defer></script>
   <script src="./app.js" defer></script>
