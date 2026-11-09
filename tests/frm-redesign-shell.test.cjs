@@ -44,11 +44,29 @@ check('2:3 cover frame; placeholder fills frame (not a tiny dark box)', () => {
   assert.match(css, /\.item-cover-placeholder[\s\S]*background:\s*#e8e8e8/);
   assert.match(css, /\.item-cover[\s\S]*object-fit:\s*contain/);
 });
-check('slim cards: title/meta/status only; detail keeps format, notes, rating, refs, credits', () => {
-  assert.match(app, /Slim redesign card/);
-  assert.doesNotMatch(app.slice(app.indexOf('Slim redesign card'), app.indexOf('Slim redesign card')+900), /badge-format|card-ref|card-credit|item-notes|stars/);
-  assert.match(app, /function detailHtml[\s\S]*badge-format[\s\S]*Rating[\s\S]*Progress[\s\S]*Tags[\s\S]*ISFDB[\s\S]*IGDB[\s\S]*Cover from Google Books/);
+check('title-only cards: cover + title; clamp 2 lines; focus ring; detail keeps fields', () => {
+  const slice = app.slice(app.indexOf('Title-only redesign card'), app.indexOf('Title-only redesign card') + 700);
+  assert.match(slice, /item-title/);
+  assert.doesNotMatch(slice, /item-meta|badge-status|badge-format|btn-pick-cover|card-ref|item-notes/);
+  assert.match(app, /function detailHtml[\s\S]*badge-status[\s\S]*badge-format[\s\S]*Rating[\s\S]*Progress[\s\S]*Tags[\s\S]*ISFDB[\s\S]*IGDB[\s\S]*Cover from Google Books/);
+  assert.match(app, /fieldCover|field-cover/); // cover still settable in the edit form
+  assert.match(css, /-webkit-line-clamp:\s*2/);
+  assert.match(css, /\.item-card:focus-visible/);
+  assert.match(css, /\.item-card \.item-body[\s\S]*padding:\s*8px/);
   assert.match(app, /frm-stats-line/);
+});
+check('Tabletop cards are title-only and open detail (not the edit form)', () => {
+  const tt = fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8');
+  const card = tt.slice(tt.indexOf('Title-only card'), tt.indexOf('Title-only card') + 450);
+  assert.match(card, /data-tt-open/);
+  assert.doesNotMatch(card, /item-meta|item-badges|tt-kicker|tt-exp-count/);
+  assert.match(tt, /data-tt-open[\s\S]*openDetail\(/);
+  assert.match(tt, /tt-detail-edit[\s\S]*openForm/); // Edit is explicit from the detail sheet
+  const det = tt.slice(tt.indexOf('function openDetail'), tt.indexOf('function openDetail') + 2200);
+  assert.match(det, /subtypeBadge/);
+  assert.match(det, /statusBadge/);
+  assert.match(det, /metaLine|tt-detail-badges/);
+  assert.match(det, /tt-detail-edit/);
 });
 check('bottom nav Library/Search/Add/Wishlist/Profile; Library active', () => {
   assert.match(html, /class="frm-bottom-nav"/);
