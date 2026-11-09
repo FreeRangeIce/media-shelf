@@ -100,7 +100,7 @@ check('accessibility: 44px targets, focus, reduced motion; existing IDs preserve
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(app, /GAME_TITLE_SEARCH_TESTED = true/);
-  assert.match(app, /const APP_VERSION = 51/);
+  assert.match(app, /const APP_VERSION = 52/);
 });
 
 check('rev4: header static at narrow widths (brand/pin not fixed)', () => {
