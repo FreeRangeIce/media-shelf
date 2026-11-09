@@ -3311,6 +3311,15 @@ body.modal-open {
   overflow-wrap: anywhere;
 }
 
+/* V2.2-b4: narrow two-column grid crushed the title (~29px). Wrap so the badge sits
+   on its own line below; left rule + 16px indent on .tt-exp-list unchanged. Library + Wishlist. */
+.tt-exp-row {
+  flex-wrap: wrap;
+}
+.tt-exp-row .tt-exp-title {
+  flex: 1 1 100%;
+}
+
 .tt-exp-more {
   font-size: var(--fs-sm);
   text-decoration: underline;
@@ -5171,13 +5180,18 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
 
 
 /* V2.2-b3: Wishlist Want expansion under an Owned base (Oholiab). */
+/* V2.2-b4: label contrast on dark #1a1a1a page → #b5aa9c (7.6:1); cream surfaces keep #6b6158. */
 .tt-wish-base-label {
-  margin: 0 0 var(--space-2);
-  padding: 0 var(--space-1);
+  margin: 0 0 8px;
+  padding: 0; /* left edge aligned with the cards */
   font-size: 13px;
   font-weight: var(--fw-regular, 400);
-  color: #6b6158;
+  color: #b5aa9c; /* dark page background (#1a1a1a) */
   line-height: 1.4;
+}
+.modal-panel .tt-wish-base-label,
+.tt-detail-body .tt-wish-base-label {
+  color: #6b6158; /* cream/light surfaces */
 }
 .tt-group-wish-owned-base {
   display: flex;

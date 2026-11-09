@@ -1,4 +1,4 @@
-// V2.2-b3: Library excludes Want, header counts Tabletop Want/Owned, folded Duo close inset.
+// V2.2-b4: Library excludes Want, header counts Tabletop Want/Owned, folded Duo close inset.
 // Native source + light sims. No browser.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -41,9 +41,9 @@ function filterMedia(items, { shelfMode, filterType = 'all', filterStatus = 'all
 
 const CATEGORIES = ['book', 'game', 'movie', 'music', 'comic'];
 
-check('APP_VERSION stays 2.2; sw cache is media-shelf-v2.2-b3 (suffix accepted)', () => {
+check('APP_VERSION stays 2.2; sw cache is media-shelf-v2.2-b4 (suffix accepted)', () => {
   assert.match(app, /const APP_VERSION = "2\.2"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.2-b3"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.2-b4"/);
   assert.match(sw, /const CACHE = "media-shelf-v2\.2(?:-[a-z0-9]+)?"/);
 });
 
@@ -279,4 +279,17 @@ check('Wishlist empty states preserved (no regression of existing copy)', () => 
   assert.match(fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8'), /No tabletop wants yet/);
 });
 
-console.log(`${passed}/${passed} passed (v2.2-b3 library/wishlist/count/duo-close/expansions)`);
+
+check('V2.2-b4 CSS: wish-base label #b5aa9c on dark / #6b6158 on cream; exp-row wrap', () => {
+  assert.match(css, /\.tt-wish-base-label\s*\{[^}]*color:\s*#b5aa9c/s);
+  assert.match(css, /\.modal-panel \.tt-wish-base-label[\s\S]*?color:\s*#6b6158/);
+  assert.match(css, /\.tt-wish-base-label\s*\{[^}]*font-size:\s*13px/s);
+  assert.match(css, /\.tt-wish-base-label\s*\{[^}]*margin:\s*0 0 8px/s);
+  assert.match(css, /\.tt-exp-row\s*\{\s*flex-wrap:\s*wrap\s*;\s*\}/);
+  assert.match(css, /\.tt-exp-row \.tt-exp-title\s*\{\s*flex:\s*1 1 100%\s*;\s*\}/);
+  // Indent / left rule unchanged
+  assert.match(css, /\.tt-exp-list\s*\{[^}]*margin:\s*var\(--space-1\) 0 0 16px/s);
+  assert.match(css, /\.tt-exp-list\s*\{[^}]*border-left:\s*2px solid/s);
+});
+
+console.log(`${passed}/${passed} passed (v2.2-b4 library/wishlist/count/duo-close/expansions)`);
