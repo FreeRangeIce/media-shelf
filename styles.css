@@ -4568,3 +4568,156 @@ body.frm-search-focus .filters-row .search {
   outline: none;
   box-shadow: var(--focus), 0 6px 20px rgba(0, 0, 0, 0.28);
 }
+
+
+/* ========== Redesign rev4 (Oholiab r3): static header at all widths, grid caps, cover strip, sheet actions ========== */
+
+/* Root cause: @media (max-width:559px) still sets .brand / #btn-add / ::before / .pin-bar to position:fixed.
+   .frm-site-header { position:static } alone left the logo fixed and overlapping Settings. */
+@media (max-width: 559px) {
+  .frm-site-header,
+  .site-header.frm-site-header {
+    position: static !important;
+    padding-top: 0 !important;
+    backdrop-filter: none !important;
+  }
+  .frm-site-header::before,
+  .site-header.frm-site-header::before,
+  .frm-site-header > .pin-bar,
+  .site-header.frm-site-header > .pin-bar {
+    content: none !important;
+    display: none !important;
+    position: static !important;
+  }
+  .frm-site-header .brand,
+  .frm-site-header .frm-brand,
+  .site-header.frm-site-header .brand {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    height: auto !important;
+    z-index: auto !important;
+  }
+  .frm-site-header #btn-add,
+  .site-header.frm-site-header #btn-add {
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
+  }
+  html {
+    scroll-padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+@media (max-width: 559px) and (display-mode: standalone) {
+  .frm-site-header,
+  .site-header.frm-site-header {
+    position: static !important;
+    padding-top: 0 !important;
+  }
+  .frm-site-header .pin-bar,
+  .site-header.frm-site-header .pin-bar {
+    display: none !important;
+  }
+  .frm-site-header .brand,
+  .frm-site-header .frm-brand {
+    position: static !important;
+    top: auto !important;
+    height: auto !important;
+  }
+}
+
+.frm-util-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.75rem 0;
+  position: relative;
+  z-index: 1;
+}
+.frm-logo {
+  display: block;
+  width: min(200px, 70vw);
+  max-width: 200px;
+  height: auto;
+  aspect-ratio: 900 / 443;
+  object-fit: contain;
+}
+.frm-brand { gap: 8px; }
+.stats { margin: 16px var(--space-3) 0.75rem; }
+
+/* Grid: 2 / 3 / 4 columns; cards capped ~200px, centered, 12–16px gaps */
+.item-list,
+.tt-list {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 200px));
+  gap: 12px;
+  justify-content: center;
+  padding: 0 var(--space-3) var(--space-4);
+  margin: 0;
+  list-style: none;
+}
+@media (min-width: 560px) {
+  .item-list,
+  .tt-list {
+    grid-template-columns: repeat(3, minmax(0, 200px));
+    gap: 14px;
+  }
+}
+@media (min-width: 900px) {
+  .item-list,
+  .tt-list {
+    grid-template-columns: repeat(4, minmax(0, 200px));
+    gap: 16px;
+  }
+}
+
+/* Real covers: never show the type-label placeholder strip.
+   Root cause: rev2 used display:flex !important on .item-cover-placeholder, which overrode [hidden]. */
+.item-cover-placeholder[hidden],
+.item-cover-col .item-cover-placeholder[hidden] {
+  display: none !important;
+}
+.item-cover-placeholder:not([hidden]),
+.item-cover-col .item-cover-placeholder:not([hidden]) {
+  display: flex !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: #e8e8e8 !important;
+  color: #9a9a9a !important; /* lighter: empty frame, not a button */
+  font-size: 0.62rem !important;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: none !important;
+  border-radius: 0 !important;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.5rem;
+  box-sizing: border-box;
+}
+
+/* Add/edit sheet action bar: sheet's own light surface (not dark --bg-elevated from redesign).
+   Root cause of dark Cancel/Save band: .item-form .form-actions { background: var(--bg-elevated) }
+   and ::before gradient fade to the same token after --bg-elevated became #242424.
+   Distinct from the undiagnosed full-width backdrop cover-height strip. */
+#modal .item-form .form-actions,
+#tt-form-modal .item-form .form-actions,
+.modal-panel .item-form .form-actions {
+  background: #fffdf8 !important;
+  border-top: 1px solid var(--border-strong) !important;
+  border-top-color: var(--border-strong) !important;
+  padding-top: var(--space-4) !important;
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px)) !important;
+  margin-bottom: 0 !important;
+  bottom: 0 !important;
+}
+#modal .item-form .form-actions::before,
+#tt-form-modal .item-form .form-actions::before,
+.modal-panel .item-form .form-actions::before {
+  content: none !important;
+  display: none !important;
+  background: none !important;
+  height: 0 !important;
+}

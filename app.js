@@ -1214,6 +1214,22 @@
       items = [];
       return;
     }
+    // One made-up Tabletop sample for first-visit review (local SVG cover; no BGG id).
+    if (TT && typeof TT.seedSampleIfEmpty === "function") {
+      TT.seedSampleIfEmpty({
+        id: "seed-tt-1",
+        title: "Sample Board Game",
+        subtype: "board",
+        status: "owned",
+        year: "2024",
+        designer: "Sample Designer",
+        players: "2–4",
+        playTime: "45 min",
+        coverUrl: "./assets/sample-tabletop-cover.svg",
+        notes: "Made-up sample for layout review. Not a real product.",
+        seed: true,
+      });
+    }
     writeLs(SEEDED_STORAGE, nowIso());
     try {
       saveStore();
@@ -2164,6 +2180,7 @@
         const ok = commitItems((list) => list.filter((i) => !i.seed));
         closeConfirm();
         if (!ok) return;
+        if (TT && typeof TT.clearSeeds === "function") TT.clearSeeds();
         showToast("Samples cleared");
         render();
       },
@@ -2263,7 +2280,7 @@
 
   function renderList() {
     const list = filteredItems();
-    const hasSeeds = items.some((i) => i.seed);
+    const hasSeeds = items.some((i) => i.seed) || Boolean(TT && TT.hasSeed && TT.hasSeed());
     els.seedBanner.hidden = !hasSeeds;
 
     if (list.length === 0) {
