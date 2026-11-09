@@ -1388,8 +1388,22 @@
     },
     entries: () => load().slice(),
     backupBlock: () => ({ v: 1, entries: load().map((e) => ({ ...e })) }),
-    clearSeeds: () => { load(); const next = entries.filter((e) => !e.seed); if (next.length === entries.length) return false; entries = next; save(entries); render(); return true; },
-    seedSampleIfEmpty: (entry) => { load(); if (entries.some((e) => e.seed) || entries.length) return false; const e = normalize({ ...entry, seed: true }); entries = [e]; save(entries); render(); return true; },
+    clearSeeds: () => {
+      load();
+      if (!entries.some((e) => e.seed)) return false;
+      const outcome = commit((list) => list.filter((e) => !e.seed));
+      if (outcome === "committed" && active) { try { render(); } catch { /* display only */ } }
+      return outcome === "committed";
+    },
+    // Persistence is commit(mutate), not save() — calling save threw on fresh-profile seed.
+    seedSampleIfEmpty: (entry) => {
+      load();
+      if (entries.some((e) => e.seed) || entries.length) return false;
+      const row = normalize({ ...entry, seed: true });
+      const outcome = commit(() => [row]);
+      if (outcome === "committed" && active) { try { render(); } catch { /* display only */ } }
+      return outcome === "committed";
+    },
     hasSeed: () => { load(); return entries.some((e) => e.seed); },
     /** Restore: "replace" swaps the tabletop shelf, "merge" folds in by id / BGG id. */
     restore(incoming, mode, opts) {

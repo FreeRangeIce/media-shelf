@@ -148,4 +148,12 @@ check('real-cover cards emit no caption/kicker/meta under the image (all categor
   assert.match(app, /coverMarkup[\s\S]*hidden aria-hidden="true"/);
 });
 
+
+check('rev5: logo containers transparent; title not sticky; action bar solid paper to safe area', () => {
+  assert.match(css, /\.frm-site-header \.frm-logo[\s\S]*background:\s*transparent\s*!important/);
+  assert.match(css, /\.frm-site-header \.frm-title[\s\S]*position:\s*static\s*!important/);
+  assert.match(css, /#modal \.item-form \.form-actions[\s\S]*background:\s*#fffdf8\s*!important[\s\S]*bottom:\s*0\s*!important/);
+  assert.match(css, /box-shadow:\s*0 -12px 16px #fffdf8\s*!important/);
+});
+
 console.log(`${passed}/${passed} passed (redesign shell: categories, nav, logo; production file text; no browser)`);

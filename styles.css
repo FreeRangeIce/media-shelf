@@ -4727,3 +4727,56 @@ body.frm-search-focus .filters-row .search {
   background: none !important;
   height: 0 !important;
 }
+
+
+/* ========== Redesign rev5 ========== */
+/* Logo sits on #1a1a1a — no container fill behind the transparent PNG */
+.frm-site-header,
+.frm-site-header .frm-header,
+.frm-site-header .frm-brand,
+.frm-site-header .brand,
+.frm-site-header .frm-logo,
+.frm-logo {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+/* FreeRangeMedia name scrolls with the page — never pinned/sticky/fixed */
+.frm-site-header,
+.frm-site-header .frm-title,
+.frm-site-header h1,
+.frm-site-header .frm-brand,
+.frm-site-header .brand {
+  position: static !important;
+  top: auto !important;
+  bottom: auto !important;
+}
+.site-header.frm-site-header {
+  position: static !important;
+  top: auto !important;
+}
+
+/* Add/Edit action bar: opaque sheet surface through the bottom safe area; form cannot show under buttons */
+#modal .item-form .form-actions,
+#tt-form-modal .item-form .form-actions,
+.modal-panel .item-form .form-actions {
+  position: sticky !important;
+  bottom: 0 !important;
+  margin-bottom: 0 !important;
+  margin-top: 0 !important;
+  background: #fffdf8 !important;
+  background-color: #fffdf8 !important;
+  border-top: 1px solid var(--border-strong) !important;
+  padding-top: var(--space-4) !important;
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px)) !important;
+  padding-left: var(--space-5);
+  padding-right: var(--space-5);
+  box-shadow: 0 -12px 16px #fffdf8 !important; /* solid veil; not a dark gradient */
+  z-index: 2 !important;
+}
+#modal .item-form .form-actions::before,
+#tt-form-modal .item-form .form-actions::before,
+.modal-panel .item-form .form-actions::before {
+  content: none !important;
+  display: none !important;
+}

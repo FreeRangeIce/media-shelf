@@ -1215,20 +1215,23 @@
       return;
     }
     // One made-up Tabletop sample for first-visit review (local SVG cover; no BGG id).
+    // Isolated: a tabletop seed failure must not block media samples / saveStore.
     if (TT && typeof TT.seedSampleIfEmpty === "function") {
-      TT.seedSampleIfEmpty({
-        id: "seed-tt-1",
-        title: "Sample Board Game",
-        subtype: "board",
-        status: "owned",
-        year: "2024",
-        designer: "Sample Designer",
-        players: "2–4",
-        playTime: "45 min",
-        coverUrl: "./assets/sample-tabletop-cover.svg",
-        notes: "Made-up sample for layout review. Not a real product.",
-        seed: true,
-      });
+      try {
+        TT.seedSampleIfEmpty({
+          id: "seed-tt-1",
+          title: "Sample Board Game",
+          subtype: "board",
+          status: "owned",
+          year: "2024",
+          designer: "Sample Designer",
+          players: "2–4",
+          playTime: "45 min",
+          coverUrl: "./assets/sample-tabletop-cover.svg",
+          notes: "Made-up sample for layout review. Not a real product.",
+          seed: true,
+        });
+      } catch { /* tabletop sample optional */ }
     }
     writeLs(SEEDED_STORAGE, nowIso());
     try {
