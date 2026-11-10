@@ -19,11 +19,11 @@ const check = (n, fn) => { fn(); passed++; console.log('PASS', n); };
 const v26 = css.slice(css.indexOf('========== V2.6'));
 assert.ok(v26.length > 200, 'V2.6 CSS block missing');
 
-check('APP_VERSION is 2.6; sw cache is media-shelf-v2.6', () => {
-  assert.match(app, /const APP_VERSION = "2\.6"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.6"/);
+check('APP_VERSION is 2.7; sw cache is media-shelf-v2.7', () => {
+  assert.match(app, /const APP_VERSION = "2\.7"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.7"/);
   assert.doesNotMatch(app, /const APP_VERSION = "2\.6-/);
-  assert.doesNotMatch(sw, /media-shelf-v2\.6-/);
+  assert.doesNotMatch(sw, /media-shelf-v2\.7-/);
 });
 
 check('item 1: Base game tag markup wraps the text in an inner span', () => {
@@ -107,14 +107,13 @@ check('item 2: Add tabletop title ellipsizes; X stays flex-none for hub clearanc
   assert.match(unclamp, /#tt-detail-title/);
   assert.doesNotMatch(unclamp, /\.modal-header h2/);
   assert.doesNotMatch(unclamp, /#tt-form-title/);
-  assert.match(css, /--frm-duo-hub-clearance:\s*60px/);
+  assert.match(css, /--frm-duo-hub-clearance:\s*80px/);
 });
 
-check('item 3: Type-change swap does not autofocus a field; direct Add still does', () => {
+check('item 3: Type-change swap does not autofocus a field (V2.7: no open path does)', () => {
   assert.match(ttSrc, /openForm\(null, \{ title \}, \{ focusField: false \}\)/);
-  assert.match(ttSrc, /const focusField = !opts \|\| opts\.focusField !== false/);
-  assert.match(ttSrc, /if \(focusField\) F\("tt-title"\)\.focus\(\)/);
-  // Direct Add / empty-add / edit still call openForm without disabling focus.
+  assert.match(ttSrc, /focusProgrammatically\(\s*F\("tt-form-title"\)\s*\)/);
+  assert.doesNotMatch(ttSrc, /if \(focusField\) F\("tt-title"\)\.focus\(\)/);
   assert.match(ttSrc, /openAdd: \(\) => openForm\(null\)/);
   assert.match(ttSrc, /F\("tt-empty-add"\)\.addEventListener\("click", \(\) => openForm\(null\)\)/);
   // Type change goes through swapToTabletop → openAddFrom.

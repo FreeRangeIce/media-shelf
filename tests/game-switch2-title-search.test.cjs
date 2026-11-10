@@ -66,8 +66,8 @@ const tgt = (sel, dataset) => ({ closest: s => (s === sel ? { dataset: dataset |
 
 (async () => {
   await check('V2.5 version + cache + title search stays on', () => {
-    assert.match(src, /const APP_VERSION = "2.6";/);
-    assert.match(sw, /const CACHE = "media-shelf-v2\.6"/);
+    assert.match(src, /const APP_VERSION = "2.7";/);
+    assert.match(sw, /const CACHE = "media-shelf-v2\.7"/);
     assert.match(src, /GAME_TITLE_SEARCH_TESTED = true/);
     assert.match(html, /option value="Switch 2"/);
     assert.match(src, /"Switch", "Switch 2"/);

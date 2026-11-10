@@ -41,9 +41,9 @@ function filterMedia(items, { shelfMode, filterType = 'all', filterStatus = 'all
 
 const CATEGORIES = ['book', 'game', 'movie', 'music', 'comic'];
 
-check('APP_VERSION is 2.6; sw cache is media-shelf-v2.6', () => {
-  assert.match(app, /const APP_VERSION = "2\.6"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.6"/);
+check('APP_VERSION is 2.7; sw cache is media-shelf-v2.7', () => {
+  assert.match(app, /const APP_VERSION = "2\.7"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.7"/);
 });
 
 check('shared isWantStatus / isLibraryStatus helpers exist and Library excludes Want in filteredItems', () => {
@@ -260,7 +260,7 @@ check('countByStatus includes Tabletop Want (Lords of Hellas case) and updates w
 });
 
 check('folded Duo close: single clearance var, 44px target, header-row inset, title ellipsis; unfolded untouched', () => {
-  assert.match(css, /--frm-duo-hub-clearance:\s*60px/);
+  assert.match(css, /--frm-duo-hub-clearance:\s*80px/);
   assert.match(css, /@media \(max-width: 559px\)/);
   const folded = css.slice(css.indexOf('--frm-duo-hub-clearance'));
   assert.match(folded, /\.modal-header \.btn-icon[\s\S]*?width:\s*44px/);

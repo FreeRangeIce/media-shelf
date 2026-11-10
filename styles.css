@@ -5110,11 +5110,11 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
 /* ===== V2.2-b2: folded Duo sheet close + quiet Library empty (Oholiab) =====
  * Hub clearance measured from Micah's folded Duo Settings shot (690×1024 ≈ 2× at 344 CSS).
  * X right edge sits on the same vertical line as the pills/filters/search (~272 CSS px from
- * the left at 344 wide ≈ 60px in from the sheet's right edge), clearing the status hub by ~17px.
+ * the left at 344 wide). V2.7 raises the inset to 80px so the X clears the hub by ~8–10px.
  * One variable so it stays easy to tune. Unfolded / desktop keep the corner close position.
  */
 :root {
-  --frm-duo-hub-clearance: 60px; /* inset of close-button (and Settings Due pill) right edge from sheet right */
+  --frm-duo-hub-clearance: 80px; /* inset of close-button (and Settings Due pill) right edge from sheet right */
 }
 
 /* Quiet one-line empty when a Library category has no non-Want items. */
@@ -5176,7 +5176,7 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
   }
 
   /* V2.4 item 10: Settings, Add and detail X share one right edge.
-     Sheet padding is 24px; X right edge sits 24px + 60px hub clearance from the sheet right.
+     Sheet padding is 24px; X right edge sits on the --frm-duo-hub-clearance line from the sheet right.
      Settings had been a floating card with 16px side margin, which left its X ~16px off Add/detail. */
   #modal > .modal-panel,
   #tt-form-modal > .modal-panel,
@@ -5201,7 +5201,7 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
 
   /* V2.4 item 5: folded Duo hub must not cover "Video games" / "Tabletop". Two rows stay 3+4.
      Toolbar already has 12px (--space-3) padding; this remainder makes the pill right edge
-     sit on the 60px clearance line. Double class beats earlier padding:0 !important. */
+     sit on the hub-clearance line. Double class beats earlier padding:0 !important. */
   .type-tabs.frm-categories,
   .type-tabs.frm-categories.frm-categories {
     padding-right: calc(var(--frm-duo-hub-clearance) - var(--space-3)) !important;
@@ -5588,4 +5588,58 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
 #tt-form-modal .modal-header .btn-icon,
 #modal .modal-header .btn-icon {
   flex: 0 0 auto;
+}
+
+/* ========== V2.7 (Oholiab / Micah folded-Duo review) ========== */
+
+/* Item 2: X (and the shared Settings / detail edge) moves 20px further left under 559px
+   so it clears the Duo hub by ~8–10px. The variable above is now 80px; all three
+   close buttons keep one right edge, and the pill row stays on the same line. */
+
+/* Item 3: Chrome treats programmatic .focus() as :focus-visible. Suppress the ring
+   until the first keydown so a tap-only sheet open shows no ring; Tab then does. */
+[data-programmatic-focus]:focus,
+[data-programmatic-focus]:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Item 4: give the Tabletop Add sheet the same pre-keyboard layout canvas as media Add,
+   so shrinking visualViewport does not collapse the field list. */
+body.modal-open #tt-form-modal {
+  top: 0;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: var(--add-sheet-height, 100%);
+}
+#tt-form-modal > .modal-panel {
+  max-height: min(calc(var(--add-sheet-height, 100vh) * .92), 720px, calc(var(--add-sheet-height, 100vh) - var(--sheet-gap)));
+}
+
+/* When the keyboard is up (body.frm-short-vv, visual viewport well below the layout
+   canvas), fit both Add sheets to the visible viewport and let Cancel/Save scroll
+   with the fields instead of sticking under Title and hiding Kind–Barcode. */
+body.frm-short-vv.modal-open #modal,
+body.frm-short-vv.modal-open #tt-form-modal {
+  top: var(--sheet-vv-top, 0px);
+  left: var(--sheet-vv-left, 0px);
+  right: auto;
+  bottom: auto;
+  width: var(--sheet-vv-width, 100%);
+  height: var(--sheet-vv-height, 100%);
+}
+body.frm-short-vv.modal-open #modal > .modal-panel,
+body.frm-short-vv.modal-open #tt-form-modal > .modal-panel {
+  max-height: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding: 12px;
+}
+body.frm-short-vv #modal .item-form .form-actions,
+body.frm-short-vv #tt-form-modal .item-form .form-actions {
+  position: static !important;
+  bottom: auto !important;
 }

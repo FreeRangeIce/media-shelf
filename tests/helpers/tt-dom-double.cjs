@@ -22,7 +22,7 @@ function boot(seed, things, upcCandidate) {
   const built = new Set();
   const byId = id => (/^tt-(bgg-go|bgg-panel|upc-|lookup)/.test(id) && !built.has(id)) ? null : F(id);
   const mk = t => { const e = new El(t); created.push(e); let h = ''; Object.defineProperty(e, 'innerHTML', { get: () => h, set: v => { h = v; for (const m of String(v).matchAll(/id="([^"]+)"/g)) built.add(m[1]); } }); return e; };
-  const document = { getElementById: byId, querySelector: s => s.startsWith('#') ? F(s.slice(1)) : new El('q'), querySelectorAll: () => [], createElement: mk, addEventListener() {}, body: new El('body'), activeElement: null, documentElement: new El('html') };
+  const document = { getElementById: byId, querySelector: s => s.startsWith('#') ? F(s.slice(1)) : new El('q'), querySelectorAll: () => [], createElement: mk, addEventListener() {}, removeEventListener() {}, body: new El('body'), activeElement: null, documentElement: new El('html') };
   store.set('media-tracker-v1:tabletop', JSON.stringify(seed));
   let getHook = null;
   const localStorage = { getItem: k => { if (getHook) getHook(k); return store.has(k) ? store.get(k) : null; }, setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) };

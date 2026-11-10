@@ -18,13 +18,13 @@ const check = (n, fn) => { fn(); passed++; console.log('PASS', n); };
 
 const tidyColon = (s) => String(s).replace(/\s+:\s+/g, ': ').replace(/:/g, '\u2060:');
 
-check('APP_VERSION is 2.6; sw cache is media-shelf-v2.6', () => {
-  assert.match(app, /const APP_VERSION = "2\.6"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.6"/);
+check('APP_VERSION is 2.7; sw cache is media-shelf-v2.7', () => {
+  assert.match(app, /const APP_VERSION = "2\.7"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.7"/);
 });
 
-check('item 1+10: hub clearance media query is max-width 559px; X inset is 24px + 60px; unfolded rules stay outside it', () => {
-  assert.match(css, /--frm-duo-hub-clearance:\s*60px/);
+check('item 1+10: hub clearance media query is max-width 559px; X inset is the 80px hub-clearance line; unfolded rules stay outside it', () => {
+  assert.match(css, /--frm-duo-hub-clearance:\s*80px/);
   assert.match(css, /@media \(max-width: 559px\)/);
   assert.doesNotMatch(css, /@media \(max-width: 400px\)/);
   const folded = css.slice(css.indexOf('V2.2-b2: folded Duo'));

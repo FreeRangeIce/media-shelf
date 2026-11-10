@@ -755,8 +755,26 @@
     F("tt-parent-bgg-row").hidden = !isExp;
   }
 
+
+  // V2.7: initial sheet focus goes to the heading, never an input. See app.js.
+  function focusProgrammatically(el) {
+    if (!el || typeof el.focus !== "function") return;
+    if (typeof el.setAttribute === "function") el.setAttribute("tabindex", "-1");
+    if (el._frmClearProgFocus && typeof document.removeEventListener === "function") {
+      document.removeEventListener("keydown", el._frmClearProgFocus, true);
+    }
+    el.setAttribute("data-programmatic-focus", "");
+    const clear = () => {
+      el.removeAttribute("data-programmatic-focus");
+      if (typeof document.removeEventListener === "function") document.removeEventListener("keydown", clear, true);
+      el._frmClearProgFocus = null;
+    };
+    el._frmClearProgFocus = clear;
+    document.addEventListener("keydown", clear, true);
+    el.focus({ preventScroll: true });
+  }
+
   function openForm(entry, prefill, opts) {
-    const focusField = !opts || opts.focusField !== false;
     load();
     const e = entry || normalize({ ...(prefill || {}), id: "" });
     pendingDup = null;
@@ -783,13 +801,9 @@
     syncExpansionRows();
     closeModal("tt-detail-modal");
     openModal("tt-form-modal");
-    // Type-change swap must not autofocus a field (that pops then dismisses the keyboard).
-    // Direct Add / Edit still focus Title. The close button is not a field.
-    if (focusField) F("tt-title").focus();
-    else {
-      const closeBtn = document.querySelector('#tt-form-modal .modal-header .btn-icon');
-      if (closeBtn) closeBtn.focus({ preventScroll: true });
-    }
+    // V2.7: every open path (Add from any pill, Edit, type-change swap) focuses the
+    // heading, never Title or another field. A focused text field pops the Duo keyboard.
+    focusProgrammatically(F("tt-form-title"));
   }
 
   function readForm() {
@@ -1286,7 +1300,7 @@
     F("tt-detail-edit").dataset.id = e.id;
     F("tt-detail-delete").dataset.id = e.id;
     openModal("tt-detail-modal");
-    F("tt-detail-close").focus();
+    focusProgrammatically(F("tt-detail-title"));
   }
 
   /* ----- merge: ask about each hand match, one at a time ----- */

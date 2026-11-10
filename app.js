@@ -3,9 +3,9 @@
   "use strict";
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
-  // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6…; bump APP_VERSION and
-  // the service worker cache name together (media-shelf-v2.6) so the Duo drops old files.
-  const APP_VERSION = "2.6";
+  // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6, 2.7…; bump APP_VERSION and
+  // the service worker cache name together (media-shelf-v2.7) so the Duo drops old files.
+  const APP_VERSION = "2.7";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -23,30 +23,64 @@
     if (!document.querySelector(".modal:not([hidden])")) document.body.classList.remove("modal-open");
   }
 
+  // V2.7: initial sheet focus goes to the heading, never an input (a focused text field
+  // pops the Duo keyboard). Chrome treats programmatic .focus() as :focus-visible, so
+  // mark it and clear the flag on the first keydown; Tab then shows a ring as usual.
+  function focusProgrammatically(el) {
+    if (!el || typeof el.focus !== "function") return;
+    if (typeof el.setAttribute === "function") el.setAttribute("tabindex", "-1");
+    if (el._frmClearProgFocus && typeof document.removeEventListener === "function") {
+      document.removeEventListener("keydown", el._frmClearProgFocus, true);
+    }
+    el.setAttribute("data-programmatic-focus", "");
+    const clear = () => {
+      el.removeAttribute("data-programmatic-focus");
+      if (typeof document.removeEventListener === "function") document.removeEventListener("keydown", clear, true);
+      el._frmClearProgFocus = null;
+    };
+    el._frmClearProgFocus = clear;
+    document.addEventListener("keydown", clear, true);
+    el.focus({ preventScroll: true });
+  }
+
+
   (function pinPageUnderSheets() {
     let pinnedY = null;
     const body = document.body;
     const vv = window.visualViewport;
     const viewportVars = ["--sheet-vv-top", "--sheet-vv-left", "--sheet-vv-width", "--sheet-vv-height", "--add-sheet-height", "--sheet-cover-height", "--sheet-cover-width"];
     let frame = null, lastH = null, lastW = null, lowH = null, restH = null, layoutH = null, recovering = false, resetKey = "";
-    const clearViewport = () => viewportVars.forEach((name) => body.style.removeProperty(name));
+    const clearViewport = () => {
+      viewportVars.forEach((name) => body.style.removeProperty(name));
+      body.classList.remove("frm-short-vv");
+    };
     const resetRecovery = () => { lastH = lastW = lowH = restH = layoutH = null; recovering = false; resetKey = ""; };
     // Scroll only the Add panel, never the pinned page. Save may remain behind the keyboard.
     const revealAddField = () => {
       const active = document.activeElement;
       if (!active?.matches?.('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), textarea, select, [contenteditable="true"]')) return;
-      const panel = active.closest("#modal > .modal-panel");
-      if (!panel || document.querySelector?.('.modal:not(#modal):not([hidden])')) return;
+      const panel = active.closest("#modal > .modal-panel, #tt-form-modal > .modal-panel");
+      if (!panel || document.querySelector?.('.modal:not(#modal):not(#tt-form-modal):not([hidden])')) return;
+      const short = body.classList.contains("frm-short-vv");
+      // When the keyboard has shortened the visual viewport, the footer is no longer
+      // pinned: scroll the tapped field into view. Honor reduced motion.
+      if (short && typeof active.scrollIntoView === "function") {
+        const reduce = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+        active.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+        return;
+      }
       const rect = active.getBoundingClientRect(), bounds = panel.getBoundingClientRect();
       let top = Math.max(vv.offsetTop, bounds.top) + 8;
       let bottom = Math.min(vv.offsetTop + vv.height, bounds.bottom) - 8;
-      const actions = panel.querySelector(".form-actions");
-      const bar = actions?.getBoundingClientRect();
-      // Measure the rem-based fade, including larger default text. Never reserve a bar
-      // that sits behind the keyboard; Option A does not force Save into the visible strip.
-      const measuredFade = actions ? Number.parseFloat(window.getComputedStyle?.(actions, "::before").height) : 0;
-      const fade = Number.isFinite(measuredFade) ? Math.max(0, measuredFade) : 24;
-      if (bar && bar.bottom > top && bar.top < bottom) bottom = Math.min(bottom, bar.top - fade - 8);
+      if (!short) {
+        const actions = panel.querySelector(".form-actions");
+        const bar = actions?.getBoundingClientRect();
+        // Measure the rem-based fade, including larger default text. Never reserve a bar
+        // that sits behind the keyboard; Option A does not force Save into the visible strip.
+        const measuredFade = actions ? Number.parseFloat(window.getComputedStyle?.(actions, "::before").height) : 0;
+        const fade = Number.isFinite(measuredFade) ? Math.max(0, measuredFade) : 24;
+        if (bar && bar.bottom > top && bar.top < bottom) bottom = Math.min(bottom, bar.top - fade - 8);
+      }
       if (bottom <= top) return;
       let delta = 0;
       if (rect.height > bottom - top) {
@@ -95,6 +129,8 @@
         window.scrollTo(0, 0);
         scheduleViewport(); // remeasure after a synchronous scroll; no timer/polling loop
       }
+      // Keyboard-up: visual viewport is well below the pre-keyboard layout canvas.
+      body.classList.toggle("frm-short-vv", Boolean(layoutH && h < layoutH - 80));
       revealAddField();
     };
     const scheduleViewport = () => {
@@ -1803,9 +1839,9 @@
     requestAnimationFrame(() => {
       // After callers' same-tick setup (e.g. a tab presetting the type), before any typing.
       itemFormBaseline = serializeItemForm();
-      // Pick cover opens the sheet for the picker, not for typing: no keyboard, no jump to Title.
-      if (focusTitle) els.fieldTitle.focus();
-      else $("#modal-close").focus();
+      // V2.7: never focus an input on open (Add, Edit, or cover-picker setup). A focused
+      // text field pops the Duo keyboard. The heading is tabindex=-1 and is not a field.
+      focusProgrammatically(els.modalTitle);
     });
   }
 
@@ -2449,7 +2485,7 @@
     m.hidden = false;
     m.setAttribute("aria-hidden", "false");
     document.body.classList.add("modal-open");
-    $("#item-detail-close").focus();
+    focusProgrammatically($("#item-detail-title"));
   }
   function closeDetail(restoreFocus = true) {
     const m = $("#item-detail-modal");
@@ -3348,9 +3384,8 @@
         if (c) c.classList.remove("is-focus");
       });
       requestAnimationFrame(() => {
-        const first = $("#btn-backup-settings");
-        if (first) first.focus();
-        else if (els.fieldOmdbKey) els.fieldOmdbKey.focus();
+        // V2.7: heading, never a field or a control that would show a tap ring.
+        focusProgrammatically($("#settings-title"));
       });
     }
   }

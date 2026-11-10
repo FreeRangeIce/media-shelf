@@ -43,9 +43,9 @@ for (const it of items) {
   const c = card(it.id); focused = c; writes.length = 0;
   A.onListClick({ target: target(c) });
   html[it.id] = bodyEl.innerHTML; html[it.id + ':title'] = el('#item-detail-title').textContent;
-  check(`${it.type}: click opens read-only detail (title, focus on Close, edit form untouched, no writes)`, () => {
+  check(`${it.type}: click opens read-only detail (title, focus on heading, edit form untouched, no writes)`, () => {
     assert.equal(modal.hidden, false); assert.equal(modal.attrs['aria-hidden'], 'false'); assert(body.classList.contains('modal-open'));
-    assert.equal(focused, el('#item-detail-close')); assert.equal(el('#modal').hidden, true); assert.equal(A.getEditingId(), null);
+    assert.equal(focused, el('#item-detail-title')); assert.equal(el('#modal').hidden, true); assert.equal(A.getEditingId(), null);
     assert.doesNotMatch(bodyEl.innerHTML, /<(input|select|textarea|button)\b/); assert.equal(writes.length, 0);
   });
   A.closeDetail();
