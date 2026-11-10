@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5…; bump APP_VERSION and
-  // the service worker cache name together (media-shelf-v2.3) so the Duo drops old files.
-  const APP_VERSION = "2.3";
+  // the service worker cache name together (media-shelf-v2.4) so the Duo drops old files.
+  const APP_VERSION = "2.4";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -1029,10 +1029,15 @@
   }
 
   /** What a card, list or prompt calls the item. Comics: "Saga #1: Chapter One". */
+  /** V2.4 display only: "Gloomhaven : Forgotten Circles" reads "Gloomhaven: Forgotten Circles";
+   *  a space before any remaining colon becomes a no-break space so no line starts with ":". */
+  function tidyColon(s) {
+    return String(s).replace(/\s+:\s+/g, ": ").replace(/:/g, "\u2060:");
+  }
   function displayTitle(item) {
-    if (!item || item.type !== "comic") return (item && item.title) || "Untitled";
+    if (!item || item.type !== "comic") return tidyColon((item && item.title) || "Untitled");
     const head = `${item.series || "Untitled"}${item.issue ? ` #${item.issue}` : ""}`;
-    return item.title ? `${head}: ${item.title}` : head;
+    return tidyColon(item.title ? `${head}: ${item.title}` : head);
   }
 
   /**
@@ -2317,6 +2322,12 @@
       els.empty.hidden = false;
       const totalFilteredOut = items.length > 0;
       if (shelfMode === "wishlist") {
+        // V2.4: Wishlist + All with only Tabletop wants: the Tabletop list below carries them.
+        const ttList = document.getElementById("tabletop-list");
+        if (wishAllCombined() && ttList && ttList.children.length > 0) {
+          els.empty.hidden = true;
+          return;
+        }
         els.empty.classList.remove("frm-empty-owned");
         $(".empty-title", els.empty).textContent = "No wants yet";
         $(".empty-hint", els.empty).textContent = filterType === "all"
@@ -2486,6 +2497,10 @@
   function ttActive() {
     return Boolean(TT) && filterType === "tabletop";
   }
+  /** V2.4: Wishlist + All lists every Want, so the Tabletop store's wants render under the media wants. */
+  function wishAllCombined() {
+    return Boolean(TT) && shelfMode === "wishlist" && filterType === "all";
+  }
 
 
   /** Library must never re-admit Want via the status dropdown. Want stays available only as a
@@ -2524,7 +2539,7 @@
       return;
     }
     if (profile) profile.hidden = true;
-    if (TT) TT.show(ttActive());
+    if (TT) TT.show(ttActive() || wishAllCombined());
     if (ttActive()) {
       els.list.hidden = true;
       els.empty.hidden = true;
@@ -5678,7 +5693,7 @@
         const matches = gamePlatformMatches(c.platforms, selectedPlat);
         const reason = !matches && selectedPlat ? `<span class="game-match-reason">Not listed for ${escapeHtml(selectedPlat)}.</span>` : "";
         return `<button type="button" class="game-match" data-game-pick="${i}" aria-pressed="false" ${matches ? "" : "disabled"}><span class="game-match-cover">${c.coverUrl ? `<img src="${escapeHtml(c.coverUrl)}" alt="" width="64" height="96" onerror="this.hidden=true;this.nextElementSibling.hidden=false" />` : ""}<span class="game-match-no-cover" ${c.coverUrl ? "hidden" : ""} aria-hidden="true">VIDEO GAME</span></span><span class="game-match-text"><span class="game-match-name">${escapeHtml(c.title)}</span>${reason}<span class="game-match-meta">${c.year || "Year unknown"} · ${escapeHtml(c.platforms.join(", ") || "Platform unknown")}</span></span></button>`;
-      }).join("")}</div><div class="form-actions-right"><button type="button" class="btn btn-ghost" id="game-match-cancel">Cancel</button><button type="button" class="btn btn-primary" id="game-match-use" disabled>Use this match</button></div>`;
+      }).join("")}</div><div class="lookup-actions"><button type="button" class="btn btn-outline btn-sm lookup-cancel" id="game-match-cancel">Cancel lookup</button><button type="button" class="btn btn-primary" id="game-match-use" disabled>Use this match</button></div>`;
       $("#game-match-heading").focus();
       setLookupStatus(!anySelectable && selectedPlat
         ? `None of these are listed for ${selectedPlat}. Change the platform or clear it to see them.`
@@ -8736,6 +8751,7 @@
         search: () => (els.search ? els.search.value : ""),
         status: () => filterStatus,
         wishlist: () => shelfMode === "wishlist",
+        combined: () => wishAllCombined(),
         sort: () => (els.sortSelect ? els.sortSelect.value : "title"),
       });
     }

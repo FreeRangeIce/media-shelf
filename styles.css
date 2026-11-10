@@ -5143,7 +5143,7 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
   display: none !important;
 }
 
-@media (max-width: 400px) {
+@media (max-width: 559px) {
   /* Title ellipsizes before the X; X stays on the header row (not lowered). */
   .modal-header {
     gap: var(--space-2);
@@ -5174,7 +5174,40 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
   /* Settings "Due" / "Recent" / "Never" pill sits in the Backup card head, which still falls
      under the hub's vertical span on a folded Duo. Pull it left onto the same clearance line. */
   #settings-modal #backup-card .api-key-card-head {
-    padding-right: calc(var(--frm-duo-hub-clearance) - var(--space-5));
+    padding-right: calc(var(--frm-duo-hub-clearance) - 24px);
+  }
+
+  /* V2.4 item 10: Settings, Add and detail X share one right edge.
+     Sheet padding is 24px; X right edge sits 24px + 60px hub clearance from the sheet right.
+     Settings had been a floating card with 16px side margin, which left its X ~16px off Add/detail. */
+  #modal > .modal-panel,
+  #tt-form-modal > .modal-panel,
+  #item-detail-modal > .modal-panel,
+  #tt-detail-modal > .modal-panel,
+  #settings-modal > .modal-panel {
+    --frm-sheet-pad-l: 24px;
+    --frm-sheet-pad-r: 24px;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+  #settings-modal > .modal-panel,
+  #settings-modal .modal-panel-settings {
+    margin-left: 0;
+    margin-right: 0;
+    width: 100%;
+    max-width: none;
+  }
+  .modal-header .btn-icon {
+    margin-right: calc(var(--frm-duo-hub-clearance) - 24px);
+  }
+
+  /* V2.4 item 5: folded Duo hub must not cover "Video games" / "Tabletop". Two rows stay 3+4.
+     Toolbar already has 12px (--space-3) padding; this remainder makes the pill right edge
+     sit on the 60px clearance line. Double class beats earlier padding:0 !important. */
+  .type-tabs.frm-categories,
+  .type-tabs.frm-categories.frm-categories {
+    padding-right: calc(var(--frm-duo-hub-clearance) - var(--space-3)) !important;
+    box-sizing: border-box !important;
   }
 }
 
@@ -5201,4 +5234,223 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
 }
 .tt-group-wish-owned-base .item-card.tt-card .item-badges {
   margin-top: var(--space-1);
+}
+
+
+/* ========== V2.4 (Oholiab / Micah folded-Duo review) ========== */
+
+/* Item 7: card and row titles clamp to 3 lines; full title stays in the detail sheet. */
+.item-card .item-title,
+.item-card.tt-card .item-title,
+.tt-exp-row .tt-exp-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.item-card .item-title,
+.item-card.tt-card .item-title {
+  min-height: calc(1.3em * 3);
+}
+#item-detail-title,
+#tt-detail-title,
+.modal-header h2 {
+  -webkit-line-clamp: unset;
+  line-clamp: none;
+  display: block;
+  white-space: normal;
+  overflow: visible;
+}
+
+/* Items 4 + 8: Base game line lives inside the card, under the Expansion tag, as a tag-style
+   chip. 2-line clamp; full name is in the detail sheet. */
+.item-card .item-body .item-badges + .tt-wish-base-label,
+.item-card .tt-wish-base-label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border-radius: 4px; /* same squared 4px chip as .badge-type.tabletop */
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  background: var(--tabletop-dim);
+  color: var(--tabletop);
+  white-space: normal;
+  text-transform: none;
+  box-sizing: border-box;
+}
+/* In-card label sits on the white card body — keep the magenta chip, not the dark-shelf #b5aa9c. */
+.item-card .tt-wish-base-label,
+.modal-panel .item-card .tt-wish-base-label {
+  color: var(--tabletop);
+}
+
+/* Item 4 + 13: grid rows stretch so cards in a row share top and height; content starts at the top. */
+.item-list,
+.tt-list {
+  align-items: stretch;
+}
+.item-list > li,
+.tt-list > li.tt-group {
+  align-self: stretch;
+}
+
+/* Item 13: one fixed cover box per grid card. Default 1:1 (letterboxed on #000);
+   books and comics keep their existing 2:3 ratio, identical within the category.
+   object-fit:contain, no crop. Card body stays white. Cover box uses the card's 14px top radius. */
+.item-card .item-cover-col,
+.item-card.tt-card .item-cover-col {
+  aspect-ratio: 1 / 1 !important;
+  width: 100% !important;
+  flex: 0 0 auto !important;
+  background: #000000 !important;
+  overflow: hidden;
+  border-radius: 14px 14px 0 0;
+}
+.item-card .item-cover-col[data-type="book"],
+.item-card .item-cover-col[data-type="comic"] {
+  aspect-ratio: 2 / 3 !important;
+}
+.item-card .item-cover,
+.item-card.tt-card .item-cover {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  object-position: center;
+  background: transparent !important;
+}
+/* No-cover tile and failed-image fallback keep the existing light-grey fill so the
+   type label stays readable; they still fill the box (no layout shift). */
+.item-cover-placeholder:not([hidden]),
+.item-cover-col[data-type] .item-cover-placeholder:not([hidden]),
+.item-cover-placeholder.tabletop:not([hidden]) {
+  background: #e8e8e8 !important;
+  color: #9a9a9a !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Item 3: BGG / barcode result cards on the cream Add sheet — light card, readable type.
+   Selected border #8B5E3C. IGDB .game-match rows already used this language; they stay. */
+.modal-panel .tt-upc-cand,
+.modal-panel .tt-bgg-choice {
+  background: #ffffff;
+  border: 1px solid #d9d0c3;
+  color: #2b2420;
+}
+.modal-panel .tt-upc-cand-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2b2420;
+}
+.modal-panel .tt-upc-cand-year {
+  color: #6b6158;
+  font-size: 13px;
+}
+.modal-panel .tt-bgg-choice[aria-pressed="true"],
+.modal-panel .tt-upc-cand[aria-pressed="true"] {
+  border-color: #8B5E3C;
+  border-width: 2px;
+}
+.modal-panel .tt-bgg-cover {
+  background: #f3efe7;
+  color: #6b6158;
+}
+/* Use this match: gray outline while disabled; brown once a row is picked (BGG, same as IGDB). */
+.modal-panel [data-bgg-use]:disabled,
+.modal-panel [data-bgg-use][disabled] {
+  background: transparent !important;
+  border: 1px solid #9a9088 !important;
+  color: #9a9088 !important;
+  cursor: not-allowed;
+  opacity: 1;
+}
+.modal-panel [data-bgg-use]:not(:disabled) {
+  background: #8B5E3C !important;
+  border-color: #8B5E3C !important;
+  color: #fffdf8 !important;
+}
+
+/* Item 11: Cancel lookup stays in the lookup panel, outline, smaller than the sheet Cancel.
+   Sheet Cancel / Save stay right-aligned to the 24px field inset. */
+.lookup-actions,
+.tt-upc-actions.lookup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.lookup-cancel,
+.modal-panel .lookup-cancel,
+#game-match-cancel.lookup-cancel,
+.modal-panel [data-bgg-cancel].lookup-cancel {
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 36px;
+  padding: 0.25rem 0.7rem;
+  background: transparent;
+  border: 1px solid #8a7d70;
+  color: #6b6158;
+  border-radius: var(--radius-sm);
+}
+.lookup-cancel:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+#modal .item-form .form-actions,
+#tt-form-modal .item-form .form-actions,
+.modal-panel .item-form .form-actions {
+  justify-content: flex-end !important;
+  padding-left: 24px !important;
+  padding-right: 24px !important;
+}
+
+/* Item 12: Profile rows — shared icon / label / chevron edges, 24px inset, min 52px. */
+.frm-profile {
+  /* #main already has 20px (--space-5) padding; this lands the rows on a 24px viewport inset. */
+  margin-left: calc(24px - var(--space-5));
+  margin-right: calc(24px - var(--space-5));
+}
+.frm-profile-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 88px;
+  box-sizing: border-box;
+  padding: 10px 16px;
+  text-align: left;
+}
+.frm-profile-icon {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  color: #d4d4d4;
+}
+.frm-profile-row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+.frm-profile-chevron {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  color: #9a9a9a;
+  margin-left: auto;
 }

@@ -41,9 +41,9 @@ function filterMedia(items, { shelfMode, filterType = 'all', filterStatus = 'all
 
 const CATEGORIES = ['book', 'game', 'movie', 'music', 'comic'];
 
-check('APP_VERSION is 2.3; sw cache is media-shelf-v2.3', () => {
-  assert.match(app, /const APP_VERSION = "2\.3"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.3"/);
+check('APP_VERSION is 2.4; sw cache is media-shelf-v2.4', () => {
+  assert.match(app, /const APP_VERSION = "2\.4"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.4"/);
 });
 
 check('shared isWantStatus / isLibraryStatus helpers exist and Library excludes Want in filteredItems', () => {
@@ -194,7 +194,7 @@ check('four combos: Want/Owned base × Want/Owned expansion in Library and Wishl
 check('Wishlist Owned-base Want-expansion markup: Base game label + Expansion subtype badge', () => {
   const src = fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8');
   assert.match(src, /wishOwnedBase/);
-  assert.match(src, /Base game: \$\{esc\(e\.title\)\}/);
+  assert.match(src, /Base game: \$\{esc\(tidyColon\(base\)\)\}/);
   assert.match(src, /tt-wish-base-label/);
   assert.match(src, /subtypeBadge\(x\)/);
   assert.match(css, /\.tt-wish-base-label[\s\S]*?font-size:\s*13px/);
@@ -261,7 +261,7 @@ check('countByStatus includes Tabletop Want (Lords of Hellas case) and updates w
 
 check('folded Duo close: single clearance var, 44px target, header-row inset, title ellipsis; unfolded untouched', () => {
   assert.match(css, /--frm-duo-hub-clearance:\s*60px/);
-  assert.match(css, /@media \(max-width: 400px\)/);
+  assert.match(css, /@media \(max-width: 559px\)/);
   const folded = css.slice(css.indexOf('--frm-duo-hub-clearance'));
   assert.match(folded, /\.modal-header \.btn-icon[\s\S]*?width:\s*44px/);
   assert.match(folded, /\.modal-header \.btn-icon[\s\S]*?height:\s*44px/);

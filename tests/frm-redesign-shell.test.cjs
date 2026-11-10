@@ -57,9 +57,12 @@ check('title-only cards: cover + title; clamp 2 lines; focus ring; detail keeps 
 });
 check('Tabletop cards are title-only and open detail (not the edit form)', () => {
   const tt = fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8');
-  const card = tt.slice(tt.indexOf('Title-only card'), tt.indexOf('Title-only card') + 450);
+  const card = tt.slice(tt.indexOf('function tileHtml'), tt.indexOf('function cardHtml'));
   assert.match(card, /data-tt-open/);
-  assert.doesNotMatch(card, /item-meta|item-badges|tt-kicker|tt-exp-count/);
+  // Base cards stay title-only (no meta/kicker). V2.4 expansion cards add the Expansion tag.
+  assert.doesNotMatch(card, /item-meta|tt-kicker|tt-exp-count/);
+  assert.match(card, /item-badges/);
+  assert.match(card, /subtype === "expansion"/);
   assert.match(tt, /data-tt-open[\s\S]*openDetail\(/);
   assert.match(tt, /tt-detail-edit[\s\S]*openForm/); // Edit is explicit from the detail sheet
   const i = tt.indexOf('function openDetail');
@@ -108,7 +111,7 @@ check('accessibility: 44px targets, focus, reduced motion; existing IDs preserve
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(app, /GAME_TITLE_SEARCH_TESTED = true/);
-  assert.match(app, /const APP_VERSION = "2\.3"/);
+  assert.match(app, /const APP_VERSION = "2\.4"/);
 });
 
 check('rev4: header static at narrow widths (brand/pin not fixed)', () => {
@@ -146,10 +149,11 @@ check('real-cover cards emit no caption/kicker/meta under the image (all categor
   assert.match(media, /item-title/);
   assert.doesNotMatch(media, /item-meta|item-cover-name|badge-|tt-kicker|item-notes|card-ref|Pick cover/);
   const tt = fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8');
-  const card = tt.slice(tt.indexOf('Title-only card'), tt.indexOf('Title-only card') + 500);
-  assert.match(card, /\$\{cover\(e\)\}/);
+  const card = tt.slice(tt.indexOf('function tileHtml'), tt.indexOf('function cardHtml'));
+  assert.match(card, /\$\{cover\(x\)\}/);
   assert.match(card, /item-title/);
-  assert.doesNotMatch(card, /item-meta|tt-kicker|item-badges|tt-exp-count|subtypeBadge/);
+  // No caption/kicker/meta under the cover. V2.4 may put an Expansion / Base game tag under the title.
+  assert.doesNotMatch(card, /item-meta|tt-kicker|tt-exp-count/);
   // Hidden placeholders cannot be forced visible by a bare display:flex !important rule.
   assert.doesNotMatch(css, /\.item-cover-placeholder,\s*\.item-cover-col\[data-type\][^\{]*\{[^}]*display:\s*flex\s*!important/);
   assert.match(css, /\.item-cover-placeholder\[hidden\][\s\S]*display:\s*none\s*!important/);

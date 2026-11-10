@@ -595,6 +595,8 @@
   const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   /** Creator · year · players · time; non-breaking inside "1–5 players" and "90 min". "" when all empty. */
   const NB = "\u00a0";
+  /** V2.4 display only (stored titles unchanged): " : " → ": ", no line starts with ":". */
+  const tidyColon = (s) => String(s).replace(/\s+:\s+/g, ": ").replace(/:/g, "\u2060:");
   const WJ = "\u2060"; // word joiner: no line break at the dash in "1–5"
   const metaText = (e) =>
     [e.designer, e.year, e.players && `${e.players.replace(/\s*([–-])\s*/g, `${WJ}$1${WJ}`)}${NB}players`, e.playTime && `${e.playTime}${NB}min`]
@@ -613,27 +615,29 @@
     return `<div class="item-cover-col" data-type="tabletop">${inner}</div>`;
   }
 
+  /** V2.4 card: title (3-line clamp), Expansion tag whenever the item is an expansion, and for a
+   *  Want expansion under an Owned base a tag-style "Base game:" line inside the card (2-line clamp). */
+  function tileHtml(x, baseTitle) {
+    const isExp = x.subtype === "expansion";
+    const base = baseTitle || (isExp ? x.parentTitle : "");
+    const tags = isExp
+      ? `<div class="item-badges">${subtypeBadge(x)}</div>${base ? `<p class="tt-wish-base-label" title="${esc(`Base game: ${base}`)}">Base game: ${esc(tidyColon(base))}</p>` : ""}`
+      : "";
+    return `<article class="item-card tt-card" tabindex="0" role="button" data-tt-open="${esc(x.id)}" aria-label="${esc(`Details for ${x.title}`)}">
+    ${cover(x)}
+    <div class="item-body">
+      <h3 class="item-title" title="${esc(x.title)}">${esc(tidyColon(x.title))}</h3>
+      ${tags}
+    </div>
+  </article>`;
+  }
+
   function cardHtml(g) {
     const e = g.entry;
     const exps = g.expansions || [];
-    // Wishlist: Want expansion(s) under an Owned base — plain "Base game:" label + expansion cards
-    // (Oholiab). Expansion tag reuses existing subtypeBadge → badge badge-type tabletop ("Expansion").
+    // Wishlist: Want expansion(s) under an Owned base — each its own grid card, base named inside.
     if (g.wishOwnedBase) {
-      const cards = exps
-        .map(
-          (x) => `<article class="item-card tt-card" tabindex="0" role="button" data-tt-open="${esc(x.id)}" aria-label="${esc(`Details for ${x.title}`)}">
-    ${cover(x)}
-    <div class="item-body">
-      <h3 class="item-title" title="${esc(x.title)}">${esc(x.title)}</h3>
-      <div class="item-badges">${subtypeBadge(x)}</div>
-    </div>
-  </article>`
-        )
-        .join("");
-      return `<li class="tt-group tt-group-wish-owned-base">
-  <p class="tt-wish-base-label">Base game: ${esc(e.title)}</p>
-  ${cards}
-</li>`;
+      return exps.map((x) => `<li class="tt-group tt-group-wish-owned-base">${tileHtml(x, e.title)}</li>`).join("");
     }
     const shown = exps.slice(0, VISIBLE_EXPANSIONS);
     const more = exps.length - shown.length;
@@ -641,18 +645,13 @@
       ? `<ul class="tt-exp-list" aria-label="${esc(`Expansions of ${e.title}`)}">${shown
           .map(
             (x) =>
-              `<li><button type="button" class="tt-exp-row" data-tt-open="${esc(x.id)}" aria-label="${esc(`${x.title}, expansion, ${STATUS_LABELS[x.status]}`)}"><span class="tt-exp-title">${esc(x.title)}</span>${statusBadge(x)}</button></li>`
+              `<li><button type="button" class="tt-exp-row" data-tt-open="${esc(x.id)}" aria-label="${esc(`${x.title}, expansion, ${STATUS_LABELS[x.status]}`)}"><span class="tt-exp-title">${esc(tidyColon(x.title))}</span>${statusBadge(x)}</button></li>`
           )
           .join("")}${more > 0 ? `<li><button type="button" class="tt-exp-more" data-tt-open="${esc(e.id)}">+ ${more} more</button></li>` : ""}</ul>`
       : "";
-    // Title-only card; detail (openDetail) keeps subtype, status, meta, notes, expansions.
+    // Lone expansion (orphan): no base found, still tagged Expansion; Base game line omitted.
     return `<li class="tt-group">
-  <article class="item-card tt-card" tabindex="0" role="button" data-tt-open="${esc(e.id)}" aria-label="${esc(`Details for ${e.title}`)}">
-    ${cover(e)}
-    <div class="item-body">
-      <h3 class="item-title" title="${esc(e.title)}">${esc(e.title)}</h3>
-    </div>
-  </article>${expList}
+  ${tileHtml(e, "")}${expList}
 </li>`;
   }
 
@@ -672,7 +671,14 @@
     );
     $("#tabletop-list").innerHTML = groups.map(cardHtml).join("");
     const empty = $("#tabletop-empty");
-    empty.hidden = groups.length > 0;
+    // V2.4 Wishlist + All: Tabletop wants sit under the media wants; the media list owns the empty line.
+    const combined = Boolean(host.combined && host.combined());
+    empty.hidden = groups.length > 0 || combined;
+    if (combined) {
+      const view = $("#tabletop-view");
+      if (view) view.hidden = groups.length === 0;
+      return;
+    }
     if (!groups.length) {
       const filtered = entries.length > 0;
       const ownedHere = entries.some((e) => e.status !== "want");
@@ -1173,7 +1179,7 @@
         }
         const c = state.candidate;
         const image = c.coverUrl ? `<img src="${esc(c.coverUrl)}" alt="" referrerpolicy="no-referrer" />` : `<span aria-hidden="true">No cover</span>`;
-        panel.innerHTML = `<p class="field-hint">Choose this result, then use it to fill the game details.</p><button type="button" class="tt-upc-cand tt-bgg-choice" data-bgg-pick="1" aria-pressed="${state.selected}"><span class="tt-bgg-cover">${image}</span><span class="tt-upc-cand-text"><span class="tt-upc-cand-name">${esc(c.title)}</span><span class="tt-upc-cand-year">BGG id ${esc(c.bggId)}${c.bggType === "boardgameexpansion" ? " · Expansion" : c.bggType === "rpgitem" ? " · RPG" : ""}${c.year ? ` · ${esc(c.year)}` : ""}</span></span></button><div class="tt-upc-actions"><button type="button" class="btn btn-outline" data-bgg-cancel="1">Cancel lookup</button><button type="button" class="btn btn-primary" data-bgg-use="1"${state.selected ? "" : " disabled"}>Use this match</button></div>${bggLogo()}`;
+        panel.innerHTML = `<p class="field-hint">Choose this result, then use it to fill the game details.</p><button type="button" class="tt-upc-cand tt-bgg-choice" data-bgg-pick="1" aria-pressed="${state.selected}"><span class="tt-bgg-cover">${image}</span><span class="tt-upc-cand-text"><span class="tt-upc-cand-name">${esc(c.title)}</span><span class="tt-upc-cand-year">BGG id ${esc(c.bggId)}${c.bggType === "boardgameexpansion" ? " · Expansion" : c.bggType === "rpgitem" ? " · RPG" : ""}${c.year ? ` · ${esc(c.year)}` : ""}</span></span></button><div class="tt-upc-actions lookup-actions"><button type="button" class="btn btn-outline btn-sm lookup-cancel" data-bgg-cancel="1">Cancel lookup</button><button type="button" class="btn btn-primary" data-bgg-use="1"${state.selected ? "" : " disabled"}>Use this match</button></div>${bggLogo()}`;
         panel.querySelector(".tt-bgg-cover img")?.addEventListener("error", (ev) => {
           const placeholder = document.createElement("span"); placeholder.textContent = "No cover"; placeholder.setAttribute("aria-hidden", "true"); ev.target.replaceWith(placeholder);
         }, { once: true });
@@ -1238,7 +1244,7 @@
     load();
     const e = entries.find((x) => x.id === id);
     if (!e) return;
-    F("tt-detail-title").textContent = e.title;
+    F("tt-detail-title").textContent = tidyColon(e.title);
     const rows = [];
     const ml = metaLine(e);
     const head = `<div class="tt-detail-badges">${subtypeBadge(e)}${statusBadge(e)}</div>${ml || ""}`;

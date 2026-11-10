@@ -41,7 +41,7 @@ check('TT host receives wishlist flag', () => {
 
 check('GAME_TITLE_SEARCH_TESTED remains true (Micah gate; untouched)', () => {
   assert.match(app, /const GAME_TITLE_SEARCH_TESTED = true/);
-  assert.match(app, /const APP_VERSION = "2\.3"/);
+  assert.match(app, /const APP_VERSION = "2\.4"/);
 });
 
 console.log(`${passed}/${passed} passed (wishlist + profile wiring)`);
