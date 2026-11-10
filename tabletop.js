@@ -621,7 +621,7 @@
     const isExp = x.subtype === "expansion";
     const base = baseTitle || (isExp ? x.parentTitle : "");
     const tags = isExp
-      ? `<div class="item-badges">${subtypeBadge(x)}</div>${base ? `<p class="tt-wish-base-label" title="${esc(`Base game: ${base}`)}">Base game: ${esc(tidyColon(base))}</p>` : ""}`
+      ? `<div class="item-badges">${subtypeBadge(x)}</div>${base ? `<p class="tt-wish-base-label" title="${esc(`Base game: ${base}`)}"><span class="tt-wish-base-label-text">Base game: ${esc(tidyColon(base))}</span></p>` : ""}`
       : "";
     return `<article class="item-card tt-card" tabindex="0" role="button" data-tt-open="${esc(x.id)}" aria-label="${esc(`Details for ${x.title}`)}">
     ${cover(x)}
@@ -755,7 +755,8 @@
     F("tt-parent-bgg-row").hidden = !isExp;
   }
 
-  function openForm(entry, prefill) {
+  function openForm(entry, prefill, opts) {
+    const focusField = !opts || opts.focusField !== false;
     load();
     const e = entry || normalize({ ...(prefill || {}), id: "" });
     pendingDup = null;
@@ -782,7 +783,13 @@
     syncExpansionRows();
     closeModal("tt-detail-modal");
     openModal("tt-form-modal");
-    F("tt-title").focus();
+    // Type-change swap must not autofocus a field (that pops then dismisses the keyboard).
+    // Direct Add / Edit still focus Title. The close button is not a field.
+    if (focusField) F("tt-title").focus();
+    else {
+      const closeBtn = document.querySelector('#tt-form-modal .modal-header .btn-icon');
+      if (closeBtn) closeBtn.focus({ preventScroll: true });
+    }
   }
 
   function readForm() {
@@ -1490,7 +1497,7 @@
      *  Title and Barcode. `returnTo` gets focus back when this sheet closes (the media sheet's opener). */
     openAddFrom({ title = "", barcode = "" } = {}, returnTo) {
       if (returnTo) returnFocus = returnTo;
-      openForm(null, { title });
+      openForm(null, { title }, { focusField: false });
       F("tt-barcode").value = barcode;
     },
     count: () => load().length,

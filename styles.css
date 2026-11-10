@@ -3420,11 +3420,9 @@ body.modal-open {
   gap: 0 var(--space-3);
 }
 
-@media (max-width: 359px) {
-  .tt-two {
-    grid-template-columns: 1fr;
-  }
-}
+/* V2.6: do not stack every tabletop pair at 359px. Under 400px only the
+   Players / Play time pair stacks (see .tt-stack-under-400). Other pairs
+   shrink safely via minmax(0, 1fr). */
 
 .tt-lookup-row .btn {
   min-height: var(--tap);
@@ -5255,8 +5253,7 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
   min-height: calc(1.3em * 3);
 }
 #item-detail-title,
-#tt-detail-title,
-.modal-header h2 {
+#tt-detail-title {
   -webkit-line-clamp: unset;
   line-clamp: none;
   display: block;
@@ -5265,15 +5262,12 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
 }
 
 /* Items 4 + 8: Base game line lives inside the card, under the Expansion tag, as a tag-style
-   chip. 2-line clamp; full name is in the detail sheet. */
+   chip. The 2-line clamp is on the inner text span (V2.6) so the chip keeps its padding.
+   Full name is in the detail sheet. */
 .item-card .item-body .item-badges + .tt-wish-base-label,
 .item-card .tt-wish-base-label {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: inline-block;
+  overflow: visible;
   margin: 0;
   max-width: 100%;
   padding: var(--space-1) var(--space-2);
@@ -5287,6 +5281,14 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
   white-space: normal;
   text-transform: none;
   box-sizing: border-box;
+}
+.item-card .tt-wish-base-label .tt-wish-base-label-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* In-card label sits on the white card body — keep the magenta chip, not the dark-shelf #b5aa9c. */
 .item-card .tt-wish-base-label,
@@ -5477,4 +5479,113 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
   #item-list:not([hidden]):has(+ #tabletop-view:not([hidden])) {
     padding-bottom: 16px !important;
   }
+}
+
+
+/* ========== V2.6 (Oholiab / Micah folded-Duo review) ========== */
+
+/* Item 1: keep equal-height rows (align-items:stretch from V2.4) but do not let a card
+   shrink below its content or clip the Base game tag. Cover boxes already clip the image
+   with overflow:hidden and the 14px top radius; the body gets the matching bottom radius
+   so the white card still rounds without overflow:hidden on the card itself. */
+.item-list,
+.tt-list {
+  align-items: stretch;
+}
+.item-list > li,
+.tt-list > li.tt-group {
+  min-height: auto;
+  align-self: stretch;
+}
+.item-card,
+.item-card.tt-card {
+  overflow: visible;
+  height: auto;
+  min-height: 100%;
+}
+.item-card .item-body {
+  overflow: visible;
+  height: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  border-radius: 0 0 14px 14px;
+}
+
+/* Item 2: Tabletop Add sheet must never exceed the viewport. Two-column rows use
+   minmax(0, 1fr) so intrinsic input min-content width cannot blow the grid. */
+#tt-form-modal,
+#tt-form-modal > .modal-panel {
+  max-width: 100vw;
+  box-sizing: border-box;
+}
+#tt-form-modal > .modal-panel {
+  width: 100%;
+  min-width: 0;
+}
+#tt-form {
+  min-width: 0;
+  max-width: 100%;
+}
+.tt-two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+.tt-two > .form-row,
+#tt-form .form-grid > .form-row {
+  min-width: 0;
+}
+#tt-form input,
+#tt-form select,
+#tt-form textarea,
+.tt-two input,
+.tt-two select,
+.tt-two textarea {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+/* Flex rows in the tabletop panel (BGG id + lookup, lookup result): children can shrink. */
+#tt-form .tt-bgg-id-lookup,
+#tt-form .tt-lookup-row,
+#tt-form .tt-upc-panel,
+#tt-form .tt-upc-cand,
+#tt-form .tt-bgg-choice,
+#tt-form .lookup-actions,
+#tt-form .tt-upc-actions {
+  min-width: 0;
+  max-width: 100%;
+}
+#tt-form .tt-bgg-id-lookup > *,
+#tt-form .tt-lookup-row > *,
+#tt-form .tt-upc-panel > *,
+#tt-form .tt-upc-cand > *,
+#tt-form .tt-bgg-choice > *,
+#tt-form .lookup-actions > *,
+#tt-form .tt-upc-actions > *,
+#tt-form .tt-upc-cand-text {
+  min-width: 0;
+}
+/* Under 400px, stack the Players / Play time pair so the long label stays legible.
+   Other two-column pairs keep two columns. Use 399px so this is not a 400px query
+   (hub clearance must stay at 559px, not 400). */
+@media (max-width: 399px) {
+  .tt-two > .tt-stack-under-400 {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Item 2: "Add tabletop game" (and the media Add title) ellipsize; the X stays in its
+   hub-clear position. Re-asserted here because a V2.4 unclamp had also targeted every
+   .modal-header h2 and undid the folded ellipsis. */
+#tt-form-title,
+#modal-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#tt-form-modal .modal-header .btn-icon,
+#modal .modal-header .btn-icon {
+  flex: 0 0 auto;
 }

@@ -18,9 +18,9 @@ const check = (n, fn) => { fn(); passed++; console.log('PASS', n); };
 
 const tidyColon = (s) => String(s).replace(/\s+:\s+/g, ': ').replace(/:/g, '\u2060:');
 
-check('APP_VERSION is 2.5; sw cache is media-shelf-v2.5', () => {
-  assert.match(app, /const APP_VERSION = "2\.5"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.5"/);
+check('APP_VERSION is 2.6; sw cache is media-shelf-v2.6', () => {
+  assert.match(app, /const APP_VERSION = "2\.6"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.6"/);
 });
 
 check('item 1+10: hub clearance media query is max-width 559px; X inset is 24px + 60px; unfolded rules stay outside it', () => {
@@ -158,7 +158,8 @@ check('item 4+8+9: in-card Base game tag under Expansion; 2-line clamp; orphans 
   assert.match(ttSrc, /subtype === "expansion"/);
   assert.match(ttSrc, /tt-wish-base-label/);
   assert.match(ttSrc, /parentTitle/);
-  assert.match(css, /\.item-card \.tt-wish-base-label[\s\S]*?-webkit-line-clamp:\s*2/);
+  assert.match(css, /\.tt-wish-base-label-text[\s\S]*?-webkit-line-clamp:\s*2/);
+  assert.match(ttSrc, /tt-wish-base-label-text/);
   assert.match(css, /\.item-card \.tt-wish-base-label[\s\S]*?border-radius:\s*4px/);
   assert.match(css, /\.item-card \.tt-wish-base-label[\s\S]*?font-weight:\s*var\(--fw-semibold\)/);
   assert.match(css, /\.item-list,\s*\.tt-list\s*\{\s*align-items:\s*stretch/);
