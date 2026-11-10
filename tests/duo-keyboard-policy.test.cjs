@@ -85,7 +85,7 @@ const cssDelta = require('node:child_process').execFileSync('git', ['diff', '65d
 ck('no scrollbar or caret suppression introduced', !/^\+[^+].*(?:scrollbar-width\s*:\s*none|caret-color\s*:\s*transparent|::-webkit-scrollbar)/m.test(cssDelta));
 ck('missing barcode guidance keeps copy but becomes neutral',source.includes('setLookupStatus("Enter a barcode to look up this copy. Title is needed only when you save.", "note")'));
 ck('title search independent switch present (on in local candidate)',source.includes('const GAME_TITLE_SEARCH_TESTED = true;'));
-ck('V2.4 release and relay origin unchanged',source.includes('const APP_VERSION = "2.4";')&&source.includes('const GAME_RELAY_URL = "https://media-shelf-games.freerangeice.workers.dev";'));
+ck('V2.5 release and relay origin unchanged',source.includes('const APP_VERSION = "2.5";')&&source.includes('const GAME_RELAY_URL = "https://media-shelf-games.freerangeice.workers.dev";'));
 // Execute the actual early game-lookup branch: a typed title is not a barcode error.
 {
   const begin=source.indexOf('  async function runGameLookup(byTitle) {');

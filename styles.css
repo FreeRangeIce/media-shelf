@@ -4574,8 +4574,8 @@ body.frm-search-focus .filters-row .search {
   min-height: 0 !important;
   border-radius: 0 !important;
   border: none !important;
-  background: #e8e8e8 !important;
-  color: #9a9a9a !important;
+  background: #0d0d0d !important;
+  color: #b5aa9c !important;
   display: flex !important;
   align-items: center;
   justify-content: center;
@@ -4753,8 +4753,8 @@ body.frm-search-focus .filters-row .search {
   display: flex !important;
   width: 100% !important;
   height: 100% !important;
-  background: #e8e8e8 !important;
-  color: #9a9a9a !important; /* lighter: empty frame, not a button */
+  background: #0d0d0d !important;
+  color: #b5aa9c !important; /* muted label on a dark empty frame */
   font-size: 0.62rem !important;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -5328,13 +5328,13 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
   object-position: center;
   background: transparent !important;
 }
-/* No-cover tile and failed-image fallback keep the existing light-grey fill so the
-   type label stays readable; they still fill the box (no layout shift). */
+/* V2.5 item A: no-cover and failed-image tiles fill the same box (no layout shift)
+   with a dark fill and a muted label, so they sit with the #000 letterbox. */
 .item-cover-placeholder:not([hidden]),
 .item-cover-col[data-type] .item-cover-placeholder:not([hidden]),
 .item-cover-placeholder.tabletop:not([hidden]) {
-  background: #e8e8e8 !important;
-  color: #9a9a9a !important;
+  background: #0d0d0d !important;
+  color: #b5aa9c !important;
   width: 100% !important;
   height: 100% !important;
 }
@@ -5453,4 +5453,28 @@ body.frm-profile-open .frm-profile { margin-top: 0.75rem; }
   height: 16px;
   color: #9a9a9a;
   margin-left: auto;
+}
+
+
+/* ========== V2.5 (Oholiab / Micah folded-Duo review) ========== */
+/* Item A colors are on .item-cover-placeholder above (#0d0d0d / #b5aa9c). */
+
+/* Item B: Wishlist + All stacks #item-list above #tabletop-view. Both lists
+   inherit a nav-clearance padding-bottom (64px + 12px = 76px) meant to clear
+   the bottom nav at the end of a lone list. That padding on #item-list opened
+   a 76px hole between the last media row and the first tabletop row. The grid
+   row-gap is 12px below 560px, 14px at 560px, and 16px at 900px. When the
+   tabletop view follows a visible media list, use that row-gap instead. */
+#item-list:not([hidden]):has(+ #tabletop-view:not([hidden])) {
+  padding-bottom: 12px !important;
+}
+@media (min-width: 560px) {
+  #item-list:not([hidden]):has(+ #tabletop-view:not([hidden])) {
+    padding-bottom: 14px !important;
+  }
+}
+@media (min-width: 900px) {
+  #item-list:not([hidden]):has(+ #tabletop-view:not([hidden])) {
+    padding-bottom: 16px !important;
+  }
 }

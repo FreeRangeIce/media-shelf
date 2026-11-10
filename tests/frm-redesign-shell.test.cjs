@@ -41,7 +41,7 @@ check('uniform pills: first/last-of-type phone segmented overrides defeated; act
 check('2:3 cover frame; placeholder fills frame (not a tiny dark box)', () => {
   assert.match(css, /\.item-cover-col[\s\S]*aspect-ratio:\s*2\s*\/\s*3/);
   assert.match(css, /\.item-cover-placeholder[\s\S]*width:\s*100%\s*!important[\s\S]*height:\s*100%\s*!important/);
-  assert.match(css, /\.item-cover-placeholder[\s\S]*background:\s*#e8e8e8/);
+  assert.match(css, /\.item-cover-placeholder[\s\S]*background:\s*#0d0d0d/);
   assert.match(css, /\.item-cover[\s\S]*object-fit:\s*contain/);
 });
 check('title-only cards: cover + title; clamp 2 lines; focus ring; detail keeps fields', () => {
@@ -111,7 +111,7 @@ check('accessibility: 44px targets, focus, reduced motion; existing IDs preserve
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(app, /GAME_TITLE_SEARCH_TESTED = true/);
-  assert.match(app, /const APP_VERSION = "2\.4"/);
+  assert.match(app, /const APP_VERSION = "2\.5"/);
 });
 
 check('rev4: header static at narrow widths (brand/pin not fixed)', () => {

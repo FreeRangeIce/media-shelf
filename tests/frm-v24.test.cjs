@@ -18,9 +18,9 @@ const check = (n, fn) => { fn(); passed++; console.log('PASS', n); };
 
 const tidyColon = (s) => String(s).replace(/\s+:\s+/g, ': ').replace(/:/g, '\u2060:');
 
-check('APP_VERSION is 2.4; sw cache is media-shelf-v2.4', () => {
-  assert.match(app, /const APP_VERSION = "2\.4"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.4"/);
+check('APP_VERSION is 2.5; sw cache is media-shelf-v2.5', () => {
+  assert.match(app, /const APP_VERSION = "2\.5"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.5"/);
 });
 
 check('item 1+10: hub clearance media query is max-width 559px; X inset is 24px + 60px; unfolded rules stay outside it', () => {
@@ -211,8 +211,8 @@ check('item 13: fixed cover boxes, 1:1 default (2:3 books/comics), contain, blac
   assert.match(css, /\.item-card \.item-cover[\s\S]*?object-fit:\s*contain/);
   assert.match(css, /\.item-card \.item-cover-col[\s\S]*?background:\s*#000000/);
   assert.match(css, /\.item-card \.item-cover-col[\s\S]*?border-radius:\s*14px 14px 0 0/);
-  // No-cover tile keeps the light-grey fill so the type label stays readable on black boxes
-  assert.match(css, /\.item-cover-placeholder:not\(\[hidden\]\)[\s\S]*?background:\s*#e8e8e8/);
+  // No-cover tile is dark with a muted label (V2.5)
+  assert.match(css, /\.item-cover-placeholder:not\(\[hidden\]\)[\s\S]*?background:\s*#0d0d0d/);
   assert.match(css, /\.item-card\s*\{[^}]*background:\s*#ffffff/s);
 });
 
