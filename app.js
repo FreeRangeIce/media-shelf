@@ -5952,7 +5952,7 @@
     }
   }
 
-  let gameBusy = false, gameSeq = 0, gameAbort = null, gameCandidates = [], gamePick = null;
+  let gameBusy = false, gameSeq = 0, gameAbort = null, gameCandidates = [], gamePick = null, gameFromBarcode = false;
   const gameCooldowns = new Map();
   function usableGameTitle(value) {
     const s = typeof value === "string" ? value.normalize("NFKC").replace(/\s+/g, " ").trim() : "";
@@ -5969,7 +5969,7 @@
   function resetGameLookup() {
     gameSeq++;
     if (gameAbort) gameAbort.abort();
-    gameAbort = null; gameBusy = false; gameCandidates = []; gamePick = null;
+    gameAbort = null; gameBusy = false; gameCandidates = []; gamePick = null; gameFromBarcode = false;
     const panel = $("#game-match-picker");
     if (panel) { panel.hidden = true; panel.innerHTML = ""; }
     if (els.btnLookup && !lookupBusy) els.btnLookup.disabled = false;
@@ -6032,27 +6032,46 @@
         coverUrl: /^https:\/\/images\.igdb\.com\/igdb\/image\/upload\/t_cover_big\/[A-Za-z0-9_-]+\.jpg$/.test(c.coverUrl || "") ? c.coverUrl : "", coverSource: "igdb", coverSourceId: String(c.igdbId)
       }));
       if (!gameCandidates.length) { setLookupStatus("No IGDB match. What you typed is kept; enter the details yourself.", "error"); return; }
-      const panel = $("#game-match-picker"); panel.hidden = false;
-      const selectedPlat = els.fieldPlatform.value;
-      const anySelectable = gameCandidates.some(c => gamePlatformMatches(c.platforms, selectedPlat));
-      const noneNote = !anySelectable && selectedPlat
-        ? `<p class="game-match-platform-note">None of these are listed for ${escapeHtml(selectedPlat)}. Change the platform or clear it to see them.</p>`
-        : "";
-      panel.innerHTML = `<h3 id="game-match-heading" tabindex="-1">Choose your game</h3><p class="field-hint">Check the title, year and platform. Nothing is saved until you press Save.</p>${noneNote}<div class="game-match-list">${gameCandidates.map((c, i) => {
-        const matches = gamePlatformMatches(c.platforms, selectedPlat);
-        const reason = !matches && selectedPlat ? `<span class="game-match-reason">Not listed for ${escapeHtml(selectedPlat)}.</span>` : "";
-        return `<button type="button" class="game-match" data-game-pick="${i}" aria-pressed="false" ${matches ? "" : "disabled"}><span class="game-match-cover">${c.coverUrl ? `<img src="${escapeHtml(c.coverUrl)}" alt="" width="64" height="96" onerror="this.hidden=true;this.nextElementSibling.hidden=false" />` : ""}<span class="game-match-no-cover" ${c.coverUrl ? "hidden" : ""} aria-hidden="true">VIDEO GAME</span></span><span class="game-match-text"><span class="game-match-name">${escapeHtml(c.title)}</span>${reason}<span class="game-match-meta">${c.year || "Year unknown"} · ${escapeHtml(c.platforms.join(", ") || "Platform unknown")}</span></span></button>`;
-      }).join("")}</div><div class="lookup-actions"><button type="button" class="btn btn-outline btn-sm lookup-cancel" id="game-match-cancel">Cancel lookup</button><button type="button" class="btn btn-primary" id="game-match-use" disabled>Use this match</button></div>`;
-      $("#game-match-heading").focus();
-      setLookupStatus(!anySelectable && selectedPlat
-        ? `None of these are listed for ${selectedPlat}. Change the platform or clear it to see them.`
-        : "Choose a match before filling the form. What you typed is kept.");
+      gameFromBarcode = !byTitle;
+      renderGameMatchList();
     } catch (e) {
       if (seq === gameSeq) setLookupStatus(signal.aborted ? "Game lookup timed out. Try again, or enter the details yourself. What you typed is kept." : e.message || "Game lookup couldn’t finish. What you typed is kept.", "error");
     } finally {
       clearTimeout(timer);
       if (seq === gameSeq) { gameBusy = false; gameAbort = null; els.btnLookup.disabled = false; $("#btn-game-title-lookup").disabled = false; }
     }
+  }
+
+  /** The IGDB candidate list (unchanged markup); also where "Pick another" returns to. */
+  function renderGameMatchList() {
+    gamePick = null;
+    const panel = $("#game-match-picker"); panel.hidden = false;
+    const selectedPlat = els.fieldPlatform.value;
+    const anySelectable = gameCandidates.some(c => gamePlatformMatches(c.platforms, selectedPlat));
+    const noneNote = !anySelectable && selectedPlat
+      ? `<p class="game-match-platform-note">None of these are listed for ${escapeHtml(selectedPlat)}. Change the platform or clear it to see them.</p>`
+      : "";
+    panel.innerHTML = `<h3 id="game-match-heading" tabindex="-1">Choose your game</h3><p class="field-hint">Check the title, year and platform. Nothing is saved until you press Save.</p>${noneNote}<div class="game-match-list">${gameCandidates.map((c, i) => {
+      const matches = gamePlatformMatches(c.platforms, selectedPlat);
+      const reason = !matches && selectedPlat ? `<span class="game-match-reason">Not listed for ${escapeHtml(selectedPlat)}.</span>` : "";
+      return `<button type="button" class="game-match" data-game-pick="${i}" aria-pressed="false" ${matches ? "" : "disabled"}><span class="game-match-cover">${c.coverUrl ? `<img src="${escapeHtml(c.coverUrl)}" alt="" width="64" height="96" onerror="this.hidden=true;this.nextElementSibling.hidden=false" />` : ""}<span class="game-match-no-cover" ${c.coverUrl ? "hidden" : ""} aria-hidden="true">VIDEO GAME</span></span><span class="game-match-text"><span class="game-match-name">${escapeHtml(c.title)}</span>${reason}<span class="game-match-meta">${c.year || "Year unknown"} · ${escapeHtml(c.platforms.join(", ") || "Platform unknown")}</span></span></button>`;
+    }).join("")}</div><div class="lookup-actions"><button type="button" class="btn btn-outline btn-sm lookup-cancel" id="game-match-cancel">Cancel lookup</button><button type="button" class="btn btn-primary" id="game-match-use" disabled>Use this match</button></div>`;
+    $("#game-match-heading").focus();
+    setLookupStatus(!anySelectable && selectedPlat
+      ? `None of these are listed for ${selectedPlat}. Change the platform or clear it to see them.`
+      : "Choose a match before filling the form. What you typed is kept.");
+  }
+
+  /** V2.12: a barcode (scan or typed) match listed on several platforms asks once which copy this is. */
+  function gameNeedsPlatformConfirm(candidate) {
+    return gameFromBarcode && Boolean(els.fieldPlatform.value) && els.fieldPlatform.value !== "Other" && (candidate.platforms || []).length > 1;
+  }
+  function renderGamePlatformConfirm(candidate) {
+    const panel = $("#game-match-picker");
+    // NEW COPY (Oholiab)
+    panel.innerHTML = `<div class="game-confirm"><h3 id="game-match-heading" class="game-confirm-q" tabindex="-1">${escapeHtml(candidate.title)} came out on several platforms. Is this the ${escapeHtml(els.fieldPlatform.value)} copy?</h3><div class="game-confirm-actions"><button type="button" class="btn btn-primary game-confirm-yes" id="game-confirm-yes">Yes, add it</button><button type="button" class="btn btn-outline game-confirm-other" id="game-confirm-other">Pick another</button></div></div>`;
+    $("#game-match-heading").focus();
+    setLookupStatus("Confirm the platform before filling the form. What you typed is kept.");
   }
 
   async function runLookup() {
@@ -6797,9 +6816,19 @@
       if (e.target.closest("#game-match-cancel")) { resetGameLookup(); setLookupStatus("Match selection cancelled. What you typed is kept."); return; }
       if (e.target.closest("#game-match-use") && gamePick) {
         const candidate = gamePick;
+        if (gameNeedsPlatformConfirm(candidate)) { renderGamePlatformConfirm(candidate); return; }
         resetGameLookup();
         commitLookup(candidate, "Details from IGDB.com filled in. Check them, then save.");
+        return;
       }
+      if (e.target.closest("#game-confirm-yes") && gamePick) {
+        // Same as Use: fill from the match; the platform field (the copy you chose) is not touched.
+        const candidate = gamePick;
+        resetGameLookup();
+        commitLookup(candidate, "Details from IGDB.com filled in. Check them, then save.");
+        return;
+      }
+      if (e.target.closest("#game-confirm-other")) { renderGameMatchList(); return; }
     });
     els.btnLookup.addEventListener("click", () => runLookup());
     els.btnScan.addEventListener("click", () => openScanModal("media"));
