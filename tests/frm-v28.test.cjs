@@ -13,9 +13,9 @@ let passed = 0;
 function check(name, fn) { fn(); passed++; console.log('PASS ' + name); }
 assert.ok(v28.length > 200, 'V2.8 CSS block missing');
 
-check('APP_VERSION 2.9 and cache media-shelf-v2.9, no suffixes', () => {
-  assert.match(app, /const APP_VERSION = "2\.9";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.9";/);
+check('APP_VERSION 2.10 and cache media-shelf-v2.10, no suffixes', () => {
+  assert.match(app, /const APP_VERSION = "2\.10";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.10";/);
 });
 check('item 1: grid card markup has no Base game pill; detail sheet keeps Base game', () => {
   const tile = tt.slice(tt.indexOf('function tileHtml'), tt.indexOf('function cardHtml'));
@@ -217,8 +217,12 @@ check('follow-up 9: expansion pill samples dominant cover hue; stores result; fa
   // Near-black / grey / near-white pixels are ignored → no sample
   const grey = new Uint8ClampedArray([12, 12, 12, 255, 250, 250, 250, 255, 128, 128, 128, 255, 20, 20, 20, 255]);
   assert.equal(T.dominantHueFromPixels(grey, 2, 2), null);
-  // Too-dark fill falls back
-  assert.equal(T.pillColorsFromRgb([8, 8, 20]), null);
+  // V2.10: a dark but usable fill is kept and darkened until white text is 4.5:1,
+  // instead of falling back to pink. Near-gray / near-black covers still have no sample.
+  const dark = T.pillColorsFromRgb([8, 8, 20]);
+  assert.ok(dark && dark.fill && dark.text === '#ffffff');
+  const darkRgb = dark.fill.slice(1).match(/../g).map((h) => parseInt(h, 16));
+  assert.ok(T.contrastRatioRgb(darkRgb, [255, 255, 255]) >= 4.5);
   const stored = T.sanitizeExpPill({ forCover: '/dev/x.svg', fill: '#146354', text: '#ffffff' });
   assert.deepEqual(stored, { forCover: '/dev/x.svg', fill: '#146354', text: '#ffffff' });
   assert.deepEqual(T.sanitizeExpPill({ forCover: '', fallback: true }), { forCover: '', fallback: true });

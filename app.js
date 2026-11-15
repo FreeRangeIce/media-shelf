@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6, 2.7…; bump APP_VERSION and
-  // the service worker cache name together (media-shelf-v2.9) so the Duo drops old files.
-  const APP_VERSION = "2.9";
+  // the service worker cache name together (media-shelf-v2.10) so the Duo drops old files.
+  const APP_VERSION = "2.10";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -2457,7 +2457,7 @@
    * this build (GameCube, Steam, Switch 2, PC, Other).
    */
   const PLATFORM_BADGES = {
-    Steam: { file: "", abbr: "Steam", label: "Steam" },
+    Steam: { file: "", abbr: "STM", label: "Steam" },
     PSN: { file: "playstation.svg", label: "PlayStation" },
     "PS1": { file: "playstation.svg", label: "PlayStation 1" },
     "PS2": { file: "playstation.svg", label: "PlayStation 2" },
@@ -2477,18 +2477,126 @@
     Other: { file: "", abbr: "OTH", label: "Other" },
   };
 
+  /**
+   * Display-time only: map a stored platform name to a PLATFORM_BADGES key.
+   * Never writes back to the item or to backups. Matching is case-insensitive
+   * and ignores punctuation. More specific names are checked first (Switch 2
+   * before Switch, Wii U before Wii). PSP and PS Vita are not PlayStation marks.
+   */
+  function badgePlatformKey(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "";
+    if (Object.prototype.hasOwnProperty.call(PLATFORM_BADGES, raw)) return raw;
+
+    const lower = raw.toLowerCase().replace(/\s+/g, " ").trim();
+    for (const key of Object.keys(PLATFORM_BADGES)) {
+      if (key.toLowerCase() === lower) return key;
+    }
+
+    const compact = lower.replace(/[^a-z0-9]+/g, "");
+    if (!compact) return "";
+
+    // Multi-platform strings ("PS5, Switch") stay text, except Series X|S.
+    if (/[/,]/.test(raw) && !/series\s*x\s*[|/]\s*s/i.test(raw) && !/^series\s*x/i.test(raw)) {
+      return "";
+    }
+
+    // Switch 2 / Nintendo Switch 2 / NS2, before the general Switch rule.
+    if (
+      compact === "ns2" ||
+      compact === "switch2" ||
+      compact === "nintendoswitch2" ||
+      /(^|\s)((nintendo\s*)?switch\s*2|ns2)(\s|$)/.test(lower)
+    ) {
+      return "Switch 2";
+    }
+
+    // Wii U before Wii.
+    if (compact === "wiiu" || /(^|\s)wii\s*u(\s|$)/.test(lower)) return "Wii U";
+
+    // PSP / PS Vita: text badge, not the PlayStation logo (not in the table).
+    if (
+      compact === "psp" ||
+      compact === "playstationportable" ||
+      compact === "vita" ||
+      compact === "psvita" ||
+      compact === "playstationvita" ||
+      /(^|\s)(psp|ps\s*vita|playstation\s*vita|playstation\s*portable|vita)(\s|$)/.test(lower)
+    ) {
+      return "";
+    }
+
+    // PlayStation family: PSN, PS1–PS5, PlayStation, PlayStation 5, …
+    const psGen = compact.match(/^playstation([1-5])$/) || compact.match(/^ps([1-5])$/);
+    if (
+      compact === "psn" ||
+      compact === "playstation" ||
+      compact === "playstationnetwork" ||
+      psGen ||
+      /playstation/.test(lower) ||
+      /(^|\s)psn(\s|$)/.test(lower) ||
+      /(^|\s)ps\s*[1-5](\s|$)/.test(lower)
+    ) {
+      if (psGen) return "PS" + psGen[1];
+      return "PSN";
+    }
+
+    // Xbox family, including 360.
+    if (
+      /xbox/.test(lower) ||
+      compact === "360" ||
+      compact === "xsx" ||
+      compact === "xss" ||
+      compact === "seriesxs" ||
+      compact === "seriesx" ||
+      compact === "seriess" ||
+      /series\s*x/.test(lower)
+    ) {
+      if (compact === "360" || /360/.test(lower)) return "Xbox 360";
+      if (/one/.test(lower)) return "Xbox One";
+      if (
+        /series/.test(lower) ||
+        compact === "xsx" ||
+        compact === "xss" ||
+        compact === "seriesxs" ||
+        compact === "seriesx" ||
+        compact === "seriess"
+      ) {
+        return "Series X|S";
+      }
+      return "Xbox";
+    }
+
+    // Switch (Switch 2 already returned).
+    if (/switch/.test(lower) || compact === "nsw") return "Switch";
+
+    // Wii (Wii U already returned).
+    if (compact === "wii" || /(^|\s)wii(\s|$)/.test(lower)) return "Wii";
+
+    if (compact === "gcn" || compact === "gamecube" || /game\s*cube/.test(lower) || compact.includes("gamecube")) {
+      return "GameCube";
+    }
+    if (compact === "steam" || compact === "stm") return "Steam";
+    if (compact === "pc") return "PC";
+    if (compact === "other" || compact === "oth") return "Other";
+    return "";
+  }
+
   function platformBadgeMarkup(item) {
     if (!item || item.type !== "game") return "";
     const raw = String(item.platform || "").trim();
     if (!raw) return "";
-    const meta = PLATFORM_BADGES[raw] || PLATFORM_BADGES[normalizePlatform(raw)] || null;
+    const key = badgePlatformKey(raw);
+    const meta = (key && PLATFORM_BADGES[key]) || null;
     if (!meta) {
-      const abbr = escapeHtml(raw.slice(0, 4).toUpperCase());
+      const abbr = escapeHtml(raw.slice(0, 3).toUpperCase());
       return `<span class="platform-badge platform-badge-text" title="${escapeHtml(raw)}">${abbr}</span>`;
     }
     const title = escapeHtml(meta.label || raw);
     if (meta.file) {
-      return `<span class="platform-badge" title="${title}"><img src="./assets/platforms/${escapeHtml(meta.file)}" alt="" width="16" height="16"></span>`;
+      const wiiuClass = meta.file === "wiiu.svg" ? " platform-badge-wiiu" : "";
+      const imgSize = meta.file === "wiiu.svg" ? ` width="18" height="7"` : ` width="16" height="16"`;
+      return `<span class="platform-badge${wiiuClass}" title="${title}"><img src="./assets/platforms/${escapeHtml(meta.file)}" alt=""${imgSize}></span>`;
     }
     return `<span class="platform-badge platform-badge-text" title="${title}">${escapeHtml(meta.abbr || raw)}</span>`;
   }
@@ -8966,7 +9074,42 @@
     if (dl) dl.innerHTML = PLATFORM_SUGGESTIONS.map((p) => `<option value="${escapeHtml(p)}"></option>`).join("");
   }
 
+  function syncStickyHeaderPad() {
+    const header = document.querySelector(".frm-site-header, .site-header");
+    if (!header) return;
+    const h = Math.ceil(header.getBoundingClientRect().height);
+    document.documentElement.style.setProperty("--frm-sticky-pad", `${h + 8}px`);
+  }
+
+  function revealFocusedUnderHeader() {
+    const el = document.activeElement;
+    if (!el || el === document.body || el === document.documentElement) return;
+    if (document.body.classList.contains("modal-open")) return;
+    if (el.closest && el.closest("#modal, #scan-modal, #tt-form-modal, .modal-panel, [role='dialog']")) return;
+    el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  function watchStickyHeaderPad() {
+    const header = document.querySelector(".frm-site-header, .site-header");
+    if (!header) return;
+    syncStickyHeaderPad();
+    if (typeof ResizeObserver === "function") {
+      const ro = new ResizeObserver(() => syncStickyHeaderPad());
+      ro.observe(header);
+    }
+    window.addEventListener("resize", syncStickyHeaderPad);
+    document.addEventListener("focusin", revealFocusedUnderHeader);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", () => {
+        syncStickyHeaderPad();
+        revealFocusedUnderHeader();
+      });
+      window.visualViewport.addEventListener("scroll", syncStickyHeaderPad);
+    }
+  }
+
   async function init() {
+    watchStickyHeaderPad();
     if (els.sortSelect) els.sortSelect.value = sortMode;
     fillPlatformOptions();
     syncPlatformSelect("");

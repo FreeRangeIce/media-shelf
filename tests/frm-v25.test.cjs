@@ -14,9 +14,9 @@ const ttSrc = fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8');
 let passed = 0;
 const check = (n, fn) => { fn(); passed++; console.log('PASS', n); };
 
-check('APP_VERSION is 2.9; sw cache is media-shelf-v2.9', () => {
-  assert.match(app, /const APP_VERSION = "2\.9"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.9"/);
+check('APP_VERSION is 2.10; sw cache is media-shelf-v2.10', () => {
+  assert.match(app, /const APP_VERSION = "2\.10"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.10"/);
 });
 
 check('item A: no-cover / failed-image placeholder is #0d0d0d with #b5aa9c label', () => {

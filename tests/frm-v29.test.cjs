@@ -22,11 +22,11 @@ function check(name, fn) {
   console.log("PASS", name);
 }
 
-check("APP_VERSION 2.9 and cache media-shelf-v2.9, no suffixes", () => {
-  assert.match(app, /const APP_VERSION = "2\.9";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.9";/);
-  assert.doesNotMatch(app, /const APP_VERSION = "2\.9-/);
-  assert.doesNotMatch(sw, /media-shelf-v2\.9-/);
+check("APP_VERSION 2.10 and cache media-shelf-v2.10, no suffixes", () => {
+  assert.match(app, /const APP_VERSION = "2\.10";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.10";/);
+  assert.doesNotMatch(app, /const APP_VERSION = "2\.10-/);
+  assert.doesNotMatch(sw, /media-shelf-v2\.10-/);
 });
 
 check("item 1: official marks are white monochrome; text badges for the rest; Micah personal-use note", () => {

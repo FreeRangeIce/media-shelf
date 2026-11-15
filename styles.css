@@ -5958,3 +5958,40 @@ body.modal-open .toast {
   overflow: hidden;
   white-space: nowrap;
 }
+
+
+/* ========== V2.10 (badge name mapping, text size, Wii U mark, sticky focus pad) ========== */
+
+/* Keep focused fields and cards clear of the sticky header. --frm-sticky-pad is
+   the measured header height plus 8px, kept in sync by a ResizeObserver. The
+   header itself is unchanged (no compacting). Duo X clearance is unchanged. */
+html {
+  scroll-padding-top: var(--frm-sticky-pad, 0px);
+}
+
+/* Text badges: 9px minimum, bold, up to 3 characters, centered in the 24px disc. */
+.platform-badge-text {
+  font-family: var(--font);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: #ffffff;
+  line-height: 1;
+  text-align: center;
+  padding: 0 1px;
+  max-width: none;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Wii U wordmark is very wide; size it ~18×7 and center it in the disc.
+   Other official marks stay at 16px. The 24px disc and 8px inset are unchanged. */
+.platform-badge.platform-badge-wiiu img,
+.platform-badge-wiiu img {
+  max-width: 18px;
+  max-height: 18px;
+  width: 18px;
+  height: 7px;
+  min-height: 7px;
+  object-fit: fill;
+}

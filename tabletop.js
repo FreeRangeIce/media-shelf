@@ -602,9 +602,11 @@
       const max = Math.max(r, g, b);
       const min = Math.min(r, g, b);
       const lum = relativeLuminance(r, g, b);
-      if (lum < 0.08 || lum > 0.92) continue; // near-black / near-white
       const sat = max === 0 ? 0 : (max - min) / max;
-      if (sat < 0.15) continue; // grey
+      // Near-gray (sat < 20%) and near-white are ignored. Saturated dark
+      // navies and blues are kept so the pill can use the cover colour.
+      if (sat < 0.20) continue;
+      if (lum > 0.92) continue;
       const d = max - min;
       if (d === 0) continue;
       let hue;
@@ -630,21 +632,40 @@
   }
   /**
    * Choose pill fill/text, or null to keep the default pink.
-   * Text is #ffffff or #1a1a1a, requiring 4.5:1. A fill that is too dark on the
-   * white card (luminance < 0.12) also falls back.
+   * White text is required. If the sampled colour is under 4.5:1 with white,
+   * it is darkened until it passes; we do not swap to pink or to dark ink.
+   * Near-gray / near-black covers already return no sample (fallback #8c1d5a).
    */
+  function darkenRgbForWhiteText(rgb) {
+    let r = Number(rgb[0]), g = Number(rgb[1]), b = Number(rgb[2]);
+    const white = [255, 255, 255];
+    const rounded = (rr, gg, bb) => [Math.round(rr), Math.round(gg), Math.round(bb)];
+    if (contrastRatioRgb(rounded(r, g, b), white) >= 4.5) {
+      return rounded(r, g, b);
+    }
+    // Maximum scale toward the original that still meets 4.5:1 with white,
+    // checked after rounding so a 4.500-before-round colour cannot drop under.
+    let lo = 0, hi = 1, best = 0;
+    for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) / 2;
+      const cand = rounded(r * mid, g * mid, b * mid);
+      if (contrastRatioRgb(cand, white) >= 4.5) {
+        best = mid;
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    let out = rounded(r * best, g * best, b * best);
+    while (contrastRatioRgb(out, white) < 4.5 && (out[0] > 0 || out[1] > 0 || out[2] > 0)) {
+      out = [Math.max(0, out[0] - 1), Math.max(0, out[1] - 1), Math.max(0, out[2] - 1)];
+    }
+    return out;
+  }
   function pillColorsFromRgb(rgb) {
     if (!rgb || rgb.length < 3) return null;
-    const lum = relativeLuminance(rgb[0], rgb[1], rgb[2]);
-    if (lum < 0.06) return null; // too dark against the white card
-    const white = [255, 255, 255];
-    const ink = [26, 26, 26];
-    const cw = contrastRatioRgb(rgb, white);
-    const cd = contrastRatioRgb(rgb, ink);
-    const useWhite = cw >= cd;
-    const contrast = useWhite ? cw : cd;
-    if (contrast < 4.5) return null;
-    return { fill: rgbToHex(rgb), text: useWhite ? "#ffffff" : "#1a1a1a" };
+    const darkened = darkenRgbForWhiteText(rgb);
+    return { fill: rgbToHex(darkened), text: "#ffffff" };
   }
   function sanitizeExpPill(raw) {
     if (!raw || typeof raw !== "object") return null;
@@ -657,7 +678,7 @@
     return { forCover, fill: fill.toLowerCase(), text };
   }
 
-  const core = { validBggId, bggImageUrl, bggIdRecord, bggIdPatch, cleanBggSrc, BGG_ID_BOUND, createBggIdLookup, STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, SUBTYPE_LABELS, mapTabletopKind, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, filterGroupsForShelf, flattenShelfTiles, dominantHueFromPixels, pillColorsFromRgb, contrastRatioRgb, sanitizeExpPill, countByStatus, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
+  const core = { validBggId, bggImageUrl, bggIdRecord, bggIdPatch, cleanBggSrc, BGG_ID_BOUND, createBggIdLookup, STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, SUBTYPE_LABELS, mapTabletopKind, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, filterGroupsForShelf, flattenShelfTiles, dominantHueFromPixels, pillColorsFromRgb, darkenRgbForWhiteText, contrastRatioRgb, sanitizeExpPill, countByStatus, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
   if (typeof document === "undefined") return;
 

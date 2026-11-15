@@ -55,7 +55,7 @@ These use the app's own font (`var(--font)`), neutral white text, on the same
 
 | Platform (app value) | Badge text | Reason |
 | --- | --- | --- |
-| Steam | Steam | Official first-party wordmark exists at https://community.steamstatic.com/public/shared/images/header/logo_steam.svg (Steam/Valve CDN). That lockup is a wide wordmark, not a square mark. Wikimedia's "Steam icon logo.svg" is documented as a *combination* of other files, so it was not used (not official artwork; the brief forbids inventing or compositing a logo). |
+| Steam | STM | Official first-party wordmark exists at https://community.steamstatic.com/public/shared/images/header/logo_steam.svg (Steam/Valve CDN). That lockup is a wide wordmark, not a square mark. Wikimedia's "Steam icon logo.svg" is documented as a *combination* of other files, so it was not used (not official artwork; the brief forbids inventing or compositing a logo). |
 | Switch 2 | NS2 | No official logo file was found at Nintendo's first-party logo path (`…/logo/switch2.svg` and `…/logo/switch-2.svg` both 404). |
 | GameCube | GCN | Left as text until Berean clears an asset. No official logo file was found at Nintendo's first-party logo path (`…/logo/gamecube.svg` 404). |
 | PC | PC | There is no official "PC" platform logo. |
