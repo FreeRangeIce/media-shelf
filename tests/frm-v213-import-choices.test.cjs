@@ -98,6 +98,9 @@ check("No cover sits under the tile list, before the paste-URL field", (() => {
 })());
 check("cover list is click-only (no touchend selection workaround)", !/comicCoverList\.addEventListener\("touchend"/.test(app) && /comicCoverList\.addEventListener\("click"/.test(app));
 check("thumbs are 48×72 with a same-size placeholder", /\.comic-cover-thumb\s*\{[^}]*width:\s*48px/.test(css) && /\.comic-cover-thumb\s*\{[^}]*height:\s*72px/.test(css) && /\.comic-cover-blank\s*\{[^}]*width:\s*48px/.test(css) && /\.comic-cover-blank\s*\{[^}]*height:\s*72px/.test(css));
+check("empty cover-list placeholders are a plain dashed frame with no words", app.includes('return `<span class="comic-cover-thumb comic-cover-blank" aria-hidden="true"></span>`;') && !/comicBlankTileArt[\s\S]{0,400}"No cover"/.test(app));
+check("saved library covers fill the card with object-fit: cover (even a low-res thumb)", /V2\.13b/.test(css) && /\.item-card \.item-cover-fit \.item-cover[\s\S]{0,280}width:\s*100%\s*!important/.test(css) && /\.item-card \.item-cover-fit \.item-cover[\s\S]{0,400}object-fit:\s*cover\s*!important/.test(css));
+check("No cover uses the same 8px radius as the cover tiles", /\.comic-no-cover[\s\S]{0,500}border-radius:\s*var\(--radius-sm\)/.test(css) && /\.comic-cover\s*\{[^}]*border-radius:\s*var\(--radius-sm\)/.test(css));
 
 function startServer() {
   const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml", ".png": "image/png" };
@@ -228,11 +231,13 @@ function styleOf() {
         ratios.push([`${width} duplicates dropdown`, dr, measured.drop]);
         check(`${width}: Duplicates dropdown is cream with dark text, contrast ≥ 4.5:1`, dr >= 4.5 && measured.drop.bg === "rgb(255, 253, 248)" && measured.drop.color === "rgb(26, 26, 26)", `${dr.toFixed(2)} ${JSON.stringify(measured.drop)}`);
         await page.locator("#clz-dups").scrollIntoViewIfNeeded();
-        await shot(page, `import-dups-${width}.png`, page.locator("#clz-dups"));
-        await shot(page, `import-dups-dropdown-closed-${width}.png`, page.locator("#clz-dup-mode"));
-        await page.locator("#clz-dup-mode").evaluate((el) => { el.size = el.options.length; el.focus(); });
-        await shot(page, `import-dups-dropdown-open-${width}.png`, page.locator("#clz-dup-default, .clz-dup-default"));
-        await page.locator("#clz-dup-mode").evaluate((el) => { el.size = 1; });
+        if (!/v2\.13b\/?$/.test(SHOTS.replace(/\\/g, "/"))) {
+          await shot(page, `import-dups-${width}.png`, page.locator("#clz-dups"));
+          await shot(page, `import-dups-dropdown-closed-${width}.png`, page.locator("#clz-dup-mode"));
+          await page.locator("#clz-dup-mode").evaluate((el) => { el.size = el.options.length; el.focus(); });
+          await shot(page, `import-dups-dropdown-open-${width}.png`, page.locator("#clz-dup-default, .clz-dup-default"));
+          await page.locator("#clz-dup-mode").evaluate((el) => { el.size = 1; });
+        }
         check(`${width}: import sheet has no page errors`, errors.length === 0, errors.join(" | "));
         await ctx.close();
       }
@@ -265,17 +270,21 @@ function styleOf() {
               referrerpolicy: img ? img.getAttribute("referrerpolicy") : "",
               hasImg: Boolean(img),
               hasBlank: Boolean(blank),
+              blankText: blank ? (blank.textContent || "").trim() : "",
               thumb: imgR ? { w: Math.round(imgR.width), h: Math.round(imgR.height) } : blankR ? { w: Math.round(blankR.width), h: Math.round(blankR.height) } : null,
               bg: getComputedStyle(b).backgroundColor,
               color: getComputedStyle(b).color,
               border: getComputedStyle(b).borderTopColor,
+              radius: getComputedStyle(b).borderRadius,
+              padding: getComputedStyle(b).padding,
             };
           });
           const nc = getComputedStyle(none);
           return {
             saveDisabled: save.getAttribute("aria-disabled") === "true",
             blocked: why && !why.hidden ? (why.textContent || "") : "",
-            noCover: { text: none.innerText.replace(/\s+/g, " ").trim(), visible: !!(none.offsetWidth && none.offsetHeight), pressed: none.getAttribute("aria-pressed"), bg: nc.backgroundColor, color: nc.color, border: nc.borderTopColor, h: none.getBoundingClientRect().height },
+            noCover: { text: none.innerText.replace(/\s+/g, " ").trim(), visible: !!(none.offsetWidth && none.offsetHeight), pressed: none.getAttribute("aria-pressed"), bg: nc.backgroundColor, color: nc.color, border: nc.borderTopColor, h: none.getBoundingClientRect().height, radius: nc.borderRadius, padding: nc.padding },
+            tileChrome: (() => { const b = document.querySelector("[data-comic-cover]"); const c = getComputedStyle(b); return { radius: c.borderRadius, padding: c.padding, border: c.borderTopColor, borderWidth: c.borderTopWidth }; })(),
             list,
             fieldCover: document.getElementById("field-cover").value,
             sources: [...document.querySelectorAll("#comic-picker img")].map((i) => i.getAttribute("src")),
@@ -288,7 +297,9 @@ function styleOf() {
         const incentive = before.list.find((t) => t.label === "Incentive Cover");
         check(`${width}: Cover A shows the Metron thumb at 48×72 with no-referrer`, coverA && coverA.hasImg && coverA.src === METRON && coverA.referrerpolicy === "no-referrer" && coverA.thumb.w === 48 && coverA.thumb.h === 72, JSON.stringify(coverA));
         check(`${width}: Second Printing (GCD image URL in the mock relay) uses the 48×72 placeholder, not files1`, second && !second.hasImg && second.hasBlank && second.src === "" && second.thumb.w === 48 && second.thumb.h === 72, JSON.stringify(second));
+        check(`${width}: empty placeholders are a plain dashed frame with no words`, second && second.blankText === "" && incentive && incentive.blankText === "", JSON.stringify({ second: second && second.blankText, incentive: incentive && incentive.blankText }));
         check(`${width}: Incentive Cover (no image in the relay) uses the 48×72 placeholder`, incentive && !incentive.hasImg && incentive.hasBlank && incentive.thumb.w === 48 && incentive.thumb.h === 72, JSON.stringify(incentive));
+        check(`${width}: No cover matches the tiles' radius, padding and border`, before.noCover.radius === before.tileChrome.radius && before.noCover.padding === before.tileChrome.padding && before.noCover.border === before.tileChrome.border, JSON.stringify({ noCover: before.noCover, tile: before.tileChrome }));
         check(`${width}: no files1.comics.org URL is put in an img`, before.sources.every((s) => !/comics\.org/i.test(s || "")), JSON.stringify(before.sources));
         for (const t of before.list) {
           const r = contrast(t.color, t.bg);
@@ -334,15 +345,25 @@ function styleOf() {
         const none = await page.evaluate(() => {
           const b = document.getElementById("btn-comic-no-cover");
           const c = getComputedStyle(b);
+          const tile = document.querySelector("[data-comic-cover]");
+          const tc = getComputedStyle(tile);
+          const after = (el) => { const s = getComputedStyle(el, "::after"); return { content: s.content, width: s.width, height: s.height, background: s.backgroundColor }; };
           return {
             selected: b.classList.contains("is-selected") && b.getAttribute("aria-pressed") === "true",
             saveDisabled: document.getElementById("btn-save").getAttribute("aria-disabled") === "true",
             cover: document.getElementById("field-cover").value,
             border: c.borderTopColor,
+            radius: c.borderRadius,
+            padding: c.padding,
+            tileRadius: tc.borderRadius,
+            tilePadding: tc.padding,
+            check: after(b),
+            tileCheck: after(tile),
             tileSelected: [...document.querySelectorAll("[data-comic-cover]")].some((t) => t.classList.contains("is-selected")),
           };
         });
         check(`${width}: No cover selects, enables Save, and clears the cover field`, none.selected && none.saveDisabled === false && none.cover === "" && none.border === "rgb(139, 94, 60)" && none.tileSelected === false, JSON.stringify(none));
+        check(`${width}: selected No cover uses the same radius, padding and check as the tiles`, none.radius === none.tileRadius && none.padding === none.tilePadding && none.check.width === "22px" && none.check.height === "22px" && none.check.content.includes("✓") && none.check.background === "rgb(139, 94, 60)", JSON.stringify(none));
         await page.locator("#comic-picker").scrollIntoViewIfNeeded();
         await shot(page, `cover-no-cover-${width}.png`, page.locator("#comic-picker"));
 
@@ -359,15 +380,23 @@ function styleOf() {
           const ph = card.querySelector(".item-cover-placeholder");
           const stored = JSON.parse(localStorage.getItem("media-tracker-v1") || "{}");
           const item = (stored.items || []).find((i) => i.id === "c1") || {};
+          const col = card.querySelector(".item-cover-col");
+          const cr = col ? col.getBoundingClientRect() : { width: 0, height: 0 };
+          const ir = img ? img.getBoundingClientRect() : { width: 0, height: 0 };
+          const ic = img ? getComputedStyle(img) : {};
           return {
             src: img ? img.getAttribute("src") : "",
             imgHidden: img ? (img.hidden || getComputedStyle(img).display === "none") : true,
             phHidden: ph ? ph.hidden : true,
             coverUrl: item.coverUrl || "",
             coverLabel: item.coverLabel || "",
+            fit: ic.objectFit || "",
+            col: { w: Math.round(cr.width), h: Math.round(cr.height) },
+            img: { w: Math.round(ir.width), h: Math.round(ir.height) },
           };
         }, METRON);
         check(`${width}: library card shows the saved Metron cover (not the grey placeholder)`, card.src === METRON && card.coverUrl === METRON && card.coverLabel === "Cover A" && card.imgHidden === false, JSON.stringify(card));
+        check(`${width}: saved cover fills the card at object-fit cover (not a floating thumb)`, card.fit === "cover" && Math.abs(card.img.w - card.col.w) <= 1 && Math.abs(card.img.h - card.col.h) <= 1 && card.col.w > 80 && card.col.h > 80, JSON.stringify(card));
         check(`${width}: stored cover is not a comics.org URL`, !/comics\.org/i.test(card.coverUrl));
         await page.locator('.item-card[data-id="c1"]').scrollIntoViewIfNeeded();
         await shot(page, `library-card-cover-${width}.png`, page.locator('.item-card[data-id="c1"]'));

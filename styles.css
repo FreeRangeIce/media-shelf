@@ -3194,21 +3194,38 @@ body.modal-open {
 .comic-no-cover,
 .btn.btn-ghost.comic-no-cover,
 .btn.comic-no-cover {
+  appearance: none;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: var(--space-2);
   width: 100%;
-  min-height: 76px;
+  min-width: 0;
+  min-height: 76px; /* 72px thumb + 2px padding each side, same as the tiles */
   margin-top: var(--space-2);
   padding: 2px var(--space-3) 2px 2px;
-  padding-right: calc(var(--space-3) + 26px);
+  padding-right: calc(var(--space-3) + 26px); /* room for the check mark */
   background: #fffdf8;
   border: 1px solid #5c5348;
+  border-radius: var(--radius-sm);
   color: #1a1a1a;
+  font: inherit;
   font-size: var(--fs-sm);
   text-align: left;
+  cursor: pointer;
+}
+
+.comic-no-cover .comic-cover-label {
+  width: 100%;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  color: #1a1a1a;
+  overflow-wrap: break-word;
+  -webkit-line-clamp: unset;
+  line-clamp: none;
+  display: block;
+  overflow: visible;
 }
 
 .comic-no-cover:hover,
@@ -6281,3 +6298,26 @@ html {
   color: #ffffff !important;
 }
 #game-match-picker #game-match-use:not(:disabled) { color: #ffffff !important; }
+
+/* ========== V2.13b (Oholiab: saved covers fill the card) ==========
+   A low-res saved picture (for example a 48×72 Metron thumb) was drawn at its
+   intrinsic size, floating on the black letterbox. That came from .item-cover-fit
+   shrinking to the image and .item-cover using width/height: auto. The fit box
+   and the image now fill the card; object-fit: cover scales even a small thumb
+   to the full cover box, the same as any other saved cover. */
+.item-card .item-cover-fit,
+.item-card.tt-card .item-cover-fit {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+.item-card .item-cover-fit .item-cover,
+.item-card.tt-card .item-cover-fit .item-cover {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: cover !important;
+  object-position: center;
+}

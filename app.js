@@ -5677,8 +5677,12 @@
   }
 
   function comicBlankTileArt(c) {
-    const msg = c && c.imgFailed ? COMIC_NOT_LOADED_LABEL : "No cover";
-    return `<span class="comic-cover-thumb comic-cover-blank" aria-hidden="true"><span class="comic-cover-blank-text">${escapeHtml(msg)}</span></span>`;
+    // Empty tiles: a plain dashed 48×72 frame, no words (so they are not confused
+    // with the No cover option). A failed picture still says "Cover didn't load".
+    if (c && c.imgFailed) {
+      return `<span class="comic-cover-thumb comic-cover-blank" aria-hidden="true"><span class="comic-cover-blank-text">${escapeHtml(COMIC_NOT_LOADED_LABEL)}</span></span>`;
+    }
+    return `<span class="comic-cover-thumb comic-cover-blank" aria-hidden="true"></span>`;
   }
 
   /**
