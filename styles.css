@@ -5643,3 +5643,50 @@ body.frm-short-vv #tt-form-modal .item-form .form-actions {
   position: static !important;
   bottom: auto !important;
 }
+
+
+/* ========== V2.8 (Asaph card direction, Micah-approved option B) ========== */
+
+/* Item 4: grid cards size to their own content; rows no longer share height. */
+.item-list,
+.tt-list {
+  align-items: start;
+}
+.item-list > li,
+.tt-list > li.tt-group {
+  align-self: start;
+}
+.item-card,
+.item-card.tt-card {
+  height: auto;
+  min-height: 0;
+}
+/* Item 3: no 3-line title reservation; 13px under the last line of content. */
+.item-card .item-title,
+.item-card.tt-card .item-title {
+  min-height: 0;
+}
+.item-card .item-body {
+  flex: 0 0 auto;
+  gap: 0;
+  padding-bottom: 13px;
+}
+/* Item 2: compact Expansion pill, same pink, ~7px under the title. */
+.item-card .item-body .item-badges,
+.tt-group-wish-owned-base .item-card.tt-card .item-body .item-badges {
+  margin-top: 7px;
+}
+.item-card .item-badges .badge-type.tabletop {
+  display: inline-flex;
+  align-items: center;
+  height: 23px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1;
+  max-width: 100%;
+}
+/* Item 1: Base game is never shown on a grid card (detail sheet only). */
+.item-card .tt-wish-base-label {
+  display: none;
+}

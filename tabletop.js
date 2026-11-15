@@ -615,13 +615,12 @@
     return `<div class="item-cover-col" data-type="tabletop">${inner}</div>`;
   }
 
-  /** V2.4 card: title (3-line clamp), Expansion tag whenever the item is an expansion, and for a
-   *  Want expansion under an Owned base a tag-style "Base game:" line inside the card (2-line clamp). */
+  /** V2.8 card: title (3-line clamp, no reserved height) and a compact Expansion pill when the
+   *  item is an expansion. The base game is named only in the detail sheet. */
   function tileHtml(x, baseTitle) {
     const isExp = x.subtype === "expansion";
-    const base = baseTitle || (isExp ? x.parentTitle : "");
     const tags = isExp
-      ? `<div class="item-badges">${subtypeBadge(x)}</div>${base ? `<p class="tt-wish-base-label" title="${esc(`Base game: ${base}`)}"><span class="tt-wish-base-label-text">Base game: ${esc(tidyColon(base))}</span></p>` : ""}`
+      ? `<div class="item-badges">${subtypeBadge(x)}</div>`
       : "";
     return `<article class="item-card tt-card" tabindex="0" role="button" data-tt-open="${esc(x.id)}" aria-label="${esc(`Details for ${x.title}`)}">
     ${cover(x)}

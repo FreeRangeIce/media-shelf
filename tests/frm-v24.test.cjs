@@ -18,9 +18,9 @@ const check = (n, fn) => { fn(); passed++; console.log('PASS', n); };
 
 const tidyColon = (s) => String(s).replace(/\s+:\s+/g, ': ').replace(/:/g, '\u2060:');
 
-check('APP_VERSION is 2.7; sw cache is media-shelf-v2.7', () => {
-  assert.match(app, /const APP_VERSION = "2\.7"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.7"/);
+check('APP_VERSION is 2.8; sw cache is media-shelf-v2.8', () => {
+  assert.match(app, /const APP_VERSION = "2\.8"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.8"/);
 });
 
 check('item 1+10: hub clearance media query is max-width 559px; X inset is the 80px hub-clearance line; unfolded rules stay outside it', () => {
@@ -125,12 +125,10 @@ check('item 2 behavioral: Wishlist+All renders tabletop wants (including a Want 
   assert.match(markup, /Lords of Hellas/);
   assert.match(markup, /Wingspan: European Expansion|Wingspan:\u2060European Expansion|Wingspan\u2060: European Expansion/);
   assert.match(markup, /Orphan Expansion/);
-  assert.match(markup, /tt-wish-base-label/);
-  assert.match(markup, /Base game:/);
+  // V2.8: no Base game label on grid cards
+  assert.doesNotMatch(markup, /tt-wish-base-label/);
+  assert.doesNotMatch(markup, /Base game:/);
   assert.match(markup, /Wingspan/);
-  // Label is inside the card, not a sibling above the article
-  assert.match(markup, /<article class="item-card tt-card"[\s\S]*tt-wish-base-label[\s\S]*<\/article>/);
-  assert.doesNotMatch(markup, /<li[^>]*>\s*<p class="tt-wish-base-label">/);
   // Orphan expansion is tagged, with no Base game line of its own
   const orphanIdx = markup.indexOf('Orphan Expansion');
   assert.ok(orphanIdx >= 0);
@@ -156,13 +154,11 @@ check('item 3: BGG/UPC result cards on the cream sheet are light and readable; I
 check('item 4+8+9: in-card Base game tag under Expansion; 2-line clamp; orphans keep the tag', () => {
   assert.match(ttSrc, /function tileHtml/);
   assert.match(ttSrc, /subtype === "expansion"/);
-  assert.match(ttSrc, /tt-wish-base-label/);
-  assert.match(ttSrc, /parentTitle/);
+  assert.doesNotMatch(ttSrc, /<p class="tt-wish-base-label"/); // V2.8: removed from cards
   assert.match(css, /\.tt-wish-base-label-text[\s\S]*?-webkit-line-clamp:\s*2/);
-  assert.match(ttSrc, /tt-wish-base-label-text/);
   assert.match(css, /\.item-card \.tt-wish-base-label[\s\S]*?border-radius:\s*4px/);
   assert.match(css, /\.item-card \.tt-wish-base-label[\s\S]*?font-weight:\s*var\(--fw-semibold\)/);
-  assert.match(css, /\.item-list,\s*\.tt-list\s*\{\s*align-items:\s*stretch/);
+  assert.match(css, /\.item-list,\s*\.tt-list\s*\{\s*align-items:\s*(stretch|start)/);
 });
 
 check('item 6: display-only colon tidy — " : " becomes ": ", NBSP keeps the colon off a new line; storage untouched', () => {

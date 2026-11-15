@@ -41,9 +41,9 @@ function filterMedia(items, { shelfMode, filterType = 'all', filterStatus = 'all
 
 const CATEGORIES = ['book', 'game', 'movie', 'music', 'comic'];
 
-check('APP_VERSION is 2.7; sw cache is media-shelf-v2.7', () => {
-  assert.match(app, /const APP_VERSION = "2\.7"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.7"/);
+check('APP_VERSION is 2.8; sw cache is media-shelf-v2.8', () => {
+  assert.match(app, /const APP_VERSION = "2\.8"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.8"/);
 });
 
 check('shared isWantStatus / isLibraryStatus helpers exist and Library excludes Want in filteredItems', () => {
@@ -191,11 +191,11 @@ check('four combos: Want/Owned base × Want/Owned expansion in Library and Wishl
   }
 });
 
-check('Wishlist Owned-base Want-expansion markup: Base game label + Expansion subtype badge', () => {
+check('Wishlist Owned-base Want-expansion markup: Expansion subtype badge', () => {
   const src = fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8');
   assert.match(src, /wishOwnedBase/);
-  assert.match(src, /Base game: \$\{esc\(tidyColon\(base\)\)\}/);
-  assert.match(src, /tt-wish-base-label/);
+  // V2.8: grid cards no longer carry the Base game label (detail sheet only).
+  assert.doesNotMatch(src, /Base game: \$\{esc\(tidyColon\(base\)\)\}/);
   assert.match(src, /subtypeBadge\(x\)/);
   assert.match(css, /\.tt-wish-base-label[\s\S]*?font-size:\s*13px/);
   assert.match(css, /\.tt-wish-base-label[\s\S]*?color:\s*#6b6158/);

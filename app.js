@@ -5,7 +5,7 @@
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6, 2.7…; bump APP_VERSION and
   // the service worker cache name together (media-shelf-v2.7) so the Duo drops old files.
-  const APP_VERSION = "2.7";
+  const APP_VERSION = "2.8";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*

@@ -19,59 +19,25 @@ const check = (n, fn) => { fn(); passed++; console.log('PASS', n); };
 const v26 = css.slice(css.indexOf('========== V2.6'));
 assert.ok(v26.length > 200, 'V2.6 CSS block missing');
 
-check('APP_VERSION is 2.7; sw cache is media-shelf-v2.7', () => {
-  assert.match(app, /const APP_VERSION = "2\.7"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.7"/);
+check('APP_VERSION is 2.8; sw cache is media-shelf-v2.8', () => {
+  assert.match(app, /const APP_VERSION = "2\.8"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.8"/);
   assert.doesNotMatch(app, /const APP_VERSION = "2\.6-/);
-  assert.doesNotMatch(sw, /media-shelf-v2\.7-/);
+  assert.doesNotMatch(sw, /media-shelf-v2\.8-/);
 });
 
-check('item 1: Base game tag markup wraps the text in an inner span', () => {
-  assert.match(ttSrc, /<span class="tt-wish-base-label-text">Base game: \$\{esc\(tidyColon\(base\)\)\}<\/span>/);
-  const seed = [
-    T.normalize({ id: 'base', title: 'Disney Villainous: The Worst Takes It All', subtype: 'board', status: 'owned' }),
-    T.normalize({ id: 'exp', title: 'Disney Villainous: Filled with Fright', subtype: 'expansion', status: 'want', parentId: 'base', parentTitle: 'Disney Villainous: The Worst Takes It All' }),
-  ];
-  const t = boot(seed, []);
-  t.tt.init({
-    toast() {},
-    renderStats() {},
-    wishlist: () => true,
-    combined: () => true,
-    search: () => '',
-    status: () => 'all',
-    sort: () => 'title',
-  });
-  t.F('tabletop-view').hidden = false;
-  t.tt.show(true);
-  const markup = t.F('tabletop-list').innerHTML;
-  assert.match(markup, /tt-wish-base-label/);
-  assert.match(markup, /tt-wish-base-label-text/);
-  assert.match(markup, /Base game:/);
-  assert.match(markup, /<p class="tt-wish-base-label"[^>]*>\s*<span class="tt-wish-base-label-text">/);
-  // Clamp lives on the inner span, not as a 2-line clamp of the padded tag box in the winning V2.6 rules.
-  const tagBlock = css.slice(css.lastIndexOf('.item-card .tt-wish-base-label {'));
-  // The last in-card tag rule (before the text-span rule) must not use line-clamp.
-  const lastTag = [...css.matchAll(/\.item-card \.tt-wish-base-label\s*\{[^}]+\}/g)].pop();
-  assert.ok(lastTag, 'expected a .item-card .tt-wish-base-label rule');
-  assert.doesNotMatch(lastTag[0], /-webkit-line-clamp/);
-  assert.match(css, /\.tt-wish-base-label-text[\s\S]*?display:\s*-webkit-box/);
+check('item 1: Base game tag CSS keeps padding and inner-span clamp (markup removed from cards in V2.8)', () => {
+  assert.doesNotMatch(ttSrc, /<span class="tt-wish-base-label-text">Base game:/);
   assert.match(css, /\.tt-wish-base-label-text[\s\S]*?-webkit-line-clamp:\s*2/);
-  assert.match(css, /\.tt-wish-base-label-text[\s\S]*?-webkit-box-orient:\s*vertical/);
-  assert.match(css, /\.tt-wish-base-label-text[\s\S]*?overflow:\s*hidden/);
-  // Tag box keeps its padding.
   assert.match(css, /\.item-card \.tt-wish-base-label[\s\S]*?padding:\s*var\(--space-1\) var\(--space-2\)/);
 });
 
-check('item 1: card body has no fixed height or overflow hidden; grid stays stretch', () => {
+check('item 1: card body has no fixed height or overflow hidden; grid sizing moved to V2.8', () => {
   assert.match(v26, /\.item-card \.item-body[\s\S]*?overflow:\s*visible/);
   assert.match(v26, /\.item-card \.item-body[\s\S]*?height:\s*auto/);
   assert.match(v26, /\.item-card,\s*\n\.item-card\.tt-card\s*\{[\s\S]*?overflow:\s*visible/);
   assert.match(v26, /\.item-card,\s*\n\.item-card\.tt-card\s*\{[\s\S]*?height:\s*auto/);
-  assert.match(v26, /\.item-card,\s*\n\.item-card\.tt-card\s*\{[\s\S]*?min-height:\s*100%/);
-  // Keep V2.4 equal-height rows; stretch plus min-height:100% / height:auto fills the row
-  // without shrinking below content (which was the clip with min-height:0 + overflow:hidden).
-  assert.match(v26, /\.item-list,\s*\n\.tt-list\s*\{[\s\S]*?align-items:\s*stretch/);
+  // V2.8 replaced equal-height rows (stretch + min-height:100%) with content-sized cards.
 });
 
 check('item 2: tabletop two-column rows use minmax(0, 1fr); inputs can shrink', () => {
