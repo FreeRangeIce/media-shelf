@@ -103,6 +103,22 @@
         <button type="button" class="btn btn-ghost btn-sm cover-queue-btn" id="btn-cover-show-all" hidden>Show all items</button>
       </div>
     </section>
+    <!-- V2.11 import enrichment: progress, summary and the Needs a pick / Needs lookup lists. In the
+         page flow above the shelf (never fixed), so it can't cover the bottom nav or Add. -->
+    <section id="enrich-status" class="enrich-status" aria-label="Import details" hidden>
+      <p id="enrich-line" class="enrich-line"></p>
+      <p id="enrich-sr" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+      <div id="enrich-bar" class="enrich-bar" aria-hidden="true" hidden><span id="enrich-bar-fill" class="enrich-bar-fill"></span></div>
+      <p id="enrich-counts" class="enrich-counts" hidden></p>
+      <p id="enrich-note" class="enrich-note" hidden></p>
+      <div class="enrich-actions">
+        <button type="button" class="btn btn-ghost btn-sm enrich-btn" id="btn-enrich-pick" aria-pressed="false" hidden>Needs a pick (0)</button>
+        <button type="button" class="btn btn-ghost btn-sm enrich-btn" id="btn-enrich-lookup" aria-pressed="false" hidden>Needs lookup (0)</button>
+        <button type="button" class="btn btn-ghost btn-sm enrich-btn" id="btn-enrich-all" hidden>Show all items</button>
+        <button type="button" class="btn btn-ghost btn-sm enrich-btn" id="btn-enrich-resume" aria-label="Resume adding details to imported items" hidden>Resume</button>
+        <button type="button" class="btn btn-ghost btn-sm enrich-btn" id="btn-enrich-dismiss" aria-label="Hide this import summary" hidden>Done</button>
+      </div>
+    </section>
     <!-- Profile tab: existing Settings + Back up (Restore stays inside Settings with its confirm step). -->
     <section id="frm-profile" class="frm-profile" hidden aria-label="Profile">
       <button type="button" class="frm-profile-row" data-profile-action="settings">

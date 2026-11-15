@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6, 2.7…; bump APP_VERSION and
-  // the service worker cache name together (media-shelf-v2.10) so the Duo drops old files.
-  const APP_VERSION = "2.10";
+  // the service worker cache name together (media-shelf-v2.11) so the Duo drops old files.
+  const APP_VERSION = "2.11";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -954,6 +954,10 @@
       // The 'Needs a cover' mark (CLZ cover fill, v36): present only when true, so an old
       // backup or item without it loads unchanged.
       ...(raw.coverNeeded === true ? { coverNeeded: true } : {}),
+      // V2.11: the CLZ Format label ("Trade Paperback", "Comic") and what it means, issue or
+      // collected edition. Present only when known, so older comics load unchanged.
+      ...(cleanText(raw.comicFormat, 40) ? { comicFormat: cleanText(raw.comicFormat, 40) } : {}),
+      ...(raw.edition === "issue" || raw.edition === "collected" ? { edition: raw.edition } : {}),
     };
   }
 
@@ -1241,6 +1245,9 @@
       googleBooksUrl: safeGoogleBooksUrl(raw.googleBooksUrl),
     };
     if (comic) Object.assign(out, comic);
+    // V2.11 import enrichment mark: "pick" (Needs a pick) or "lookup" (Needs lookup). Present only
+    // when set, so every item without it normalizes byte-for-byte as before (import fingerprints).
+    if (raw.enrich === "pick" || raw.enrich === "lookup") out.enrich = raw.enrich;
     return out;
   }
 
@@ -2279,6 +2286,8 @@
         const merged = mergeEditOntoFresh(snapshot, list[idx], data, ts);
         // A picture, or a choice in the picker (a cover, No cover, a pasted URL), answers 'Needs a cover'; a name alone does not.
         if (merged.coverNeeded && data.type === "comic" && (data.coverUrl || comicPicker.choice)) delete merged.coverNeeded;
+        // V2.11: saving the item from its form answers Needs a pick / Needs lookup.
+        delete merged.enrich;
         list.splice(idx >= 0 ? idx : 0, idx >= 0 ? 1 : 0, merged);
       });
       if (!ok) return; // storage full: the form stays open with what was typed
@@ -2402,6 +2411,7 @@
       }
     }
     if (filterNeedsCover) list = list.filter((i) => i.type === "comic" && i.coverNeeded === true);
+    if (filterEnrich) list = list.filter((i) => i.enrich === filterEnrich);
     const q = searchQuery.trim().toLowerCase();
     if (q) list = list.filter((i) => matchesSearch(i, q));
 
@@ -2473,6 +2483,9 @@
     GameCube: { file: "", abbr: "GCN", label: "GameCube" },
     Wii: { file: "wii.svg", label: "Wii" },
     "Wii U": { file: "wiiu.svg", label: "Wii U" },
+    // V2.11 (Nathan QA): explicit text labels so the 3-character cut never shows "PS ".
+    PSP: { file: "", abbr: "PSP", label: "PSP" },
+    "PS Vita": { file: "", abbr: "PSV", label: "PS Vita" },
     PC: { file: "", abbr: "PC", label: "PC" },
     Other: { file: "", abbr: "OTH", label: "Other" },
   };
@@ -2481,7 +2494,8 @@
    * Display-time only: map a stored platform name to a PLATFORM_BADGES key.
    * Never writes back to the item or to backups. Matching is case-insensitive
    * and ignores punctuation. More specific names are checked first (Switch 2
-   * before Switch, Wii U before Wii). PSP and PS Vita are not PlayStation marks.
+   * before Switch, Wii U before Wii). PSP and PS Vita are not PlayStation marks:
+   * they get their own text labels, PSP and PSV.
    */
   function badgePlatformKey(value) {
     const raw = String(value ?? "").trim();
@@ -2514,16 +2528,17 @@
     // Wii U before Wii.
     if (compact === "wiiu" || /(^|\s)wii\s*u(\s|$)/.test(lower)) return "Wii U";
 
-    // PSP / PS Vita: text badge, not the PlayStation logo (not in the table).
+    // PSP / PS Vita: their own text badges (PSP, PSV), never the PlayStation logo.
     if (
-      compact === "psp" ||
-      compact === "playstationportable" ||
       compact === "vita" ||
       compact === "psvita" ||
       compact === "playstationvita" ||
-      /(^|\s)(psp|ps\s*vita|playstation\s*vita|playstation\s*portable|vita)(\s|$)/.test(lower)
+      /(^|\s)(ps\s*vita|playstation\s*vita|vita)(\s|$)/.test(lower)
     ) {
-      return "";
+      return "PS Vita";
+    }
+    if (compact === "psp" || compact === "playstationportable" || /(^|\s)(psp|playstation\s*portable)(\s|$)/.test(lower)) {
+      return "PSP";
     }
 
     // PlayStation family: PSN, PS1–PS5, PlayStation, PlayStation 5, …
@@ -2645,6 +2660,7 @@
       // Library: one quiet line when a category has no Owned (non-Want) items (Oholiab).
       const quietOwnedEmpty =
         !filterNeedsCover &&
+        !filterEnrich &&
         !searchQuery.trim() &&
         (filterStatus === "all" || filterStatus === "want") &&
         filterType !== "all";
@@ -2670,11 +2686,15 @@
       els.empty.classList.remove("frm-empty-owned");
       $(".empty-title", els.empty).textContent = filterNeedsCover
         ? "No comics need a cover"
+        : filterEnrich
+        ? (filterEnrich === "pick" ? "Nothing here needs a pick" : "Nothing here needs lookup")
         : totalFilteredOut
         ? "No matches"
         : "Nothing on this shelf yet";
       $(".empty-hint", els.empty).textContent = filterNeedsCover
         ? "Every comic here has its cover or was left as typed."
+        : filterEnrich
+        ? "Try the other shelf, another category, or Show all items."
         : totalFilteredOut
         ? "Try a different filter or search."
         : "Add a book, video game, movie, or album to get started."; // PLACEHOLDER (Berean)
@@ -2724,6 +2744,14 @@
       ? `<div class="tt-detail-top"><span class="tt-detail-cover"><img src="${escapeHtml(url)}" alt="" referrerpolicy="no-referrer" /></span><div class="tt-detail-meta">${head}</div></div>`
       : head];
     if (item.type === "comic") rows.push(row("Cover", item.coverLabel));
+    if (item.type === "comic") rows.push(row("Format", item.comicFormat ? `${item.comicFormat}${item.edition === "collected" ? " (collected edition)" : ""}` : item.edition === "collected" ? "Collected edition" : ""));
+    if (item.enrich === "pick" || item.enrich === "lookup") {
+      // NEW COPY (fact check)
+      const why = item.enrich === "pick"
+        ? "Needs a pick. The import found possible matches but filled nothing. Look up to choose one."
+        : "Needs lookup. The import couldn’t find this automatically. Look up, or add the details yourself.";
+      rows.push(`<div class="enrich-detail"><p class="tt-detail-line enrich-detail-text">${escapeHtml(why)}</p><button type="button" class="btn btn-outline btn-sm enrich-detail-btn" data-enrich-lookup="${escapeHtml(item.id)}">Look up</button></div>`);
+    }
     const starStr = stars(item.rating);
     if (starStr) rows.push(`<p class="tt-detail-line"><span class="item-detail-label">Rating</span> <span class="stars" aria-label="Rating ${escapeHtml(item.rating)} of 5">${starStr}</span></p>`);
     rows.push(row("Progress", item.progress));
@@ -2842,6 +2870,7 @@
       if (profile) profile.hidden = false;
       updateBackupUi();
       renderCoverQueueUi();
+      renderEnrichUi();
       return;
     }
     if (profile) profile.hidden = true;
@@ -2858,6 +2887,7 @@
     }
     updateBackupUi();
     renderCoverQueueUi();
+    renderEnrichUi();
   }
 
   /* ---------- Reference links (restored; dropped in 4d252ca) ---------- */
@@ -3249,6 +3279,7 @@
         // A backup with no tabletop block leaves the tabletop shelf as it is.
         const ttRes = TT && parsed.tabletop ? restoreTabletop("replace") : undefined;
         restoreCoverQueue(parsed.coverQueueIds, true);
+        enrichAfterRestore(true); // V2.11: a restore never queues enrichment
         render();
         if (ttRes === null) {
           // Partial: the items were replaced (that write stands); the tabletop write did not happen.
@@ -3313,6 +3344,7 @@
           } else ttFailed = true;
         }
         restoreCoverQueue(parsed.coverQueueIds, false);
+        enrichAfterRestore(false); // V2.11: a restore never queues enrichment
         render();
         if (ttFailed || ttUnknown) {
           // Partial: the item merge was written; the tabletop merge was not. No "up to date" claim.
@@ -4576,12 +4608,14 @@
   async function fetchMusicBrainz({ barcode, title, artist }) {
     let release = null;
     let byBarcode = false;
+    let barcodeMatches = 0; // V2.11: how many releases carry this exact barcode (import enrichment)
     const codes = barcodeVariants(barcode);
     if (codes.length) {
       const q = codes.length > 1 ? `barcode:(${codes.join(" OR ")})` : `barcode:${codes[0]}`;
       const found = await searchMusicBrainz(q, 5);
       if (found === null) return null;
       const exact = found.filter((r) => codes.includes(String(r.barcode || "")));
+      barcodeMatches = exact.length;
       if (exact.length) {
         release = exact.find((r) => mbYear(r.date) != null) || exact[0];
         byBarcode = true;
@@ -4623,6 +4657,7 @@
       coverSource: coverUrl ? "coverartarchive" : "",
       _musicNoCover: !coverUrl,
       _byBarcode: byBarcode,
+      _barcodeMatches: barcodeMatches,
       _yearUncertain: yearUncertain,
       _score: Number(release.score) || 0,
     };
@@ -5951,7 +5986,7 @@
     try { return await res.json(); }
     catch { throw new Error("Game lookup returned unreadable details. Try again, or enter the details yourself. What you typed is kept."); }
   }
-  async function fetchGameBarcodeJson(url, signal) { return gameJson(url, signal); }
+  async function fetchGameBarcodeJson(url, signal) { enrichGuardUpc(url); return gameJson(url, signal); }
   async function runGameLookup(byTitle) {
     if (gameBusy || lookupBusy || els.fieldType.value !== "game") return;
     resetGameLookup();
@@ -6355,6 +6390,7 @@
       btn.addEventListener("click", () => {
         filterType = btn.dataset.type;
         filterNeedsCover = false;
+        filterEnrich = "";
         $$(".type-tabs .chip").forEach((b) => {
           const on = b === btn;
           b.classList.toggle("active", on);
@@ -7704,6 +7740,7 @@
     $("#import-preview").hidden = true;
     setImportFresh(false);
     setImportMessage("");
+    enqueueEnrich(toAdd.map((it) => it.id)); // V2.11: same enrichment step as Import CLZ
     const n = toAdd.length;
     const u = previous.size;
     const msg = n && u
@@ -7979,7 +8016,8 @@
    * Header aliases per type and field, compared case- and space-insensitively (letters,
    * digits and # only). Fields are listed in mapping order. Extra columns are ignored.
    */
-  // unconfirmed until Micah's sample CSV — every alias below is a guess at CLZ's export headers.
+  // Comics confirmed against Micah's real CLZ Comics export (V2.11). The other types are still
+  // unconfirmed guesses at CLZ's export headers until a sample from each arrives.
   const CLZ_HEADER_ALIASES = {
     games: {
       title: ["title", "game title", "name"],
@@ -8020,6 +8058,10 @@
       cover: ["cover url", "cover image", "cover image url", "front cover", "image url", "cover"],
       condition: ["condition"],
       status: ["collection status", "status"],
+      // V2.11, confirmed against Micah's CLZ Comics export (Series, Issue, "Variant Description",
+      // Publisher, "Release Date", Format, "Added Date"). "Added Date" is not imported.
+      variant: ["variant description", "variant", "cover variant", "variant cover"],
+      format: ["format", "edition format"],
     },
     music: {
       title: ["title", "album", "album title"],
@@ -8037,6 +8079,7 @@
     status: "Status", director: "Director", format: "Format", author: "Author",
     isbn: "ISBN", signed: "Signed", series: "Series", issue: "Issue", publisher: "Publisher",
     writer: "Writer", artist: "Artist", cover: "Cover URL", condition: "Condition",
+    variant: "Variant",
   };
 
   let clz = null; // { typeKey, headers, rows, parsed, mapping, evals, choices }
@@ -8177,6 +8220,17 @@
         coverSource: cover ? "clz" : "",
         condition: Object.prototype.hasOwnProperty.call(CONDITION_LABELS, cond) ? cond : "",
       };
+      // V2.11: "Variant Description" is the cover / printing name; Format says issue or
+      // collected edition (and Digital Comic is a digital copy).
+      const variant = get("variant");
+      if (variant) {
+        cand.coverLabel = variant;
+        cand.coverVariant = /\bvariant\b/i.test(variant) && !/\bregular\b/i.test(variant);
+      }
+      const fmt = clzComicFormat(get("format"), cand.issue);
+      if (fmt.label) cand.comicFormat = fmt.label;
+      if (fmt.edition) cand.edition = fmt.edition;
+      if (fmt.digital) cand.format = "digital";
     } else {
       const f = get("format").toLowerCase();
       cand = { ...base, type, title: get("title"), creator: get("artist") };
@@ -8189,6 +8243,35 @@
     if (!cand[need]) return { skip: need === "series" ? "No series" : "No title", cand };
     if (st.skip) return { skip: st.skip, cand };
     return { cand };
+  }
+
+  /**
+   * CLZ Comics "Format" -> { label, edition: "issue" | "collected" | "", digital }. Collected:
+   * trade paperbacks, hardcovers, omnibuses, graphic novels, digests and the like, or an issue
+   * number CLZ marks TP / HC / SC ("1TP", "HC-A"). Single issues: Comic, Squarebound, one-shots,
+   * magazines, Digital Comic. A blank Format with a plain issue number stays unknown.
+   */
+  function clzComicFormat(format, issue) {
+    const label = String(format || "").replace(/\s+/g, " ").trim();
+    const f = label.toLowerCase();
+    const iss = String(issue || "").trim();
+    const digital = /\bdigital\b/.test(f);
+    let edition = "";
+    if (/trade|paperback|\btpb?\b|hard ?cover|\bhc\b|omnibus|graphic novel|\bgn\b|digest|collect|compendium|absolute|treasury|soft ?cover|library edition|deluxe edition/.test(f)) edition = "collected";
+    else if (/^(comic|comic book|squarebound|prestige|one[- ]?shot|magazine|annual|digital comic|ashcan|mini[- ]?comic|giant[- ]?size)$/.test(f) || /\bcomic\b/.test(f)) edition = "issue";
+    if (!edition && /(^|\d)(tp|tpb|hc|sc)(-[a-z]+)?$/i.test(iss)) edition = "collected";
+    return { label, edition, digital };
+  }
+
+  /**
+   * The issue number GCD knows for a CLZ issue: CLZ adds the cover letter or the collected-edition
+   * mark to the number ("1A", "812B", "3.1A", "1TP", "HC-A"). Only the enrichment lookup uses this;
+   * the stored issue stays exactly as CLZ wrote it. "" when there is no number left.
+   */
+  function clzComicIssue(issue) {
+    const s = String(issue || "").trim();
+    const m = s.match(/^(-?\d+(?:\.\d+)?|\d+\/\d+)/);
+    return m ? m[1] : "";
   }
 
   function clzRepeatKey(it) {
@@ -8516,13 +8599,10 @@
     });
     render();
     resetClz();
-    // Newly added comics with series + issue and no cover get a cover lookup later, one at a
-    // time, after the Undo window. The import above never waits on it.
-    // Rows with no issue (series only, or barcode-only) are never looked up: counted as Skipped.
-    enqueueCoverFill(
-      toAdd.filter((it) => it.type === "comic" && coverFillEligible(it)).map((it) => it.id),
-      toAdd.filter((it) => it.type === "comic" && !it.issue).length
-    );
+    // V2.11: every newly added item (comics included) goes to the import enrichment queue, one at
+    // a time after the Undo window. The import above never waits on it. (The v36 comic cover fill
+    // only finishes a queue an older version left behind.)
+    enqueueEnrich(toAdd.map((it) => it.id));
     const n = toAdd.length;
     const u = previous.size;
     const msg = n && u
@@ -8816,7 +8896,7 @@
   /** The import record's fingerprint for a row the queue changed, so Remove last import still finds it. */
   function refreshLastImportFingerprint(id) {
     const rec = readLastImport();
-    if (!rec || rec.kind !== "clz") return;
+    if (!rec) return; // V2.11: games imports are enriched too, so any record kind
     const row = rec.added.find((a) => a.id === id);
     const it = items.find((i) => i.id === id);
     if (!row || !it) return;
@@ -9032,6 +9112,784 @@
     });
   }
 
+  /* ---------- Import enrichment (V2.11) ----------
+   * After ANY successful import that adds items (Import CLZ, Import games), the new items are
+   * looked up one at a time with the lookups already wired into the app, after the import's Undo
+   * window. The import itself never waits and its rows land exactly as before.
+   *   Barcode first (books: ISBN -> Open Library / Google Books; music: MusicBrainz; games:
+   *   Wikidata + UPCitemdb -> IGDB relay). Exactly one barcode match -> only EMPTY fields are
+   *   filled (cover, creator, year, platform, ...): "enriched".
+   *   Several barcode matches, and every title search (title + platform / year, comics series +
+   *   issue + year) -> nothing is filled, the item is marked "Needs a pick" (enrich: "pick").
+   *   Too little to search with, no source for the type, or no match -> "Needs lookup"
+   *   (enrich: "lookup"). Errors leave the item as imported: retried once, then "failed" and
+   *   marked Needs lookup.
+   * Daily caps: UPCitemdb is counted here (about 100 a day, the trial limit) and every source's
+   * 429 / limit answer (Retry-After honoured) or the relays' busy / daily-cap answers pause the
+   * queue. The queue (position, counts, the time it may resume) is kept in this browser and
+   * resumes on the next open once that time has passed; no item is skipped and nothing is
+   * retried against a limit. Restoring a backup never queues anything.
+   * NEW COPY (fact check): every string in this block. */
+  const ENRICH_QUEUE_STORAGE = "freerangemedia-enrich-queue";
+  const ENRICH_CAPS_STORAGE = "freerangemedia-enrich-caps"; // { day: "YYYY-MM-DD", n: { upcitemdb } }
+  const ENRICH_LOCK_STORAGE = "freerangemedia-enrich-lock";
+  const ENRICH_LAST_STORAGE = "freerangemedia-enrich-last";
+  const ENRICH_DELAY_MS = 2000;
+  const ENRICH_START_MS = IMPORT_UNDO_MS + 1000; // after the import's Undo window
+  const ENRICH_MAX_FAILS = 3; // in a row: pause (offline, or a source is down)
+  const ENRICH_MAX_TRIES = 2; // per item: one retry, then "failed"
+  const ENRICH_SHORT_WAIT_MS = 5 * 60000; // a busy answer this short resumes in this session
+  /** Local daily counts for sources with a known per-day allowance and no relay of ours in front. */
+  const ENRICH_DAILY_CAPS = { upcitemdb: 100 };
+  const ENRICH_TITLE_TYPES = ["book", "movie", "music", "game", "comic"];
+  let filterEnrich = ""; // "" | "pick" | "lookup": the Needs a pick / Needs lookup list
+  const ENRICH = { running: false, timer: null, beat: null, active: false, shortPauses: 0 };
+
+  /** Which existing source covers what (also reported in Settings copy and the tests). */
+  function enrichSources() {
+    return {
+      book: { barcode: ["Open Library", "Google Books"], title: ["Open Library", "Google Books", "Wikipedia"] },
+      music: { barcode: ["MusicBrainz"], title: ["MusicBrainz"] },
+      game: { barcode: gameRelayUrl() ? ["Wikidata", "UPCitemdb", "IGDB"] : [], title: GAME_TITLE_SEARCH_TESTED && gameRelayUrl() ? ["IGDB"] : [] },
+      movie: { barcode: [], title: [...(getOmdbKey() ? ["OMDb"] : []), "Wikipedia"] },
+      comic: { barcode: [], title: comicRelaySetUp() ? ["Grand Comics Database"] : [] },
+      tabletop: { barcode: [], title: [] }, // no import path lands tabletop games (BGG stays manual)
+    };
+  }
+
+  function enrichTitleUsable(it) {
+    const t = String((it && it.title) || "").trim();
+    return Boolean(t) && t !== "Untitled";
+  }
+
+  /** { route: "barcode" | "title" | "none" } for one item, from what it carries. */
+  function enrichPlanFor(it) {
+    if (!it || !ENRICH_TITLE_TYPES.includes(it.type)) return { route: "none" };
+    const bc = String(it.barcode || "").trim();
+    const src = enrichSources()[it.type];
+    if (src.barcode.length) {
+      if (it.type === "book" && looksLikeIsbn(bc)) return { route: "barcode" };
+      if (it.type === "music" && barcodeVariants(bc).length) return { route: "barcode" };
+      if (it.type === "game" && /^\d[\d -]{6,20}\d$/.test(bc)) return { route: "barcode" };
+    }
+    return enrichTitlePlan(it);
+  }
+
+  function enrichTitlePlan(it) {
+    const src = enrichSources()[it.type];
+    if (!src || !src.title.length) return { route: "none" };
+    if (it.type === "comic") return it.series && clzComicIssue(it.issue) ? { route: "title" } : { route: "none" };
+    if (it.type === "game") return usableGameTitle(it.title) ? { route: "title" } : { route: "none" };
+    return enrichTitleUsable(it) ? { route: "title" } : { route: "none" };
+  }
+
+  /* --- queue --- */
+  function enrichEmptyQueue() {
+    return { v: 1, ids: [], tries: {}, total: 0, done: 0, enriched: 0, complete: 0, pick: 0, lookup: 0, failed: 0, paused: false, reason: "", until: 0, startAt: 0, seen: false, dismissed: true };
+  }
+  function readEnrichQueue() {
+    const q = enrichEmptyQueue();
+    try {
+      const r = JSON.parse(localStorage.getItem(ENRICH_QUEUE_STORAGE) || "null");
+      if (r && r.v === 1) {
+        q.ids = Array.isArray(r.ids) ? [...new Set(r.ids.map(String))] : [];
+        q.tries = r.tries && typeof r.tries === "object" && !Array.isArray(r.tries) ? r.tries : {};
+        for (const k of ["total", "done", "enriched", "complete", "pick", "lookup", "failed", "until", "startAt"]) q[k] = Math.max(0, Number(r[k]) || 0);
+        q.paused = r.paused === true;
+        q.reason = typeof r.reason === "string" ? r.reason : "";
+        q.seen = r.seen === true;
+        q.dismissed = r.dismissed === true;
+      }
+    } catch {
+      /* unreadable: start empty */
+    }
+    return q;
+  }
+  function writeEnrichQueue(q) {
+    try {
+      localStorage.setItem(ENRICH_QUEUE_STORAGE, JSON.stringify({ ...q, v: 1 }));
+    } catch {
+      /* storage full: the queue just won't persist */
+    }
+  }
+
+  /** New items from a successful import. Restore never calls this. */
+  function enqueueEnrich(ids) {
+    const list = [...new Set((ids || []).map(String))];
+    if (!list.length) return;
+    let q = readEnrichQueue();
+    if (!q.ids.length) q = { ...enrichEmptyQueue(), until: q.paused && q.until > Date.now() ? q.until : 0, reason: q.paused && q.until > Date.now() ? q.reason : "" };
+    q.paused = q.until > Date.now(); // a cap that hasn't ended still holds
+    if (!q.paused) q.reason = "";
+    q.ids = [...new Set([...q.ids, ...list])];
+    q.total += list.length;
+    q.seen = true;
+    q.dismissed = false;
+    q.startAt = Date.now() + ENRICH_START_MS;
+    writeEnrichQueue(q);
+    renderEnrichUi();
+    if (!q.paused) startEnrich(ENRICH_START_MS);
+  }
+
+  /** After a restore: Replace forgets the queue (those items are gone); Merge keeps it. Never starts one. */
+  function enrichAfterRestore(replace) {
+    if (!replace) return renderEnrichUi();
+    const q = readEnrichQueue();
+    if (!q.ids.length && !q.seen) return;
+    writeEnrichQueue({ ...enrichEmptyQueue(), until: q.until, reason: q.until > Date.now() ? q.reason : "", paused: false });
+    renderEnrichUi();
+  }
+
+  function resumeEnrichOnOpen() {
+    const q = readEnrichQueue();
+    if (!q.ids.length) return renderEnrichUi();
+    if (q.until > Date.now()) return renderEnrichUi(); // a daily cap still holds: no request until it ends
+    if (q.paused) {
+      q.paused = false;
+      q.reason = "";
+      writeEnrichQueue(q);
+    }
+    const wait = q.startAt - Date.now();
+    startEnrich(Math.max(2000, wait > 0 && wait <= ENRICH_START_MS ? wait : 0));
+  }
+
+  function startEnrich(delay) {
+    if (ENRICH.running || ENRICH.timer) return;
+    ENRICH.timer = setTimeout(() => {
+      ENRICH.timer = null;
+      runEnrich();
+    }, delay);
+  }
+
+  /* --- one runner across tabs (same pattern as the cover fill lock) --- */
+  function readEnrichLock() {
+    try {
+      const l = JSON.parse(localStorage.getItem(ENRICH_LOCK_STORAGE) || "null");
+      return l && typeof l.tab === "string" ? { tab: l.tab, t: Number(l.t) || 0 } : null;
+    } catch {
+      return null;
+    }
+  }
+  function ownsEnrichLock() {
+    const l = readEnrichLock();
+    return Boolean(l && l.tab === coverTabId);
+  }
+  async function acquireEnrichLock() {
+    const l = readEnrichLock();
+    if (l && l.tab !== coverTabId && !coverLockStale(l)) return false;
+    try {
+      localStorage.setItem(ENRICH_LOCK_STORAGE, JSON.stringify({ tab: coverTabId, t: Date.now() }));
+    } catch {
+      return true;
+    }
+    await coverFillSleep(60);
+    if (!ownsEnrichLock()) return false;
+    ENRICH.beat = setInterval(() => {
+      if (!ownsEnrichLock()) return;
+      try {
+        localStorage.setItem(ENRICH_LOCK_STORAGE, JSON.stringify({ tab: coverTabId, t: Date.now() }));
+      } catch {
+        /* ignore */
+      }
+    }, COVER_LOCK_BEAT_MS);
+    return true;
+  }
+  function releaseEnrichLock() {
+    clearInterval(ENRICH.beat);
+    ENRICH.beat = null;
+    if (ownsEnrichLock()) {
+      try {
+        localStorage.removeItem(ENRICH_LOCK_STORAGE);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  /* --- daily caps --- */
+  function enrichLocalDay(t = Date.now()) {
+    const d = new Date(t);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  function enrichNextMidnight(t = Date.now()) {
+    const d = new Date(t);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 5).getTime(); // 00:05 local
+  }
+  function readEnrichCaps() {
+    try {
+      const c = JSON.parse(localStorage.getItem(ENRICH_CAPS_STORAGE) || "null");
+      if (c && c.day === enrichLocalDay() && c.n && typeof c.n === "object") return c;
+    } catch {
+      /* unreadable: today starts at zero */
+    }
+    return { day: enrichLocalDay(), n: {} };
+  }
+  function enrichCapUsed(source) {
+    return Math.max(0, Number(readEnrichCaps().n[source]) || 0);
+  }
+  /** Count one request against a local daily cap (manual lookups count too: one allowance). */
+  function enrichCount(source) {
+    const c = readEnrichCaps();
+    c.n[source] = (Number(c.n[source]) || 0) + 1;
+    try {
+      localStorage.setItem(ENRICH_CAPS_STORAGE, JSON.stringify(c));
+    } catch {
+      /* ignore */
+    }
+  }
+  class EnrichCap extends Error {
+    constructor(until, reason) {
+      super("cap");
+      this.until = until;
+      this.reason = reason;
+    }
+  }
+  /** Called by the game barcode fetch: during enrichment, UPCitemdb past its daily allowance is never asked. */
+  function enrichGuardUpc(url) {
+    if (!/^https:\/\/api\.upcitemdb\.com\//.test(url)) return;
+    if (ENRICH.active && enrichCapUsed("upcitemdb") >= ENRICH_DAILY_CAPS.upcitemdb) throw new EnrichCap(enrichNextMidnight(), "UPCitemdb");
+    enrichCount("upcitemdb");
+  }
+
+  /** The lookupIssues of one enrichment call -> a cap, a failure, or nothing. */
+  function enrichIssueOutcome(issues) {
+    for (const [src, issue] of issues) {
+      if (issue.kind === "limit") return { kind: "cap", until: enrichNextMidnight(), reason: src };
+      if (issue.kind === "http" && (issue.status === 429 || (issue.status === 503 && src === "MusicBrainz"))) return { kind: "cap", until: Date.now() + 60000, reason: src };
+    }
+    return issues.length ? { kind: "failed" } : null;
+  }
+
+  /** Run fn with lookupIssues collected for this call only (a manual Lookup keeps its own). */
+  async function enrichWithIssues(fn) {
+    const mine = new Map();
+    const prev = lookupIssues;
+    lookupIssues = mine;
+    try {
+      const data = await fn();
+      return { data, issues: [...mine.entries()] };
+    } finally {
+      if (lookupIssues === mine) lookupIssues = prev;
+    }
+  }
+
+  function enrichGameCooldown(relay) {
+    let until = 0;
+    for (const origin of [relay, "https://query.wikidata.org", "https://api.upcitemdb.com"]) {
+      const t = origin ? gameCooldowns.get(origin) || 0 : 0;
+      if (t > until) until = t;
+    }
+    return until > Date.now() ? until : 0;
+  }
+
+  async function enrichGameSearch(relay, title, signal) {
+    const data = await gameJson(`${relay}/game/search?title=${encodeURIComponent(title)}`, signal);
+    return (Array.isArray(data && data.candidates) ? data.candidates : []).slice(0, 10)
+      .filter((c) => /^[1-9]\d{0,9}$/.test(String(c.igdbId || "")) && usableGameTitle(c.title))
+      .map((c) => ({
+        igdbId: String(c.igdbId), title: usableGameTitle(c.title), creator: String(c.creator || "").slice(0, 200),
+        year: Number.isInteger(c.year) && c.year >= 1900 && c.year <= 2200 ? c.year : null,
+        platforms: Array.isArray(c.platforms) ? c.platforms.filter((p) => typeof p === "string").slice(0, 30) : [],
+        coverUrl: /^https:\/\/images\.igdb\.com\/igdb\/image\/upload\/t_cover_big\/[A-Za-z0-9_-]+\.jpg$/.test(c.coverUrl || "") ? c.coverUrl : "",
+        coverSource: "igdb", coverSourceId: String(c.igdbId),
+      }));
+  }
+
+  /**
+   * Look one item up. -> { kind: "enriched", data } | { kind: "pick" } | { kind: "lookup" } |
+   * { kind: "failed" } | { kind: "cap", until, reason }. Never writes.
+   */
+  async function enrichOne(it) {
+    const plan = enrichPlanFor(it);
+    if (plan.route === "none") return { kind: "lookup" };
+    if (plan.route === "barcode") {
+      const res = await enrichByBarcode(it);
+      if (res) return res;
+    }
+    return enrichTitlePlan(it).route === "title" ? enrichByTitle(it) : { kind: "lookup" };
+  }
+
+  /** null = no barcode match: fall back to the title search. */
+  async function enrichByBarcode(it) {
+    const bc = String(it.barcode || "").trim();
+    if (it.type === "book") {
+      const { data, issues } = await enrichWithIssues(() =>
+        runLookupWaterfall(
+          [
+            { label: "Open Library", slug: "openlibrary", run: () => fetchOpenLibrary({ isbn: bc, title: "", author: "" }) },
+            { label: "Google Books", slug: "googlebooks", run: () => fetchGoogleBooks({ isbn: bc, title: "", author: "" }) },
+          ],
+          []
+        )
+      );
+      if (data && lookupHasUsefulFields(data.data)) return { kind: "enriched", data: data.data }; // an ISBN names one book
+      return enrichIssueOutcome(issues);
+    }
+    if (it.type === "music") {
+      const { data, issues } = await enrichWithIssues(() => fetchMusicBrainz({ barcode: bc, title: "", artist: "" }));
+      if (data && data._byBarcode) return data._barcodeMatches === 1 ? { kind: "enriched", data } : { kind: "pick" };
+      return enrichIssueOutcome(issues);
+    }
+    if (it.type === "game") {
+      const relay = gameRelayUrl();
+      if (!relay) return null;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15000);
+      try {
+        const hit = await resolveGameBarcode(bc, ctrl.signal);
+        const title = usableGameTitle(hit && hit.title);
+        if (!title) return null;
+        const known = mapExternalPlatform(it.platform);
+        const compatible = !hit.platform || !known || known === hit.platform || (it.platform === "Steam" && hit.platform === "PC") || (it.platform === "PSN" && /^PS[1-5]$/.test(hit.platform)) || (it.platform === "Switch 2" && hit.platform === "Switch");
+        if (!compatible) return { kind: "pick" }; // the barcode names another platform: the owner decides
+        const platform = String(it.platform || "").trim() || hit.platform || "";
+        const fits = (await enrichGameSearch(relay, title, ctrl.signal)).filter((c) => gamePlatformMatches(c.platforms, platform));
+        if (fits.length === 1) return { kind: "enriched", data: { ...fits[0], platform: hit.platform || "" } };
+        return fits.length ? { kind: "pick" } : null;
+      } catch (err) {
+        if (err instanceof EnrichCap) return { kind: "cap", until: err.until, reason: err.reason };
+        const until = enrichGameCooldown(relay);
+        if (until) return { kind: "cap", until, reason: "game lookup" };
+        return { kind: "failed" };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    return null;
+  }
+
+  /** A title search never fills anything: a result means "Needs a pick", none "Needs lookup". */
+  async function enrichByTitle(it) {
+    if (it.type === "comic") {
+      let res;
+      try {
+        res = await comicLookup({ series: it.series, issue: clzComicIssue(it.issue), barcode: "", publisher: it.publisher, year: it.year == null ? "" : it.year });
+      } catch {
+        return { kind: "failed" };
+      }
+      if (res.busy) return { kind: "cap", until: Date.now() + Math.max(60000, comicBusyRemainingMs()), reason: "Comic lookup" };
+      if (res.failed || res.notSetUp) return { kind: "failed" };
+      return res.match ? { kind: "pick" } : { kind: "lookup" };
+    }
+    if (it.type === "game") {
+      const relay = gameRelayUrl();
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15000);
+      try {
+        const found = await enrichGameSearch(relay, usableGameTitle(it.title), ctrl.signal);
+        return found.length ? { kind: "pick" } : { kind: "lookup" };
+      } catch {
+        const until = enrichGameCooldown(relay);
+        return until ? { kind: "cap", until, reason: "IGDB" } : { kind: "failed" };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    const title = String(it.title || "").trim();
+    let steps = [];
+    if (it.type === "book") {
+      steps = [
+        { label: "Open Library", slug: "openlibrary", run: () => fetchOpenLibrary({ isbn: "", title, author: it.creator || "" }) },
+        { label: "Google Books", slug: "googlebooks", run: () => fetchGoogleBooks({ isbn: "", title, author: it.creator || "" }) },
+        { label: "Wikipedia", slug: "wikipedia", run: async () => withoutCover(await fetchWikipedia({ title, kind: "book" })) },
+      ];
+    } else if (it.type === "movie") {
+      const year = it.year == null ? "" : String(it.year);
+      if (getOmdbKey()) steps.push({ label: "OMDb", slug: "omdb", run: () => fetchOmdb({ title, year }) });
+      steps.push({ label: "Wikipedia", slug: "wikipedia", run: async () => withoutCover(await fetchWikipedia({ title, kind: "movie", year })) });
+    } else if (it.type === "music") {
+      steps = [{ label: "MusicBrainz", slug: "musicbrainz", run: () => fetchMusicBrainz({ barcode: "", title, artist: it.creator || "" }) }];
+    }
+    if (!steps.length) return { kind: "lookup" };
+    const { data, issues } = await enrichWithIssues(() => runLookupWaterfall(steps, []));
+    if (data && lookupHasUsefulFields(data.data)) return { kind: "pick" };
+    return enrichIssueOutcome(issues) || { kind: "lookup" };
+  }
+
+  function enrichBlank(v) {
+    return v === null || v === undefined || String(v).trim() === "";
+  }
+
+  /**
+   * Only the fields that are EMPTY on the item and present in the match. Never status, format,
+   * disc, barcode, sources, notes, tags, rating or anything the import or the owner filled.
+   */
+  function enrichFillEmpty(cur, data) {
+    const f = {};
+    if (!cur || !data) return f;
+    if (cur.type !== "comic" && (enrichBlank(cur.title) || cur.title === "Untitled") && !enrichBlank(data.title)) f.title = String(data.title).trim();
+    if (cur.type !== "comic" && enrichBlank(cur.creator) && !enrichBlank(data.creator)) {
+      f.creator = String(data.creator).trim();
+      if (cur.type === "book" && !(cur.authors || []).length) {
+        // Same rule as the CLZ books import: a book's one Signed flag covers every listed author.
+        f.authors = parseCreatorNames(f.creator).map((name) => ({ name, signed: cur.signed === true }));
+      }
+    }
+    const y = Number(data.year);
+    if (cur.year == null && Number.isInteger(y) && y >= 1800 && y <= 2200) f.year = y;
+    if (enrichBlank(cur.coverUrl) && !enrichBlank(data.coverUrl) && /^https:\/\//i.test(String(data.coverUrl))) {
+      f.coverUrl = String(data.coverUrl).trim();
+      f.coverSource = String(data.coverSource || "").trim();
+      f.coverSourceId = String(data.coverSourceId || "").trim();
+      if (cur.type === "game") f.coverPlatform = String(data.coverPlatform || cur.platform || "").trim();
+    }
+    if (cur.type === "book" && enrichBlank(cur.googleBooksUrl) && safeGoogleBooksUrl(data.googleBooksUrl)) f.googleBooksUrl = data.googleBooksUrl;
+    if (cur.type === "game") {
+      if (enrichBlank(cur.igdbId) && /^[1-9]\d{0,9}$/.test(String(data.igdbId || ""))) f.igdbId = String(data.igdbId);
+      if (enrichBlank(cur.platform) && !enrichBlank(data.platform)) f.platform = data.platform;
+    }
+    return f;
+  }
+
+  /** The fields a lookup was made from; if the owner changed one meanwhile, the answer is dropped. */
+  function enrichKey(it) {
+    return it ? [it.type, it.title, it.barcode, it.series || "", it.issue || "", it.platform || ""].join("\u0001") : "";
+  }
+
+  /** Write one outcome onto the row. -> { state: "written" | "nothing" | "dropped" | "failed", filled } */
+  function enrichWrite(id, outcome, key) {
+    let state = "dropped";
+    let filled = 0;
+    const ok = commitItems((list) => {
+      const idx = list.findIndex((i) => i.id === id);
+      if (idx < 0) return;
+      const cur = list[idx];
+      if (enrichKey(cur) !== key) return; // edited while the lookup ran: drop the answer
+      let next;
+      if (outcome.kind === "enriched") {
+        const fields = enrichFillEmpty(cur, outcome.data);
+        filled = Object.keys(fields).length;
+        if (!filled && !cur.enrich) {
+          state = "nothing";
+          return;
+        }
+        next = normalizeItem({ ...cur, ...fields });
+        delete next.enrich;
+      } else {
+        if (cur.enrich === outcome.mark) {
+          state = "nothing";
+          return;
+        }
+        next = normalizeItem({ ...cur, enrich: outcome.mark }); // dateUpdated and every other field untouched
+      }
+      const out = list.slice();
+      out[idx] = next;
+      state = "written";
+      return out;
+    }, "other");
+    if (!ok) return { state: "failed", filled: 0 };
+    return { state, filled };
+  }
+
+  async function runEnrich() {
+    if (ENRICH.running) return;
+    ENRICH.running = true;
+    if (!(await acquireEnrichLock())) {
+      ENRICH.running = false;
+      return; // another tab is running it
+    }
+    let fails = 0;
+    let q = readEnrichQueue();
+    q.paused = false;
+    writeEnrichQueue(q);
+    renderEnrichUi();
+    try {
+      for (;;) {
+        if (!ownsEnrichLock()) return;
+        syncFromStorage();
+        q = readEnrichQueue();
+        if (q.until > Date.now()) {
+          q.paused = true;
+          writeEnrichQueue(q);
+          break;
+        }
+        const id = q.ids[0];
+        if (!id) break;
+        const it = items.find((i) => i.id === id);
+        if (!it) {
+          // Undone, removed or deleted: it no longer counts toward this run.
+          q.ids.shift();
+          q.total = Math.max(q.done, q.total - 1);
+          delete q.tries[id];
+          writeEnrichQueue(q);
+          continue;
+        }
+        // A manual Lookup in progress has the sources to itself; wait for it.
+        if (lookupBusy || gameBusy) {
+          await coverFillSleep(1000);
+          continue;
+        }
+        let last = 0;
+        try {
+          last = Number(localStorage.getItem(ENRICH_LAST_STORAGE)) || 0;
+        } catch {
+          last = 0;
+        }
+        const gap = last + ENRICH_DELAY_MS - Date.now();
+        if (gap > 0 && gap <= ENRICH_DELAY_MS) await coverFillSleep(gap);
+        try {
+          localStorage.setItem(ENRICH_LAST_STORAGE, String(Date.now()));
+        } catch {
+          /* ignore */
+        }
+        const key = enrichKey(it);
+        let res;
+        ENRICH.active = true;
+        try {
+          res = await enrichOne(it);
+        } catch (err) {
+          res = err instanceof EnrichCap ? { kind: "cap", until: err.until, reason: err.reason } : { kind: "failed" };
+        } finally {
+          ENRICH.active = false;
+        }
+        q = readEnrichQueue();
+        if (res.kind === "cap") {
+          // Pause with the item still first in line: it is asked again after the cap, never skipped.
+          q.paused = true;
+          q.until = Math.max(res.until || 0, Date.now() + 60000);
+          q.reason = res.reason || "";
+          writeEnrichQueue(q);
+          // A short busy wait resumes in this session, at most 3 times in a row; a daily cap (or a
+          // source that stays busy) waits for the next open.
+          ENRICH.shortPauses += 1;
+          if (q.until - Date.now() <= ENRICH_SHORT_WAIT_MS && ENRICH.shortPauses <= 3) startEnrichAt(q.until);
+          break;
+        }
+        if (res.kind === "failed") {
+          fails += 1;
+          const tries = (Number(q.tries[id]) || 0) + 1;
+          q.ids = q.ids.filter((x) => x !== id);
+          if (tries < ENRICH_MAX_TRIES) {
+            q.tries[id] = tries;
+            q.ids.push(id); // one more try, after the rest
+          } else {
+            delete q.tries[id];
+            const w = enrichWrite(id, { kind: "mark", mark: "lookup" }, key);
+            if (w.state === "failed") {
+              q.ids.unshift(id);
+              q.paused = true;
+              q.reason = "storage";
+              writeEnrichQueue(q);
+              break;
+            }
+            q.done += 1;
+            q.failed += 1;
+          }
+          writeEnrichQueue(q);
+          if (fails >= ENRICH_MAX_FAILS) {
+            q.paused = true;
+            q.reason = "errors";
+            writeEnrichQueue(q);
+            break;
+          }
+        } else {
+          fails = 0;
+          ENRICH.shortPauses = 0;
+          const outcome = res.kind === "enriched" ? res : { kind: "mark", mark: res.kind === "pick" ? "pick" : "lookup" };
+          const w = enrichWrite(id, outcome, key);
+          if (w.state === "failed") {
+            q.paused = true;
+            q.reason = "storage";
+            writeEnrichQueue(q);
+            break;
+          }
+          q.ids = q.ids.filter((x) => x !== id);
+          delete q.tries[id];
+          if (w.state === "dropped") {
+            q.total = Math.max(q.done, q.total - 1);
+          } else {
+            q.done += 1;
+            if (res.kind === "enriched") {
+              if (w.filled) q.enriched += 1;
+              else q.complete += 1;
+            } else if (res.kind === "pick") q.pick += 1;
+            else q.lookup += 1;
+          }
+          writeEnrichQueue(q);
+          if (w.state === "written") {
+            refreshLastImportFingerprint(id);
+            renderStats();
+            renderList();
+          }
+        }
+        renderEnrichUi();
+        if (q.ids.length) await coverFillSleep(ENRICH_DELAY_MS);
+      }
+    } finally {
+      const had = ownsEnrichLock();
+      ENRICH.running = false;
+      releaseEnrichLock();
+      if (had) {
+        q = readEnrichQueue();
+        if (q.ids.length && !q.paused) {
+          q.paused = true;
+          if (!q.reason) q.reason = "errors";
+          writeEnrichQueue(q);
+        }
+      }
+      renderEnrichUi();
+    }
+  }
+
+  function startEnrichAt(t) {
+    clearTimeout(ENRICH.timer);
+    ENRICH.timer = null;
+    ENRICH.timer = setTimeout(() => {
+      ENRICH.timer = null;
+      const q = readEnrichQueue();
+      if (q.until <= Date.now()) {
+        q.paused = false;
+        q.reason = "";
+        q.until = 0;
+        writeEnrichQueue(q);
+        runEnrich();
+      }
+    }, Math.max(1000, t - Date.now() + 500));
+  }
+
+  /* --- summary + UI --- */
+  function enrichMarked(mark, shelfOnly = false) {
+    return items.filter((i) => i.enrich === mark && (!shelfOnly || (shelfMode === "wishlist" ? isWantStatus(i.status) : isLibraryStatus(i.status))));
+  }
+
+  /** "12 enriched · 30 need a pick · 5 need lookup · 2 failed · 31 paused at cap" */
+  function enrichSummaryText(q) {
+    const parts = [
+      `${q.enriched.toLocaleString()} enriched`,
+      `${q.pick.toLocaleString()} ${q.pick === 1 ? "needs" : "need"} a pick`,
+      `${q.lookup.toLocaleString()} ${q.lookup === 1 ? "needs" : "need"} lookup`,
+      `${q.failed.toLocaleString()} failed`,
+    ];
+    if (q.complete) parts.push(`${q.complete.toLocaleString()} already complete`);
+    if (q.paused && q.ids.length) parts.push(`${q.ids.length.toLocaleString()} paused at cap`);
+    return parts.join(" · ");
+  }
+
+  function enrichClock(t) {
+    const d = new Date(t);
+    const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return enrichLocalDay(t) === enrichLocalDay() ? time : `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
+  }
+
+  let enrichSrKey = "";
+  function renderEnrichUi() {
+    const box = document.getElementById("enrich-status");
+    if (!box) return;
+    const q = readEnrichQueue();
+    const pickN = enrichMarked("pick").length;
+    const lookN = enrichMarked("lookup").length;
+    const active = q.ids.length > 0;
+    const showRun = q.seen && !q.dismissed && (active || q.done > 0);
+    const show = showRun || pickN > 0 || lookN > 0 || Boolean(filterEnrich);
+    box.hidden = !show;
+    if (!show) return;
+    const pos = Math.min(q.total, q.done + (ENRICH.running && active ? 1 : 0));
+    let line = "";
+    if (showRun && active && q.paused) {
+      line = q.reason === "errors" || q.reason === "storage"
+        ? `Paused after ${q.done.toLocaleString()} of ${q.total.toLocaleString()}. Lookups aren’t working right now.`
+        : `Paused at a daily limit after ${q.done.toLocaleString()} of ${q.total.toLocaleString()}.`;
+    } else if (showRun && active) line = `Enriching ${Math.max(1, pos).toLocaleString()} of ${q.total.toLocaleString()}`;
+    else if (showRun) line = `Finished: ${q.done.toLocaleString()} imported ${q.done === 1 ? "item" : "items"} checked.`;
+    else line = "Imported items to finish";
+    $("#enrich-line").textContent = line;
+    // Screen readers hear the start, every 10th item, a pause and the end, not every step.
+    const sr = $("#enrich-sr");
+    const srKey = `${q.done}|${q.paused}|${active}|${showRun}`;
+    if (sr && srKey !== enrichSrKey && (!active || q.paused || q.done % 10 === 0 || !enrichSrKey)) {
+      enrichSrKey = srKey;
+      sr.textContent = showRun ? `${line}. ${enrichSummaryText(q)}.` : line;
+    }
+    const bar = $("#enrich-bar");
+    bar.hidden = !(showRun && active);
+    $("#enrich-bar-fill").style.width = `${q.total ? Math.round((q.done / q.total) * 100) : 0}%`;
+    const counts = $("#enrich-counts");
+    counts.hidden = !showRun;
+    counts.textContent = showRun ? enrichSummaryText(q) : "";
+    const note = $("#enrich-note");
+    let msg = "";
+    if (showRun && active && q.paused) {
+      msg = q.until > Date.now()
+        ? `${q.reason ? `${q.reason} limit reached. ` : ""}It picks up where it stopped when you open the app after ${enrichClock(q.until)}.`
+        : "It picks up where it stopped the next time you open the app, or tap Resume.";
+    } else if (showRun && active) msg = "You can keep using the app. Only empty fields are filled.";
+    if (filterEnrich) {
+      const here = enrichMarked(filterEnrich, true).length;
+      const all = enrichMarked(filterEnrich).length;
+      const other = all - here;
+      if (other > 0) msg = `${msg ? `${msg} ` : ""}${other.toLocaleString()} more on your ${shelfMode === "wishlist" ? "Library" : "Wishlist"}.`;
+    }
+    note.textContent = msg;
+    note.hidden = !msg;
+    const pickBtn = $("#btn-enrich-pick");
+    pickBtn.hidden = !pickN && filterEnrich !== "pick";
+    pickBtn.textContent = `Needs a pick (${pickN.toLocaleString()})`;
+    pickBtn.setAttribute("aria-pressed", String(filterEnrich === "pick"));
+    const lookBtn = $("#btn-enrich-lookup");
+    lookBtn.hidden = !lookN && filterEnrich !== "lookup";
+    lookBtn.textContent = `Needs lookup (${lookN.toLocaleString()})`;
+    lookBtn.setAttribute("aria-pressed", String(filterEnrich === "lookup"));
+    $("#btn-enrich-all").hidden = !filterEnrich;
+    $("#btn-enrich-resume").hidden = !(showRun && active && q.paused && q.until <= Date.now() && !ENRICH.running);
+    $("#btn-enrich-dismiss").hidden = !(showRun && !active);
+  }
+
+  function setEnrichFilter(mark) {
+    filterEnrich = mark;
+    if (mark) filterNeedsCover = false;
+    render();
+    renderEnrichUi();
+  }
+
+  /** From an item's detail: open it and run the usual manual Lookup (nothing else changes). */
+  function enrichLookupFor(id) {
+    const item = items.find((i) => i.id === id);
+    if (!item) return;
+    closeDetail(false);
+    openModal(item, null, { focusTitle: false });
+    if (item.type === "game" && !String(item.barcode || "").trim()) runGameLookup(true);
+    else runLookup();
+  }
+
+  function bindEnrich() {
+    const box = document.getElementById("enrich-status");
+    if (!box) return;
+    $("#btn-enrich-pick").addEventListener("click", () => setEnrichFilter(filterEnrich === "pick" ? "" : "pick"));
+    $("#btn-enrich-lookup").addEventListener("click", () => setEnrichFilter(filterEnrich === "lookup" ? "" : "lookup"));
+    $("#btn-enrich-all").addEventListener("click", () => setEnrichFilter(""));
+    $("#btn-enrich-resume").addEventListener("click", () => {
+      const q = readEnrichQueue();
+      if (q.until > Date.now()) return; // a cap still holds
+      q.paused = false;
+      q.reason = "";
+      q.until = 0;
+      writeEnrichQueue(q);
+      startEnrich(0);
+    });
+    $("#btn-enrich-dismiss").addEventListener("click", () => {
+      const q = readEnrichQueue();
+      if (q.ids.length) return;
+      writeEnrichQueue({ ...enrichEmptyQueue(), until: q.until, reason: q.reason });
+      renderEnrichUi();
+    });
+    const body = document.getElementById("item-detail-body");
+    if (body) {
+      body.addEventListener("click", (e) => {
+        const b = e.target.closest && e.target.closest("[data-enrich-lookup]");
+        if (b) enrichLookupFor(b.dataset.enrichLookup);
+      });
+    }
+    // Every tab with a queue looks again about every 5 s and takes over when the runner is gone.
+    setInterval(() => {
+      if (ENRICH.running || ENRICH.timer) return;
+      const q = readEnrichQueue();
+      const wait = q.startAt - Date.now();
+      if (!q.ids.length || q.paused || q.until > Date.now() || (wait > 0 && wait <= ENRICH_START_MS)) return;
+      if (coverLockStale(readEnrichLock()) || ownsEnrichLock()) startEnrich(0);
+    }, 5000);
+    window.addEventListener("pagehide", () => releaseEnrichLock());
+  }
+
   function bindClz() {
     const typeSel = $("#clz-type");
     if (!typeSel) return;
@@ -9157,6 +10015,7 @@
     bindClz();
     bindCoverQueue();
     bindCoverLockLifecycle();
+    bindEnrich();
     renderComicFooterCredit();
     fillAppVersionLine();
     window.addEventListener("storage", onStorageEvent);
@@ -9177,6 +10036,7 @@
     await seedIfEmpty();
     render();
     resumeCoverFillOnOpen();
+    resumeEnrichOnOpen();
     watchForUpdates();
     registerSW();
   }

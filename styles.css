@@ -5090,6 +5090,7 @@ body.frm-search-focus .filters-row .search {
 body.frm-profile-open .stats,
 body.frm-profile-open .toolbar,
 body.frm-profile-open #cover-queue,
+body.frm-profile-open #enrich-status,
 body.frm-profile-open #backup-banner {
   display: none !important;
 }
@@ -5997,4 +5998,69 @@ html {
   height: 7px;
   min-height: 7px;
   object-fit: fill;
+}
+
+/* ========== V2.11 import enrichment ==========
+   Same quiet cream-on-oak voice as the v36 cover line. In the page flow (never fixed or sticky),
+   so it can never sit over the bottom nav or the raised Add button. 44px targets. */
+.enrich-status {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-md);
+  color: #f3ead7;
+  display: grid;
+  gap: var(--space-2);
+}
+.enrich-status[hidden] { display: none !important; }
+.enrich-line,
+.enrich-counts,
+.enrich-note {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.enrich-line { font-weight: 600; }
+.enrich-counts { font-size: var(--fs-sm); }
+.enrich-note { font-size: var(--fs-sm); opacity: 0.85; }
+.enrich-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(243, 234, 215, 0.25);
+  overflow: hidden;
+}
+.enrich-bar[hidden] { display: none; }
+.enrich-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #f3ead7;
+  transition: width 0.3s ease;
+}
+.enrich-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.enrich-status .enrich-btn {
+  min-height: var(--tap);
+  min-width: var(--tap);
+  color: #f3ead7;
+  border-color: #f3ead7;
+  background: transparent;
+}
+.enrich-status .enrich-btn[aria-pressed="true"] {
+  background: #f3ead7;
+  color: #3b2a1a;
+}
+.enrich-status .enrich-btn:focus-visible {
+  outline: 2px solid #f3ead7;
+  outline-offset: 2px;
+}
+.enrich-detail {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  margin-top: var(--space-2);
+}
+.enrich-detail .enrich-detail-btn { min-height: var(--tap); }
+@media (prefers-reduced-motion: reduce) {
+  .enrich-bar-fill { transition: none; }
 }

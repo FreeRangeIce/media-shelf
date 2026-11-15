@@ -19,11 +19,11 @@ const check = (n, fn) => { fn(); passed++; console.log('PASS', n); };
 const v27 = css.slice(css.indexOf('========== V2.7'));
 assert.ok(v27.length > 200, 'V2.7 CSS block missing');
 
-check('APP_VERSION is 2.10; sw cache is media-shelf-v2.10', () => {
-  assert.match(app, /const APP_VERSION = "2\.10"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.10"/);
+check('APP_VERSION is 2.11; sw cache is media-shelf-v2.11', () => {
+  assert.match(app, /const APP_VERSION = "2\.11"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.11"/);
   assert.doesNotMatch(app, /const APP_VERSION = "2\.8-/);
-  assert.doesNotMatch(sw, /media-shelf-v2\.10-/);
+  assert.doesNotMatch(sw, /media-shelf-v2\.11-/);
 });
 
 check('item 1: headings are tabindex=-1; open paths focus the heading, never a field', () => {

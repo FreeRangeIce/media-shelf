@@ -48,11 +48,11 @@ function hexToRgb(hex) {
 
 const B = loadBadgeFns();
 
-check("APP_VERSION 2.10 and cache media-shelf-v2.10, no suffixes", () => {
-  assert.match(app, /const APP_VERSION = "2\.10";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.10";/);
-  assert.doesNotMatch(app, /const APP_VERSION = "2\.10-/);
-  assert.doesNotMatch(sw, /media-shelf-v2\.10-/);
+check("APP_VERSION 2.11 and cache media-shelf-v2.11, no suffixes", () => {
+  assert.match(app, /const APP_VERSION = "2\.11";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.11";/);
+  assert.doesNotMatch(app, /const APP_VERSION = "2\.11-/);
+  assert.doesNotMatch(sw, /media-shelf-v2\.11-/);
   assert.doesNotMatch(app, /const APP_VERSION = "2\.9";/);
   assert.doesNotMatch(sw, /const CACHE = "media-shelf-v2\.9";/);
 });
@@ -121,11 +121,17 @@ check("badge mapping: required names and every common variant", () => {
   }
 });
 
-check("badge mapping: PSP and PS Vita stay text, not the PlayStation logo", () => {
-  for (const name of ["PSP", "psp", "PS Vita", "ps vita", "PlayStation Vita", "Playstation Vita", "Vita"]) {
-    assert.equal(B.badgePlatformKey(name), "", name);
+check("badge mapping: PSP and PS Vita stay text (PSP, PSV), not the PlayStation logo", () => {
+  const cases = [
+    ["PSP", "PSP"], ["psp", "PSP"], ["PlayStation Portable", "PSP"],
+    ["PS Vita", "PSV"], ["ps vita", "PSV"], ["PlayStation Vita", "PSV"], ["Playstation Vita", "PSV"], ["Vita", "PSV"], ["PSVita", "PSV"],
+  ];
+  for (const [name, abbr] of cases) {
+    assert.equal(B.badgePlatformKey(name), abbr === "PSP" ? "PSP" : "PS Vita", name);
     const html = B.platformBadgeMarkup({ type: "game", platform: name });
     assert.match(html, /platform-badge-text/, name);
+    assert.match(html, new RegExp(">" + abbr + "<"), name);
+    assert.doesNotMatch(html, />PS </, name);
     assert.doesNotMatch(html, /playstation\.svg/, name);
   }
 });
@@ -254,7 +260,7 @@ check("badgePlatformKey is not used to write storage; cache name scheme unchange
   assert.match(ttSrc, /function dominantHueFromPixels/);
   assert.match(ttSrc, /sat < 0\.20/);
   assert.match(ttSrc, /function darkenRgbForWhiteText/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.10"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.11"/);
 });
 
 console.log(`${passed}/${passed} passed (v2.10 badge mapping + text size + Wii U + pills + scroll pad)`);
