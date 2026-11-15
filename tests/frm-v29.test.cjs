@@ -79,8 +79,8 @@ check("item 1: 24px disc, rgba(0,0,0,.55), inset 8px on the visible cover-fit bo
   assert.match(disc, /border-radius:\s*50%/);
   assert.match(v29, /\.platform-badge-text[\s\S]*font-family:\s*var\(--font\)/);
   assert.match(v29, /\.platform-badge-text[\s\S]*color:\s*#ffffff/);
-  assert.match(v29, /\.platform-badge-text[\s\S]*max-width:\s*22px/);
   assert.match(v29, /\.platform-badge-text[\s\S]*overflow:\s*hidden/);
+  assert.match(v29, /\.platform-badge-text[\s\S]*max-width:\s*none/);
   // No CSS filter inventing a monochrome mark
   assert.match(v29, /filter:\s*none/);
 });

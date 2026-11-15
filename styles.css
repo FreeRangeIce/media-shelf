@@ -5947,14 +5947,14 @@ body.modal-open .toast {
 }
 .platform-badge-text {
   font-family: var(--font);
-  font-size: 7px;
+  font-size: 6.5px;
   font-weight: 600;
-  letter-spacing: 0;
+  letter-spacing: -0.02em;
   color: #ffffff;
   line-height: 1;
   text-align: center;
   padding: 0 1px;
-  max-width: 22px;
+  max-width: none;
   overflow: hidden;
   white-space: nowrap;
 }
