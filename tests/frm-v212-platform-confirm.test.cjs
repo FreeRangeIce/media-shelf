@@ -1,6 +1,8 @@
-// V2.12: a barcode match listed on several platforms asks "<Title> came out on several platforms.
-// Is this the <platform> copy?" before filling. Yes fills like Use (platform kept); Pick another goes
-// back to the candidate list with nothing filled. Real app in headless Chrome; every provider is
+// V2.12: a barcode that Wikidata lists on several platforms (Sonic Frontiers, 5055277048182) no longer
+// blocks when the chosen platform is among them; the manual scan asks "<Title> came out on several
+// platforms. Is this the <platform> copy?" before filling. Yes fills like Use (platform kept); Pick
+// another goes back to the candidate list with nothing filled. A barcode naming one platform never asks,
+// even when IGDB lists several; a platform the barcode never names is still blocked. Real app in headless Chrome; every provider is
 // mocked, nothing leaves the box. SHOTS=<dir> also writes the 344 / 411 captures.
 "use strict";
 const { strict: assert } = require("assert");
@@ -14,8 +16,12 @@ const SHOTS = process.env.SHOTS || "";
 const RELAY = "https://media-shelf-games.freerangeice.workers.dev";
 const T0 = "2026-11-14T00:00:00.000Z";
 const SHELF = { version: 1, savedAt: T0, items: [{ id: "g0", type: "game", title: "Hollow Knight", platform: "Switch", status: "owned", format: "physical", dateAdded: T0, dateUpdated: T0 }] };
-const MULTI = { igdbId: "26226", title: "Celeste", creator: "Maddy Makes Games", year: 2018, platforms: ["Nintendo Switch", "PC (Microsoft Windows)", "PlayStation 4", "Xbox One"], coverUrl: "" };
-const SINGLE = { igdbId: "1942", title: "Celeste Classic", creator: "Maddy Thorson", year: 2015, platforms: ["Nintendo Switch"], coverUrl: "" };
+const SONIC_BARCODE = "5055277048182";
+// Wikidata answers every release platform, in no particular order (PS5 first, as seen live).
+const SONIC_WIKIDATA = ["PlayStation 5", "Nintendo Switch", "PlayStation 4", "Xbox One", "Xbox Series X and Series S", "Microsoft Windows"].map((p) => ({ itemLabel: { value: "Sonic Frontiers" }, platLabel: { value: p } }));
+const ONE_WIKIDATA = [{ itemLabel: { value: "Sonic Frontiers" }, platLabel: { value: "Nintendo Switch" } }];
+const MULTI = { igdbId: "119133", title: "Sonic Frontiers", creator: "Sonic Team", year: 2022, platforms: ["PlayStation 5", "Nintendo Switch", "PlayStation 4", "Xbox One", "Xbox Series X|S", "PC (Microsoft Windows)"], coverUrl: "" };
+const SINGLE = { igdbId: "1942", title: "Sonic Frontiers: Switch Edition", creator: "Sonic Team", year: 2022, platforms: ["Nintendo Switch"], coverUrl: "" };
 
 function startServer() {
   const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml", ".png": "image/png" };
@@ -33,7 +39,7 @@ function startServer() {
 let passed = 0;
 const check = (name, ok, detail = "") => { assert.ok(ok, `${name} ${detail}`); passed += 1; console.log("PASS", name); };
 
-async function openPage(browser, base, width, candidates) {
+async function openPage(browser, base, width, candidates, { wikidata = SONIC_WIKIDATA, platform = "Switch" } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: "block" });
   await ctx.addInitScript((shelf) => {
     if (sessionStorage.getItem("t")) return; sessionStorage.setItem("t", "1");
@@ -48,7 +54,7 @@ async function openPage(browser, base, width, candidates) {
     if (u.origin === base) return r.continue();
     if (!["GET", "HEAD"].includes(req.method())) { writes.push(req.url()); return r.abort(); }
     const hdr = { "Access-Control-Allow-Origin": "*" };
-    if (u.hostname === "query.wikidata.org") { calls.push("wikidata"); return r.fulfill({ contentType: "application/json", headers: hdr, body: JSON.stringify({ results: { bindings: [{ itemLabel: { value: "Celeste" }, platLabel: { value: "Nintendo Switch" } }] } }) }); }
+    if (u.hostname === "query.wikidata.org") { calls.push("wikidata"); return r.fulfill({ contentType: "application/json", headers: hdr, body: JSON.stringify({ results: { bindings: wikidata } }) }); }
     if (u.origin === RELAY && u.pathname === "/game/search") { calls.push("igdb:" + u.searchParams.get("title")); return r.fulfill({ contentType: "application/json", headers: hdr, body: JSON.stringify({ source: "igdb", candidates }) }); }
     calls.push("blocked:" + u.hostname); return r.abort();
   });
@@ -57,10 +63,10 @@ async function openPage(browser, base, width, candidates) {
   await page.evaluate(() => document.getElementById("btn-add").click());
   await page.waitForSelector("#modal:not([hidden])");
   await page.selectOption("#field-type", "game");
-  await page.selectOption("#field-platform", "Switch");
+  await page.selectOption("#field-platform", platform);
   return { ctx, page, calls, writes, errors };
 }
-async function scanLookup(page) { await page.fill("#field-barcode", "045496590741"); await page.click("#btn-lookup"); await page.waitForSelector("[data-game-pick]"); }
+async function scanLookup(page) { await page.fill("#field-barcode", SONIC_BARCODE); await page.click("#btn-lookup"); await page.waitForSelector("[data-game-pick]"); }
 const form = (page) => page.evaluate(() => ({ title: document.getElementById("field-title").value, platform: document.getElementById("field-platform").value, igdb: document.getElementById("field-igdb-id").value, year: document.getElementById("field-year") ? document.getElementById("field-year").value : "" }));
 
 (async () => {
@@ -74,7 +80,7 @@ const form = (page) => page.evaluate(() => ({ title: document.getElementById("fi
       await page.click('[data-game-pick="0"]'); await page.click("#game-match-use");
       await page.waitForSelector("#game-confirm-yes");
       const q = (await page.textContent("#game-match-heading")).trim();
-      check(`${width}: question names the title and the chosen platform`, q === "Celeste came out on several platforms. Is this the Switch copy?", q);
+      check(`${width}: question names the title and the chosen platform`, q === "Sonic Frontiers came out on several platforms. Is this the Switch copy?", q);
       check(`${width}: focus moves to the question`, await page.evaluate(() => document.activeElement && document.activeElement.id === "game-match-heading"));
       const ui = await page.evaluate(() => {
         const st = (id) => { const e = document.getElementById(id), c = getComputedStyle(e), b = e.getBoundingClientRect(); return { text: e.textContent.trim(), bg: c.backgroundColor, color: c.color, border: c.borderColor, h: b.height, w: b.width, top: b.top, bottom: b.bottom }; };
@@ -105,27 +111,50 @@ const form = (page) => page.evaluate(() => ({ title: document.getElementById("fi
       await page.click('[data-game-pick="0"]'); await page.click("#game-match-use"); await page.click("#game-confirm-yes");
       await page.waitForFunction(() => document.getElementById("game-match-picker").hidden);
       const after = await form(page);
-      check(`${width}: Yes fills title / IGDB id and keeps the chosen platform`, after.title === "Celeste" && after.igdb === "26226" && after.platform === "Switch", JSON.stringify(after));
+      check(`${width}: Yes fills title / IGDB id and keeps the chosen platform`, after.title === "Sonic Frontiers" && after.igdb === "119133" && after.platform === "Switch", JSON.stringify(after));
       check(`${width}: nothing saved until Save; no writes; no page errors`, (await page.evaluate(() => JSON.parse(localStorage.getItem("media-tracker-v1")).items.length)) === 1 && writes.length === 0 && errors.length === 0, JSON.stringify({ writes, errors }));
       await ctx.close();
     }
-    // Single-platform match: Use fills directly, as before (no confirm).
+    // A barcode naming one platform: Use fills directly, as before, even though IGDB lists several.
     {
-      const { ctx, page } = await openPage(browser, base, 411, [MULTI, SINGLE]);
+      const { ctx, page } = await openPage(browser, base, 411, [MULTI, SINGLE], { wikidata: ONE_WIKIDATA });
       await scanLookup(page);
-      await page.click('[data-game-pick="1"]'); await page.click("#game-match-use");
+      await page.click('[data-game-pick="0"]'); await page.click("#game-match-use");
       await page.waitForFunction(() => document.getElementById("game-match-picker").hidden);
-      check("single-platform match: Use fills directly, no confirm", (await form(page)).igdb === "1942");
+      const f = await form(page);
+      check("single-platform barcode: Use fills directly, no confirm (IGDB's platform list doesn't trigger it)", f.igdb === "119133" && f.platform === "Switch", JSON.stringify(f));
+      await ctx.close();
+    }
+    // PS4 / PS5 chosen: no block either; the chosen platform stays.
+    for (const plat of ["PS4", "PS5"]) {
+      const { ctx, page } = await openPage(browser, base, 411, [MULTI], { platform: plat });
+      await scanLookup(page);
+      await page.click('[data-game-pick="0"]'); await page.click("#game-match-use");
+      await page.waitForSelector("#game-confirm-yes");
+      const q = (await page.textContent("#game-match-heading")).trim();
+      await page.click("#game-confirm-yes");
+      await page.waitForFunction(() => document.getElementById("game-match-picker").hidden);
+      const f = await form(page);
+      check(`Sonic barcode under ${plat}: not blocked, confirm names ${plat}, platform kept`, q.endsWith(`Is this the ${plat} copy?`) && f.platform === plat && f.igdb === "119133", JSON.stringify({ q, f }));
+      await ctx.close();
+    }
+    // A platform the barcode never names (Wii U) keeps the hard block; nothing is filled, IGDB isn't asked.
+    {
+      const { ctx, page, calls } = await openPage(browser, base, 411, [MULTI], { platform: "Wii U" });
+      await page.fill("#field-barcode", SONIC_BARCODE); await page.click("#btn-lookup");
+      await page.waitForFunction(() => /different platform/.test(document.getElementById("lookup-status") ? document.getElementById("lookup-status").textContent : document.body.textContent));
+      const f = await form(page);
+      check("Sonic barcode under Wii U: still blocked, nothing filled, no IGDB request", f.title === "" && f.platform === "Wii U" && !calls.some((c) => c.startsWith("igdb:")) && await page.isHidden("#game-match-picker"), JSON.stringify({ f, calls }));
       await ctx.close();
     }
     // Title search (not a scan): unchanged, no confirm.
     {
       const { ctx, page } = await openPage(browser, base, 411, [MULTI]);
-      await page.fill("#field-title", "Celeste");
+      await page.fill("#field-title", "Sonic Frontiers");
       await page.click("#btn-game-title-lookup"); await page.waitForSelector("[data-game-pick]");
       await page.click('[data-game-pick="0"]'); await page.click("#game-match-use");
       await page.waitForFunction(() => document.getElementById("game-match-picker").hidden);
-      check("title search: Use fills directly, no confirm (scan path only)", (await form(page)).igdb === "26226");
+      check("title search: Use fills directly, no confirm (scan path only)", (await form(page)).igdb === "119133");
       await ctx.close();
     }
   } finally {

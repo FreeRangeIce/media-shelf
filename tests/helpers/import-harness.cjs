@@ -11,7 +11,7 @@ const EXPOSE = [
   'normalizeItem', 'parseClzCsv', 'clzAutoMapping', 'clzCandidate', 'parseImportText', 'importCandidate',
   'CLZ_TYPES', 'CLZ_HEADER_ALIASES', 'clzScore',
 ];
-const OPTIONAL = ['ENRICH', 'enrichPauseLines', 'enrichResumeClock', 'enrichPlanFor', 'enrichFillEmpty', 'enrichSummaryText', 'readEnrichQueue', 'writeEnrichQueue', 'enqueueEnrich', 'runEnrich', 'enrichSources', 'commitClz', 'commitImport', 'importJson', 'clzComicFormat', 'clzComicIssue', 'enrichOne', 'resumeEnrichOnOpen', 'renderEnrichUi', 'enrichAfterRestore', 'enrichMarked', 'detailHtml'];
+const OPTIONAL = ['ENRICH', 'restoreCoverQueue', 'readCoverQueue', 'resumeCoverFillOnOpen', 'resolveGameBarcode', 'barcodePlatformFit', 'enrichPauseLines', 'enrichResumeClock', 'enrichPlanFor', 'enrichFillEmpty', 'enrichSummaryText', 'readEnrichQueue', 'writeEnrichQueue', 'enqueueEnrich', 'runEnrich', 'enrichSources', 'commitClz', 'commitImport', 'importJson', 'clzComicFormat', 'clzComicIssue', 'enrichOne', 'resumeEnrichOnOpen', 'renderEnrichUi', 'enrichAfterRestore', 'enrichMarked', 'detailHtml'];
 
 function bootSource(src, { fetch, store: sharedStore, clock } = {}) {
   const t = boot([], []), toasts = [];

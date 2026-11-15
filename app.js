@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6, 2.7…; bump APP_VERSION and
-  // the service worker cache name together (media-shelf-v2.11) so the Duo drops old files.
-  const APP_VERSION = "2.11";
+  // the service worker cache name together (media-shelf-v2.12) so the Duo drops old files.
+  const APP_VERSION = "2.12";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -4967,19 +4967,18 @@
       const query =
         "SELECT ?itemLabel ?platLabel WHERE { VALUES ?gtin { " + values +
         " } ?item wdt:P3962 ?gtin. OPTIONAL { ?item wdt:P400 ?plat. } " +
-        "SERVICE wikibase:label { bd:serviceParam wikibase:language \"en\". } } LIMIT 8";
+        "SERVICE wikibase:label { bd:serviceParam wikibase:language \"en\". } } LIMIT 40";
       const data = await fetchGameBarcodeJson(
         "https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(query), signal
       );
       const rows = data && data.results && data.results.bindings;
       if (Array.isArray(rows) && rows.length) {
         const title = usableGameTitle(rows[0].itemLabel && rows[0].itemLabel.value);
-        let platform = "";
-        for (const row of rows) {
-          platform = mapExternalPlatform(row.platLabel && row.platLabel.value);
-          if (platform) break;
-        }
-        if (title) return { title, rawTitle: String(rows[0].itemLabel.value), platform, barcodeSource: "Wikidata" };
+        // V2.12: Wikidata lists every release platform of the game, in no order. Keep them all;
+        // "platform" is set only when the barcode names exactly one (the old single-platform path).
+        const platforms = [...new Set(rows.map((row) => mapExternalPlatform(row.platLabel && row.platLabel.value)).filter(Boolean))];
+        const platform = platforms.length === 1 ? platforms[0] : "";
+        if (title) return { title, rawTitle: String(rows[0].itemLabel.value), platform, platforms, barcodeSource: "Wikidata" };
       }
     }
     const upc = await fetchGameBarcodeJson(
@@ -4989,7 +4988,8 @@
     if (item && item.title) {
       const blob = `${item.title} ${item.description || ""} ${item.brand || ""}`;
       const title = usableGameTitle(item.title);
-      if (title) return { title, rawTitle: String(item.title), platform: mapExternalPlatform(blob), barcodeSource: "UPCitemdb" };
+      const platform = mapExternalPlatform(blob);
+      if (title) return { title, rawTitle: String(item.title), platform, platforms: platform ? [platform] : [], barcodeSource: "UPCitemdb" };
     }
     return null; // Only the existing Wikidata + UPCitemdb barcode-to-title step is used.
   }
@@ -5952,7 +5952,7 @@
     }
   }
 
-  let gameBusy = false, gameSeq = 0, gameAbort = null, gameCandidates = [], gamePick = null, gameFromBarcode = false;
+  let gameBusy = false, gameSeq = 0, gameAbort = null, gameCandidates = [], gamePick = null, gameFromBarcode = false, gameBarcodeAmbiguous = false;
   const gameCooldowns = new Map();
   function usableGameTitle(value) {
     const s = typeof value === "string" ? value.normalize("NFKC").replace(/\s+/g, " ").trim() : "";
@@ -5966,10 +5966,24 @@
     // Unknown/store labels are not evidence of platform compatibility.
     return Boolean(expected && platforms.some(p => expected.includes(String(p).toLowerCase())));
   }
+  /** Does a barcode's platform fit the chosen one? Same aliases as before: Steam~PC, PSN~PS1-5, Switch 2~Switch. */
+  function barcodePlatformFits(selected, known, hitPlatform) {
+    return known === hitPlatform || (selected === "Steam" && hitPlatform === "PC") || (selected === "PSN" && /^PS[1-5]$/.test(hitPlatform)) || (selected === "Switch 2" && hitPlatform === "Switch");
+  }
+  /** "one" (a single platform), "several" (the chosen one is among several), "none" (no fit), "unknown". */
+  function barcodePlatformFit(hit, selected) {
+    const known = mapExternalPlatform(selected);
+    const list = hit && Array.isArray(hit.platforms) && hit.platforms.length ? hit.platforms : hit && hit.platform ? [hit.platform] : [];
+    if (!list.length || !selected || !known) return list.length > 1 ? "several" : "unknown";
+    const fits = list.some((p) => barcodePlatformFits(selected, known, p));
+    if (!fits) return "none";
+    return list.length > 1 ? "several" : "one";
+  }
+
   function resetGameLookup() {
     gameSeq++;
     if (gameAbort) gameAbort.abort();
-    gameAbort = null; gameBusy = false; gameCandidates = []; gamePick = null; gameFromBarcode = false;
+    gameAbort = null; gameBusy = false; gameCandidates = []; gamePick = null; gameFromBarcode = false; gameBarcodeAmbiguous = false;
     const panel = $("#game-match-picker");
     if (panel) { panel.hidden = true; panel.innerHTML = ""; }
     if (els.btnLookup && !lookupBusy) els.btnLookup.disabled = false;
@@ -6010,6 +6024,7 @@
     const timer = setTimeout(() => controller.abort(), 12000);
     els.btnLookup.disabled = true; $("#btn-game-title-lookup").disabled = true;
     clearCoverChoices(); setLookupStatus(byTitle ? "Searching IGDB.com…" : "Looking up this barcode…");
+    let barcodeAmbiguous = false;
     try {
       let title = typed;
       if (!byTitle) {
@@ -6017,10 +6032,11 @@
         if (seq !== gameSeq) return;
         title = usableGameTitle(hit?.title);
         if (!title) { setLookupStatus("No usable title matched this barcode. What you typed is kept; enter the details yourself.", "error"); return; }
-        const selected = els.fieldPlatform.value, known = mapExternalPlatform(selected);
         // Switch 2 can also play Switch games; plain Switch stays strict. Keep title-list and barcode rules aligned.
-        const compatible = known === hit.platform || (selected === "Steam" && hit.platform === "PC") || (selected === "PSN" && /^PS[1-5]$/.test(hit.platform)) || (selected === "Switch 2" && hit.platform === "Switch");
-        if (hit.platform && known && !compatible) { setLookupStatus("This barcode matched a different platform. What you typed is kept.", "error"); return; }
+        // V2.12: a barcode listed on several platforms blocks only when the chosen one isn't among them.
+        const fit = barcodePlatformFit(hit, els.fieldPlatform.value);
+        if (fit === "none") { setLookupStatus("This barcode matched a different platform. What you typed is kept.", "error"); return; }
+        barcodeAmbiguous = fit === "several";
         if (!relay) { setLookupStatus(`Barcode title: ${title}. IGDB details are not configured yet. What you typed is kept.`, "note"); return; }
       }
       if (!title) return; // No empty search or barcode masquerading as a title, on either side.
@@ -6033,6 +6049,7 @@
       }));
       if (!gameCandidates.length) { setLookupStatus("No IGDB match. What you typed is kept; enter the details yourself.", "error"); return; }
       gameFromBarcode = !byTitle;
+      gameBarcodeAmbiguous = !byTitle && barcodeAmbiguous;
       renderGameMatchList();
     } catch (e) {
       if (seq === gameSeq) setLookupStatus(signal.aborted ? "Game lookup timed out. Try again, or enter the details yourself. What you typed is kept." : e.message || "Game lookup couldn’t finish. What you typed is kept.", "error");
@@ -6062,9 +6079,11 @@
       : "Choose a match before filling the form. What you typed is kept.");
   }
 
-  /** V2.12: a barcode (scan or typed) match listed on several platforms asks once which copy this is. */
-  function gameNeedsPlatformConfirm(candidate) {
-    return gameFromBarcode && Boolean(els.fieldPlatform.value) && els.fieldPlatform.value !== "Other" && (candidate.platforms || []).length > 1;
+  /** V2.12: when the barcode itself names several platforms (the chosen one among them), the
+      manual scan asks once which copy this is. A barcode that names one platform never asks, even
+      if IGDB lists the game on several. */
+  function gameNeedsPlatformConfirm() {
+    return gameFromBarcode && gameBarcodeAmbiguous && Boolean(els.fieldPlatform.value) && els.fieldPlatform.value !== "Other";
   }
   function renderGamePlatformConfirm(candidate) {
     const panel = $("#game-match-picker");
@@ -6816,7 +6835,7 @@
       if (e.target.closest("#game-match-cancel")) { resetGameLookup(); setLookupStatus("Match selection cancelled. What you typed is kept."); return; }
       if (e.target.closest("#game-match-use") && gamePick) {
         const candidate = gamePick;
-        if (gameNeedsPlatformConfirm(candidate)) { renderGamePlatformConfirm(candidate); return; }
+        if (gameNeedsPlatformConfirm()) { renderGamePlatformConfirm(candidate); return; }
         resetGameLookup();
         commitLookup(candidate, "Details from IGDB.com filled in. Check them, then save.");
         return;
@@ -8718,23 +8737,23 @@
     if (q.ids.length) startCoverFill(COVER_FILL_START_MS);
   }
 
-  /** After a restore: pick the queue up again for comics that still lack a cover. */
-  function restoreCoverQueue(ids, replace) {
-    const q = readCoverQueue();
+  /** After a restore (V2.12): the cover fill never restarts. The restored items are kept as they
+      are; a queue from the backup is ignored and any queue on this device is dropped, so no lookup
+      runs after a restore. Comics without a cover can still be looked up by hand. */
+  let coverRestoreEpoch = 0;
+  function restoreCoverQueue(ids, replace) { // eslint-disable-line no-unused-vars
+    coverRestoreEpoch += 1;
+    clearTimeout(coverFillTimer);
+    coverFillTimer = null;
     let had = false;
     try {
       had = localStorage.getItem(COVER_QUEUE_STORAGE) !== null;
     } catch {
       /* blocked: nothing to keep */
     }
-    const keep = new Set(items.filter(coverFillEligible).map((i) => i.id));
-    const base = replace ? [] : q.ids.filter((id) => keep.has(id));
-    q.ids = [...new Set([...base, ...(ids || []).filter((id) => keep.has(id))])];
-    if (replace) Object.assign(q, { filled: 0, none: 0, skipped: 0, paused: false });
-    if (q.ids.length) q.seen = true;
-    if (!q.ids.length && !had) return; // an older backup: leave no queue record behind
-    writeCoverQueue(q);
-    if (q.ids.length) startCoverFill(COVER_FILL_START_MS);
+    if (!had) return; // leave no queue record behind
+    writeCoverQueue({ ...readCoverQueue(), ids: [], filled: 0, none: 0, skipped: 0, paused: false, seen: false });
+    renderCoverQueueUi();
   }
 
   function resumeCoverFillOnOpen() {
@@ -8983,12 +9002,15 @@
         } catch {
           /* ignore */
         }
+        const epoch = coverRestoreEpoch;
+        if (!readCoverQueue().ids.includes(id)) break; // a restore dropped the queue
         let res;
         try {
           res = await comicLookup({ series: it.series, issue: it.issue, barcode: "", publisher: it.publisher, year: it.year == null ? "" : it.year });
         } catch {
           res = { failed: true }; // network error or the 15 s timeout
         }
+        if (epoch !== coverRestoreEpoch) break; // restored while asking: the answer is dropped
         if (res.busy) {
           stopped = true; // rate limited: stop, keep everything queued
           break;
@@ -9181,7 +9203,7 @@
   const ENRICH_DAILY_CAPS = { upcitemdb: 100 };
   const ENRICH_TITLE_TYPES = ["book", "movie", "music", "game", "comic"];
   let filterEnrich = ""; // "" | "pick" | "lookup": the Needs a pick / Needs lookup list
-  const ENRICH = { running: false, timer: null, beat: null, active: false, shortPauses: 0 };
+  const ENRICH = { running: false, timer: null, beat: null, active: false, shortPauses: 0, epoch: 0 };
 
   /** Which existing source covers what (also reported in Settings copy and the tests). */
   function enrichSources() {
@@ -9270,10 +9292,15 @@
   }
 
   /** After a restore: Replace forgets the queue (those items are gone); Merge keeps it. Never starts one. */
-  function enrichAfterRestore(replace) {
-    if (!replace) return renderEnrichUi();
+  /** After a restore (Replace or Merge, V2.12): nothing restarts. The queue on this device is dropped
+      (a cap that hasn't ended is remembered), an answer in flight is discarded, and no request follows.
+      Items and their Needs a pick / Needs lookup marks are kept as restored. */
+  function enrichAfterRestore(replace) { // eslint-disable-line no-unused-vars
+    ENRICH.epoch = (ENRICH.epoch || 0) + 1;
+    clearTimeout(ENRICH.timer);
+    ENRICH.timer = null;
     const q = readEnrichQueue();
-    if (!q.ids.length && !q.seen) return;
+    if (!q.ids.length && !q.seen) return renderEnrichUi();
     writeEnrichQueue({ ...enrichEmptyQueue(), until: q.until, reason: q.until > Date.now() ? q.reason : "", paused: false });
     renderEnrichUi();
   }
@@ -9482,10 +9509,15 @@
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 15000);
       try {
+        const epoch = ENRICH.epoch || 0;
         const hit = await resolveGameBarcode(bc, ctrl.signal);
+        if ((ENRICH.epoch || 0) !== epoch) return { kind: "failed" }; // restored meanwhile: no second request (the answer is dropped)
         const title = usableGameTitle(hit && hit.title);
         if (!title) return null;
         const known = mapExternalPlatform(it.platform);
+        // V2.12: a barcode listed on several platforms is never auto-filled: the owner picks the copy.
+        // If none of them fits the item's platform it is the same as a different-platform barcode.
+        if (Array.isArray(hit.platforms) && hit.platforms.length > 1) return { kind: "pick" };
         const compatible = !hit.platform || !known || known === hit.platform || (it.platform === "Steam" && hit.platform === "PC") || (it.platform === "PSN" && /^PS[1-5]$/.test(hit.platform)) || (it.platform === "Switch 2" && hit.platform === "Switch");
         if (!compatible) return { kind: "pick" }; // the barcode names another platform: the owner decides
         const platform = String(it.platform || "").trim() || hit.platform || "";
@@ -9681,6 +9713,8 @@
           /* ignore */
         }
         const key = enrichKey(it);
+        const epoch = ENRICH.epoch || 0;
+        if (!readEnrichQueue().ids.includes(id)) break; // a restore dropped the queue during the gap
         let res;
         ENRICH.active = true;
         try {
@@ -9690,6 +9724,7 @@
         } finally {
           ENRICH.active = false;
         }
+        if ((ENRICH.epoch || 0) !== epoch) break; // restored while asking: the answer is dropped
         q = readEnrichQueue();
         if (res.kind === "cap") {
           // Pause with the item still first in line: it is asked again after the cap, never skipped.

@@ -572,9 +572,113 @@ check("Import CLZ and Import games both queue their new items; a backup restore 
   assert.ok(r.stored().every((i) => i.enrich === undefined));
 });
 
-check("APP_VERSION 2.11 and cache media-shelf-v2.11", () => {
-  assert.match(app, /const APP_VERSION = "2\.11";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.11";/);
+/* ---------- 8. V2.12: multi-platform barcodes (Sonic Frontiers) and restore never restarts ---------- */
+const SONIC = "5055277048182";
+const SONIC_ROWS = ["PlayStation 5", "Nintendo Switch", "PlayStation 4", "Xbox One", "Xbox Series X and Series S", "Microsoft Windows"].map((p) => ({ itemLabel: { value: "Sonic Frontiers" }, platLabel: { value: p } }));
+const SONIC_IGDB = { igdbId: 119133, title: "Sonic Frontiers", creator: "Sonic Team", year: 2022, platforms: ["PlayStation 5", "Nintendo Switch", "PlayStation 4"], coverUrl: "" };
+
+check("V2.12 barcode: Wikidata's platforms are all kept (no 'first one wins'); one platform keeps the old single path", async () => {
+  const b = bootWith([[/query\.wikidata\.org/, () => ({ body: { results: { bindings: SONIC_ROWS } } })]]);
+  const hit = await b.api.resolveGameBarcode(SONIC, undefined);
+  assert.equal(hit.title, "Sonic Frontiers");
+  assert.deepEqual([...hit.platforms], ["PS5", "Switch", "PS4", "Xbox One", "Series X|S", "PC"]);
+  assert.equal(hit.platform, "", "several platforms: no single barcode platform");
+  assert.match(b.fetch.calls[0], /LIMIT%2040/, "enough rows for every platform");
+  const one = bootWith([[/query\.wikidata\.org/, () => ({ body: { results: { bindings: [SONIC_ROWS[1]] } } })]]);
+  const h1 = await one.api.resolveGameBarcode(SONIC, undefined);
+  assert.equal(h1.platform, "Switch");
+  assert.deepEqual([...h1.platforms], ["Switch"]);
+  const fit = b.api.barcodePlatformFit;
+  for (const sel of ["Switch", "PS4", "PS5", "Xbox One", "Series X|S", "PC", "Steam", "PSN", "Switch 2"]) assert.equal(fit(hit, sel), "several", sel);
+  for (const sel of ["Wii U", "GameCube", "Xbox 360", "PS3"]) assert.equal(fit(hit, sel), "none", sel);
+  assert.equal(fit(h1, "Switch"), "one");
+  assert.equal(fit(h1, "Switch 2"), "one", "Switch 2 still accepts a Switch barcode");
+  assert.equal(fit(h1, "PS4"), "none");
+  assert.notEqual(fit({ platform: "PS4" }, "PSN"), "none", "older hits without a list behave as before (PSN never blocked)");
+  assert.equal(fit({ platform: "PS4" }, "PS5"), "none", "older hits without a list: a different platform still blocks");
+  assert.equal(fit({ title: "x", platform: "", platforms: [] }, "Switch"), "unknown");
+});
+
+check("V2.12 enrichment: Sonic (several platforms) set to Switch -> Needs a pick; never-released platform -> not enriched; single platform -> enriched", async () => {
+  const run = async (bindings, platform) => {
+    const b = bootWith([
+      [/query\.wikidata\.org/, () => ({ body: { results: { bindings } } })],
+      [/\/game\/search\?title=/, () => ({ body: { candidates: [SONIC_IGDB] } })],
+    ]);
+    b.seed([{ ...BASE, id: "s1", type: "game", title: "Sonic Frontiers", platform, barcode: SONIC, format: "physical" }]);
+    const q = await queueAndRun(b, ["s1"]);
+    return { q, it: b.stored()[0], igdb: b.fetch.calls.filter((u) => /game\/search/.test(u)).length };
+  };
+  const sw = await run(SONIC_ROWS, "Switch");
+  assert.equal(sw.q.pick, 1);
+  assert.equal(sw.q.enriched, 0);
+  assert.equal(sw.it.enrich, "pick");
+  assert.equal(sw.it.igdbId, "", "nothing filled");
+  assert.equal(sw.it.platform, "Switch", "platform never changed");
+  assert.equal(sw.igdb, 0, "no IGDB request for an ambiguous barcode");
+  const wiiu = await run(SONIC_ROWS, "Wii U");
+  assert.equal(wiiu.q.enriched, 0, "never-released platform: not enriched");
+  assert.equal(wiiu.it.igdbId, "");
+  assert.equal(wiiu.it.platform, "Wii U");
+  assert.notEqual(wiiu.it.enrich, undefined, "left for the owner (marked), never filled");
+  const single = await run([SONIC_ROWS[1]], "Switch");
+  assert.equal(single.q.enriched, 1, "one platform: the single match still auto-fills");
+  assert.equal(single.it.igdbId, "119133");
+  assert.equal(single.it.platform, "Switch");
+  const wrong = await run([SONIC_ROWS[1]], "PS4");
+  assert.equal(wrong.q.enriched, 0, "single different platform: unchanged rule (pick, nothing filled)");
+  assert.equal(wrong.it.enrich, "pick");
+});
+
+check("V2.12 restore: Replace or Merge never restarts enrichment or the comic cover fill; data kept; no requests after", async () => {
+  for (const mode of ["replace", "merge"]) {
+    const b = bootWith([[/./, () => ({ body: {} })]]);
+    const comic = { ...BASE, id: "k1", type: "comic", series: "Saga", issue: "1", coverUrl: "" };
+    const game = { ...BASE, id: "g1", type: "game", title: "Hades", platform: "Steam", barcode: "811949031150" };
+    b.seed([comic, game]);
+    // Queues already on this device (an import in progress) ...
+    b.api.writeEnrichQueue({ ...b.api.readEnrichQueue(), ids: ["g1"], total: 1, seen: true, dismissed: false });
+    b.store.set("freerangemedia-clz-cover-queue", JSON.stringify({ v: 1, ids: ["k1"], filled: 0, none: 0, skipped: 0, paused: false, seen: true }));
+    // ... and a backup that carries its own cover queue.
+    const backup = { app: "freerangemedia", version: 3, exportedAt: "2026-11-01T00:00:00.000Z", items: [comic, game, { ...BASE, id: "k2", type: "comic", series: "Saga", issue: "2", coverUrl: "" }], coverQueue: { v: 1, ids: ["k1", "k2"] } };
+    await b.restore(mode, backup);
+    assert.deepEqual([...b.api.readEnrichQueue().ids], [], `${mode}: enrichment queue dropped`);
+    assert.deepEqual([...b.api.readCoverQueue().ids], [], `${mode}: cover queue dropped, backup's queue ignored`);
+    assert.ok(b.stored().some((i) => i.id === "k2" && i.series === "Saga"), `${mode}: restored data kept`);
+    b.clock.now += 120000;
+    for (let i = 0; i < 30; i++) await new Promise((r) => setTimeout(r, 2));
+    b.api.resumeEnrichOnOpen();
+    b.api.resumeCoverFillOnOpen();
+    b.clock.now += 120000;
+    for (let i = 0; i < 30; i++) await new Promise((r) => setTimeout(r, 2));
+    assert.equal(b.fetch.calls.length, 0, `${mode}: no network request after the restore (${b.fetch.calls.join(", ")})`);
+    assert.ok(b.stored().every((i) => !i.coverUrl && i.enrich === undefined), `${mode}: nothing written`);
+  }
+  // A lookup already in flight when the restore lands: its answer is dropped, not written.
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const inner = mockFetch([[/query\.wikidata\.org/, () => ({ body: { results: { bindings: [SONIC_ROWS[1]] } } })], [/\/game\/search/, () => ({ body: { candidates: [SONIC_IGDB] } })]]);
+  const clock = H.makeClock();
+  const f = H.bootFile(undefined, { fetch: async (u) => { await gate; return inner(u); }, clock });
+  f.seed([{ ...BASE, id: "s1", type: "game", title: "Sonic Frontiers", platform: "Switch", barcode: SONIC }]);
+  f.api.enqueueEnrich(["s1"]);
+  clock.now += 20000;
+  const running = f.api.runEnrich();
+  for (let i = 0; i < 10 && !inner.calls.length; i++) await new Promise((r) => setTimeout(r, 2));
+  f.api.enrichAfterRestore(false);
+  release();
+  await running;
+  assert.equal(f.stored()[0].igdbId || "", "", "in-flight answer after a restore is not written");
+  assert.equal(f.stored()[0].enrich, undefined);
+  assert.equal(f.api.readEnrichQueue().ids.length, 0);
+  assert.deepEqual(inner.calls.map((u) => new URL(u).hostname), ["query.wikidata.org"], "only the request already sent; no IGDB search after the restore");
+  const b = f;
+  assert.equal(b.api.readEnrichQueue().ids.length, 0);
+});
+
+check("APP_VERSION 2.12 and cache media-shelf-v2.12", () => {
+  assert.match(app, /const APP_VERSION = "2\.12";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.12";/);
 });
 
 (async () => {

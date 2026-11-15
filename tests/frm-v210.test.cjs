@@ -48,11 +48,11 @@ function hexToRgb(hex) {
 
 const B = loadBadgeFns();
 
-check("APP_VERSION 2.11 and cache media-shelf-v2.11, no suffixes", () => {
-  assert.match(app, /const APP_VERSION = "2\.11";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.11";/);
-  assert.doesNotMatch(app, /const APP_VERSION = "2\.11-/);
-  assert.doesNotMatch(sw, /media-shelf-v2\.11-/);
+check("APP_VERSION 2.12 and cache media-shelf-v2.12, no suffixes", () => {
+  assert.match(app, /const APP_VERSION = "2\.12";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.12";/);
+  assert.doesNotMatch(app, /const APP_VERSION = "2\.12-/);
+  assert.doesNotMatch(sw, /media-shelf-v2\.12-/);
   assert.doesNotMatch(app, /const APP_VERSION = "2\.9";/);
   assert.doesNotMatch(sw, /const CACHE = "media-shelf-v2\.9";/);
 });
@@ -260,7 +260,7 @@ check("badgePlatformKey is not used to write storage; cache name scheme unchange
   assert.match(ttSrc, /function dominantHueFromPixels/);
   assert.match(ttSrc, /sat < 0\.20/);
   assert.match(ttSrc, /function darkenRgbForWhiteText/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.11"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.12"/);
 });
 
 console.log(`${passed}/${passed} passed (v2.10 badge mapping + text size + Wii U + pills + scroll pad)`);
