@@ -150,6 +150,8 @@
       seed: r.seed === true,
     };
     e.bggSrc = cleanBggSrc(r.bggSrc, e);
+    const pill = sanitizeExpPill(r.expPill);
+    if (pill) e.expPill = pill;
     return e;
   }
 
@@ -553,7 +555,109 @@
     return out;
   }
 
-  const core = { validBggId, bggImageUrl, bggIdRecord, bggIdPatch, cleanBggSrc, BGG_ID_BOUND, createBggIdLookup, STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, SUBTYPE_LABELS, mapTabletopKind, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, filterGroupsForShelf, countByStatus, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
+  /** V2.8: every visible entry (base or expansion) is its own grid tile. Nested
+   *  expansion rows are gone from the grid; the detail sheet still lists them. */
+  function flattenShelfTiles(groups, sortKey) {
+    const tiles = [];
+    for (const g of groups || []) {
+      if (g.wishOwnedBase) tiles.push(...(g.expansions || []));
+      else {
+        if (g.entry) tiles.push(g.entry);
+        tiles.push(...(g.expansions || []));
+      }
+    }
+    const cmp = (a, b) =>
+      sortKey === "updated"
+        ? String(b.dateUpdated || "").localeCompare(String(a.dateUpdated || ""))
+        : normTitle(a.title).localeCompare(normTitle(b.title));
+    return tiles.sort(cmp);
+  }
+
+
+  /** V2.8 item 9: dominant hue from cover pixels (near-black / near-white / grey ignored). */
+  function relativeLuminance(r, g, b) {
+    const lin = (v) => {
+      v /= 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  }
+  function contrastRatioRgb(a, b) {
+    const l1 = relativeLuminance(a[0], a[1], a[2]);
+    const l2 = relativeLuminance(b[0], b[1], b[2]);
+    const hi = Math.max(l1, l2);
+    const lo = Math.min(l1, l2);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+  function rgbToHex(rgb) {
+    return "#" + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+  }
+  function dominantHueFromPixels(data, width, height) {
+    const buckets = new Map();
+    const n = (width * height) | 0;
+    for (let i = 0; i < n; i++) {
+      const o = i * 4;
+      const r = data[o], g = data[o + 1], b = data[o + 2], a = data[o + 3];
+      if (a < 128) continue;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const lum = relativeLuminance(r, g, b);
+      if (lum < 0.08 || lum > 0.92) continue; // near-black / near-white
+      const sat = max === 0 ? 0 : (max - min) / max;
+      if (sat < 0.15) continue; // grey
+      const d = max - min;
+      if (d === 0) continue;
+      let hue;
+      if (max === r) hue = ((g - b) / d + (g < b ? 6 : 0));
+      else if (max === g) hue = (b - r) / d + 2;
+      else hue = (r - g) / d + 4;
+      const bucket = ((Math.round(hue * 6)) % 36 + 36) % 36;
+      const rec = buckets.get(bucket) || { n: 0, r: 0, g: 0, b: 0 };
+      rec.n += 1;
+      rec.r += r;
+      rec.g += g;
+      rec.b += b;
+      buckets.set(bucket, rec);
+    }
+    if (!buckets.size) return null;
+    let best = null;
+    for (const rec of buckets.values()) if (!best || rec.n > best.n) best = rec;
+    return [
+      Math.round(best.r / best.n),
+      Math.round(best.g / best.n),
+      Math.round(best.b / best.n),
+    ];
+  }
+  /**
+   * Choose pill fill/text, or null to keep the default pink.
+   * Text is #ffffff or #1a1a1a, requiring 4.5:1. A fill that is too dark on the
+   * white card (luminance < 0.12) also falls back.
+   */
+  function pillColorsFromRgb(rgb) {
+    if (!rgb || rgb.length < 3) return null;
+    const lum = relativeLuminance(rgb[0], rgb[1], rgb[2]);
+    if (lum < 0.06) return null; // too dark against the white card
+    const white = [255, 255, 255];
+    const ink = [26, 26, 26];
+    const cw = contrastRatioRgb(rgb, white);
+    const cd = contrastRatioRgb(rgb, ink);
+    const useWhite = cw >= cd;
+    const contrast = useWhite ? cw : cd;
+    if (contrast < 4.5) return null;
+    return { fill: rgbToHex(rgb), text: useWhite ? "#ffffff" : "#1a1a1a" };
+  }
+  function sanitizeExpPill(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const forCover = str(raw.forCover);
+    if (raw.fallback === true) return { forCover, fallback: true };
+    const fill = str(raw.fill);
+    const text = str(raw.text).toLowerCase();
+    if (!/^#[0-9a-f]{6}$/i.test(fill)) return null;
+    if (text !== "#ffffff" && text !== "#1a1a1a") return null;
+    return { forCover, fill: fill.toLowerCase(), text };
+  }
+
+  const core = { validBggId, bggImageUrl, bggIdRecord, bggIdPatch, cleanBggSrc, BGG_ID_BOUND, createBggIdLookup, STORE_KEY, validGtin, barcodePostDecision, GAMEUPC_LOOKUP, SUBTYPES, SUBTYPE_LABELS, mapTabletopKind, normalize, resolveParent, groupShelf, expansionsOf, findDuplicate, mergeUpdate, linkBggId, upsert, remove, applyBarcodeMiss, mergeRestore, HAND_MATCH, carryExpansions, parseBackupBlock, filterGroupsForShelf, flattenShelfTiles, dominantHueFromPixels, pillColorsFromRgb, contrastRatioRgb, sanitizeExpPill, countByStatus, lookupConnected: () => Boolean(LOOKUP_RELAY_URL), lookupCreditsAllowed };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
   if (typeof document === "undefined") return;
 
@@ -606,7 +710,15 @@
   /** Lone expansions and the sheet drop the line entirely when it would only be "—". */
   const metaLine = (e) => (metaText(e) ? `<p class="item-meta">${esc(metaText(e))}</p>` : "");
   const statusBadge = (e) => `<span class="badge badge-status tt-status ${e.status}">${STATUS_LABELS[e.status]}</span>`;
-  const subtypeBadge = (e) => `<span class="badge badge-type tabletop">${SUBTYPE_LABELS[e.subtype]}</span>`;
+  const subtypeBadge = (e, attrs = "") => `<span class="badge badge-type tabletop"${attrs}>${SUBTYPE_LABELS[e.subtype]}</span>`;
+  function expPillAttrs(e) {
+    const cover = e.coverUrl || "";
+    const p = e.expPill;
+    if (!p || p.forCover !== cover) return ` data-exp-pill="pending"`;
+    if (p.fallback) return ` data-exp-pill="fallback"`;
+    return ` data-exp-pill="sampled" style="background:${esc(p.fill)};color:${esc(p.text)}"`;
+  }
+
 
   function cover(e) {
     const inner = e.coverUrl
@@ -615,12 +727,12 @@
     return `<div class="item-cover-col" data-type="tabletop">${inner}</div>`;
   }
 
-  /** V2.8 card: title (3-line clamp, no reserved height) and a compact Expansion pill when the
+  /** V2.8 card: title wraps in full (no clamp) and a compact Expansion pill when the
    *  item is an expansion. The base game is named only in the detail sheet. */
   function tileHtml(x, baseTitle) {
     const isExp = x.subtype === "expansion";
     const tags = isExp
-      ? `<div class="item-badges">${subtypeBadge(x)}</div>`
+      ? `<div class="item-badges">${subtypeBadge(x, expPillAttrs(x))}</div>`
       : "";
     return `<article class="item-card tt-card" tabindex="0" role="button" data-tt-open="${esc(x.id)}" aria-label="${esc(`Details for ${x.title}`)}">
     ${cover(x)}
@@ -632,26 +744,13 @@
   }
 
   function cardHtml(g) {
+    // Kept for tests/callers that still mention it; the grid uses flattenShelfTiles.
     const e = g.entry;
     const exps = g.expansions || [];
-    // Wishlist: Want expansion(s) under an Owned base — each its own grid card, base named inside.
     if (g.wishOwnedBase) {
       return exps.map((x) => `<li class="tt-group tt-group-wish-owned-base">${tileHtml(x, e.title)}</li>`).join("");
     }
-    const shown = exps.slice(0, VISIBLE_EXPANSIONS);
-    const more = exps.length - shown.length;
-    const expList = exps.length
-      ? `<ul class="tt-exp-list" aria-label="${esc(`Expansions of ${e.title}`)}">${shown
-          .map(
-            (x) =>
-              `<li><button type="button" class="tt-exp-row" data-tt-open="${esc(x.id)}" aria-label="${esc(`${x.title}, expansion, ${STATUS_LABELS[x.status]}`)}"><span class="tt-exp-title">${esc(tidyColon(x.title))}</span>${statusBadge(x)}</button></li>`
-          )
-          .join("")}${more > 0 ? `<li><button type="button" class="tt-exp-more" data-tt-open="${esc(e.id)}">+ ${more} more</button></li>` : ""}</ul>`
-      : "";
-    // Lone expansion (orphan): no base found, still tagged Expansion; Base game line omitted.
-    return `<li class="tt-group">
-  ${tileHtml(e, "")}${expList}
-</li>`;
+    return `<li class="tt-group">${tileHtml(e, "")}</li>`;
   }
 
   function render() {
@@ -664,21 +763,24 @@
     const wishlist = Boolean(host.wishlist && host.wishlist());
     const statusFilter = host.status ? host.status() : "all";
     let list = entries;
+    const sortKey = host.sort && host.sort() === "updated" ? "updated" : "title";
     const groups = filterGroupsForShelf(
-      groupShelf(list, host.sort && host.sort() === "updated" ? "updated" : "title"),
+      groupShelf(list, sortKey),
       { wishlist, statusFilter, q }
     );
-    $("#tabletop-list").innerHTML = groups.map(cardHtml).join("");
+    const tiles = flattenShelfTiles(groups, sortKey);
+    $("#tabletop-list").innerHTML = tiles.map((e) => `<li class="tt-group">${tileHtml(e)}</li>`).join("");
+    queueExpPillSamples(tiles);
     const empty = $("#tabletop-empty");
     // V2.4 Wishlist + All: Tabletop wants sit under the media wants; the media list owns the empty line.
     const combined = Boolean(host.combined && host.combined());
-    empty.hidden = groups.length > 0 || combined;
+    empty.hidden = tiles.length > 0 || combined;
     if (combined) {
       const view = $("#tabletop-view");
-      if (view) view.hidden = groups.length === 0;
+      if (view) view.hidden = tiles.length === 0;
       return;
     }
-    if (!groups.length) {
+    if (!tiles.length) {
       const filtered = entries.length > 0;
       const ownedHere = entries.some((e) => e.status !== "want");
       if (wishlist) {
@@ -699,9 +801,82 @@
         $(".empty-title", empty).textContent = filtered ? "No matches" : "No tabletop games yet";
         $(".empty-hint", empty).textContent = filtered
           ? "Try a different filter or search."
-          : "Add the board, card, dice, miniatures and RPG games on your shelf. Linked expansions sit under their base game."; // Berean cleared
+          : "Add the board, card, dice, miniatures and RPG games on your shelf."; // Berean cleared
         $("#tt-empty-add").hidden = filtered;
       }
+    }
+  }
+
+
+  let pillSampling = false;
+  function expPillNeedsSample(e) {
+    if (!e || e.subtype !== "expansion") return false;
+    const p = e.expPill;
+    return !p || p.forCover !== (e.coverUrl || "");
+  }
+  /** Sample from the cover in-page. Never fetch, proxy, or cache BGG (or other) hosts to bypass CORS. */
+  function sampleCoverForPill(url) {
+    return new Promise((resolve) => {
+      if (!url || typeof Image === "undefined") return resolve(null);
+      const img = new Image();
+      const same =
+        /^data:/i.test(url) ||
+        /^blob:/i.test(url) ||
+        url.startsWith("./") ||
+        url.startsWith("/") ||
+        (typeof location !== "undefined" && url.startsWith(location.origin));
+      // Cross-origin: ask for CORS. If the host (e.g. BGG) does not allow it, onerror/taint → fallback.
+      // The tile <img> does not set crossOrigin, so the printed cover is unaffected.
+      if (!same) img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          const w = 48, h = 48;
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          if (!ctx) return resolve(null);
+          ctx.drawImage(img, 0, 0, w, h);
+          let data;
+          try {
+            data = ctx.getImageData(0, 0, w, h).data;
+          } catch {
+            return resolve(null); // tainted canvas
+          }
+          const rgb = dominantHueFromPixels(data, w, h);
+          resolve(rgb ? pillColorsFromRgb(rgb) : null);
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  }
+  async function queueExpPillSamples(tiles) {
+    const need = (tiles || []).filter(expPillNeedsSample);
+    if (!need.length || pillSampling) return;
+    pillSampling = true;
+    try {
+      const updates = new Map();
+      for (const e of need) {
+        const cover = e.coverUrl || "";
+        const result = cover ? await sampleCoverForPill(cover) : null;
+        updates.set(e.id, result
+          ? { forCover: cover, fill: result.fill, text: result.text }
+          : { forCover: cover, fallback: true });
+      }
+      const outcome = commit((list) =>
+        list.map((x) => {
+          if (!updates.has(x.id)) return x;
+          // Cover changed while we sampled: skip, next render will retry.
+          if ((x.coverUrl || "") !== updates.get(x.id).forCover) return x;
+          return { ...x, expPill: updates.get(x.id) };
+        })
+      );
+      if (outcome === "committed" && active) render();
+    } finally {
+      pillSampling = false;
     }
   }
 
@@ -729,6 +904,13 @@
     m.hidden = false;
     m.setAttribute("aria-hidden", "false");
     document.body.classList.add("modal-open");
+    const panel = m.querySelector(".modal-panel");
+    m.scrollTop = 0;
+    if (panel) panel.scrollTop = 0;
+    requestAnimationFrame(() => {
+      m.scrollTop = 0;
+      if (panel) panel.scrollTop = 0;
+    });
   }
   function closeModal(id) {
     if (id === "tt-form-modal") resetBggIdLookup();

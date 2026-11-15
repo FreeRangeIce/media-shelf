@@ -5661,10 +5661,18 @@ body.frm-short-vv #tt-form-modal .item-form .form-actions {
   height: auto;
   min-height: 0;
 }
-/* Item 3: no 3-line title reservation; 13px under the last line of content. */
+/* Titles wrap in full; no ellipsis, no line cap, no reserved height.
+   Cards stay self-sizing (align-items:start) with 13px under the last line. */
 .item-card .item-title,
 .item-card.tt-card .item-title {
   min-height: 0;
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: none;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .item-card .item-body {
   flex: 0 0 auto;
@@ -5732,4 +5740,121 @@ body.frm-short-vv #tt-form-modal .item-form .form-actions {
 .update-banner {
   position: relative;
   z-index: 60;
+}
+
+/* ========== V2.8 items (toast, scan sheet, covers, badges) ========== */
+
+/* Item 1: charcoal toast, white text, 12px above the raised Add control so it
+   never covers the bottom nav (z-index 50) or the Add button. */
+.toast {
+  background: #1a1a1a !important;
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+  border: 1px solid #3a3a3a;
+  /* Nav is min-height 64px plus 0.35rem padding-top (~86px). 34px = 12px gap + room above the raised Add. */
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 34px);
+  z-index: 45;
+}
+.toast span,
+.toast { color: #ffffff !important; }
+.toast .toast-action {
+  color: #ffffff;
+  border-color: #f0f0f0;
+  background: transparent;
+}
+body.modal-open .toast {
+  bottom: auto;
+  top: calc(var(--space-5) + var(--clear-top));
+  z-index: 200;
+}
+
+/* Item 3: barcode scan sheet fills one folded / keyboard-free visual viewport; no scroll.
+   The camera box takes the leftover space (flex / dvh). */
+#scan-modal {
+  align-items: stretch;
+  justify-content: stretch;
+}
+#scan-modal .scan-panel.modal-panel,
+#scan-modal .scan-panel.modal-panel-sm {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  max-height: 100dvh;
+  max-height: var(--sheet-vv-height, 100dvh);
+  margin: 0;
+  border-radius: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: var(--space-4);
+  padding-top: calc(var(--space-4) + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+}
+#scan-modal .modal-header,
+#scan-modal #scan-camera-hint,
+#scan-modal #scan-status,
+#scan-modal .confirm-actions {
+  flex: 0 0 auto;
+}
+#scan-modal #qr-reader,
+#scan-modal .qr-reader {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  margin: var(--space-2) 0;
+}
+#scan-modal .qr-reader video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+}
+
+/* Item 4: Choose photo / Take photo replace the No cover box when empty. */
+.cover-photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.cover-preview-wrap:not(.has-cover) .cover-preview-placeholder {
+  display: none;
+}
+
+/* Item 6: 24px platform badge, bottom-right of the cover, inset 8px. */
+.item-cover-col {
+  position: relative;
+}
+.platform-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.platform-badge img {
+  max-width: 16px;
+  max-height: 16px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+.platform-badge-text {
+  color: #ffffff;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-align: center;
+  padding: 0 2px;
+  max-width: 22px;
 }

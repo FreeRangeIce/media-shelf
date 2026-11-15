@@ -34,6 +34,11 @@ const ASSETS = [
   "./icons/apple-touch-icon.png",
   "./icons/powered-by-google.png",
   "./icons/powered-by-bgg.svg",
+  "./assets/platforms/xbox.svg",
+  "./assets/platforms/playstation.svg",
+  "./assets/platforms/switch.svg",
+  "./assets/platforms/wii.svg",
+  "./assets/platforms/wiiu.svg",
 ];
 
 self.addEventListener("install", (event) => {

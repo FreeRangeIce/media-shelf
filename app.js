@@ -316,7 +316,16 @@
   let shelfMode = "library";
   let filterNeedsCover = false; // the 'Needs a cover' list (CLZ cover fill)
   let filterStatus = "all";
-  let sortMode = "updated";
+  const SORT_STORAGE = "media-shelf-sort";
+  const SORT_MODES = ["title", "updated", "rating"];
+  function readSavedSort() {
+    try {
+      const v = localStorage.getItem(SORT_STORAGE);
+      if (SORT_MODES.includes(v)) return v;
+    } catch {}
+    return null;
+  }
+  let sortMode = readSavedSort() || "title";
   let searchQuery = "";
   let searchTimer = null;
   let editingId = null;
@@ -397,6 +406,14 @@
     scanCameraHint: $("#scan-camera-hint"),
     coverPreview: $("#cover-preview"),
     coverPreviewPlaceholder: $("#cover-preview-placeholder"),
+    coverPhotoActions: $("#cover-photo-actions"),
+    fieldCoverPhoto: $("#field-cover-photo"),
+    coverPhotoFile: $("#cover-photo-file"),
+    coverPhotoCamera: $("#cover-photo-camera"),
+    coverPhotoStatus: $("#cover-photo-status"),
+    btnChoosePhoto: $("#btn-choose-photo"),
+    btnTakePhoto: $("#btn-take-photo"),
+    btnRemovePhoto: $("#btn-remove-photo"),
     lookupStatus: $("#lookup-status"),
     gbAttr: $("#gb-attr"),
     gbLink: $("#gb-link"),
@@ -1193,8 +1210,14 @@
             .filter(Boolean),
       progress: String(raw.progress || ""),
       barcode: String(raw.barcode || "").trim(),
-      // Comics never keep image bytes (data:/blob:) — only a URL (Berean, GCD covers).
-      coverUrl: type === "comic" && /^(data|blob):/i.test(String(raw.coverUrl || "").trim()) ? "" : String(raw.coverUrl || "").trim(),
+      // Comics never keep provider image bytes (data:/blob:) — only a URL (Berean, GCD covers).
+      // A user-chosen photo (coverSource "photo") is a JPEG data URL and is kept for every type.
+      coverUrl: (function () {
+        const rawCover = String(raw.coverUrl || "").trim();
+        const isPhoto = String(raw.coverSource || "") === "photo" && /^data:image\//i.test(rawCover);
+        if (type === "comic" && /^(data|blob):/i.test(rawCover) && !isPhoto) return "";
+        return rawCover;
+      })(),
       coverSource: coverSource || "",
       coverSourceId: String(raw.coverSourceId ?? "").trim(),
       coverPlatform: String(raw.coverPlatform ?? "").trim(),
@@ -1398,11 +1421,102 @@
     });
   }
 
+  function resetSheetScroll(root) {
+    if (!root) return;
+    root.scrollTop = 0;
+    const panel = root.querySelector(".modal-panel");
+    if (panel) panel.scrollTop = 0;
+  }
+
+  const COVER_PHOTO_MAX_EDGE = 600;
+  const COVER_PHOTO_QUALITY = 0.8;
+  const COVER_PHOTO_MAX_FILE = 15 * 1024 * 1024;
+  const COVER_PHOTO_MAX_DATA = 700000; // ~500KB binary; keeps localStorage headroom
+
+  function setCoverPhotoStatus(msg) {
+    if (!els.coverPhotoStatus) return;
+    if (!msg) {
+      els.coverPhotoStatus.hidden = true;
+      els.coverPhotoStatus.textContent = "";
+      return;
+    }
+    els.coverPhotoStatus.hidden = false;
+    els.coverPhotoStatus.textContent = msg;
+  }
+
+  function downscaleImageFile(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) return reject(new Error("No photo selected"));
+      if (!String(file.type || "").startsWith("image/")) return reject(new Error("Please choose an image file"));
+      if (file.size > COVER_PHOTO_MAX_FILE) return reject(new Error("That photo is too large (15 MB limit)"));
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        try {
+          const long = Math.max(img.width || 0, img.height || 0) || 1;
+          const scale = long > COVER_PHOTO_MAX_EDGE ? COVER_PHOTO_MAX_EDGE / long : 1;
+          const w = Math.max(1, Math.round((img.width || 1) * scale));
+          const h = Math.max(1, Math.round((img.height || 1) * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return reject(new Error("Couldn't process that photo"));
+          ctx.drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL("image/jpeg", COVER_PHOTO_QUALITY);
+          if (!dataUrl || !dataUrl.startsWith("data:image/")) return reject(new Error("Couldn't process that photo"));
+          if (dataUrl.length > COVER_PHOTO_MAX_DATA) return reject(new Error("That photo is still too large after shrinking"));
+          resolve(dataUrl);
+        } catch (err) {
+          reject(new Error("Couldn't process that photo"));
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Couldn't read that photo"));
+      };
+      img.src = url;
+    });
+  }
+
+  async function applyCoverPhotoFile(file) {
+    setCoverPhotoStatus("Shrinking photo…");
+    try {
+      const dataUrl = await downscaleImageFile(file);
+      if (els.fieldCoverPhoto) els.fieldCoverPhoto.value = dataUrl;
+      els.fieldCover.value = "";
+      els.fieldCoverSource.value = "photo";
+      if (els.fieldCoverSourceId) els.fieldCoverSourceId.value = "";
+      if (els.fieldCoverPlatform) els.fieldCoverPlatform.value = "";
+      setCoverPhotoStatus("");
+      updateCoverPreview();
+    } catch (err) {
+      setCoverPhotoStatus((err && err.message) || "Couldn't use that photo");
+    } finally {
+      if (els.coverPhotoFile) els.coverPhotoFile.value = "";
+      if (els.coverPhotoCamera) els.coverPhotoCamera.value = "";
+    }
+  }
+
+  function clearCoverPhoto() {
+    if (els.fieldCoverPhoto) els.fieldCoverPhoto.value = "";
+    if (els.fieldCoverSource.value === "photo") {
+      els.fieldCover.value = "";
+      els.fieldCoverSource.value = "";
+    }
+    setCoverPhotoStatus("");
+    updateCoverPreview();
+  }
+
   function updateCoverPreview() {
     updateGoogleBooksAttr();
     updateCoverUrlError();
     // A GCD image is never requested, nor a Metron one in names-only mode (the field keeps the stored URL).
-    const url = comicImageSuppressed(els.fieldType.value, els.fieldCover.value) ? "" : els.fieldCover.value.trim();
+    const photo = els.fieldCoverPhoto ? els.fieldCoverPhoto.value : "";
+    const url = photo || (comicImageSuppressed(els.fieldType.value, els.fieldCover.value) ? "" : els.fieldCover.value.trim());
+    const wrap = els.coverPreview && els.coverPreview.closest(".cover-preview-wrap");
+    if (wrap) wrap.classList.toggle("has-cover", Boolean(url));
     if (url) {
       els.coverPreview.src = url;
       els.coverPreview.hidden = false;
@@ -1410,8 +1524,10 @@
     } else {
       els.coverPreview.removeAttribute("src");
       els.coverPreview.hidden = true;
-      els.coverPreviewPlaceholder.hidden = false;
+      // The No cover box is replaced by Choose photo / Take photo.
+      els.coverPreviewPlaceholder.hidden = true;
     }
+    if (els.btnRemovePhoto) els.btnRemovePhoto.hidden = !url;
   }
 
   function updateFormatOptions() {
@@ -1818,8 +1934,10 @@
     els.fieldProgress.value = item ? item.progress || "" : "";
     els.fieldTags.value = item ? (item.tags || []).join(", ") : "";
     els.fieldNotes.value = item ? item.notes || "" : "";
-    els.fieldCover.value = item ? item.coverUrl || "" : "";
-    els.fieldCoverSource.value = item ? item.coverSource || "" : "";
+    const itemPhoto = item && item.coverSource === "photo" && /^data:image\//i.test(item.coverUrl || "");
+    if (els.fieldCoverPhoto) els.fieldCoverPhoto.value = itemPhoto ? item.coverUrl : "";
+    els.fieldCover.value = itemPhoto ? "" : (item ? item.coverUrl || "" : "");
+    els.fieldCoverSource.value = itemPhoto ? "photo" : (item ? item.coverSource || "" : "");
     if (els.fieldCoverSourceId) els.fieldCoverSourceId.value = item ? item.coverSourceId || "" : "";
     $("#field-igdb-id").value = item ? item.igdbId || "" : "";
     if (els.fieldCoverPlatform) els.fieldCoverPlatform.value = item ? item.coverPlatform || "" : "";
@@ -1835,8 +1953,10 @@
     els.modal.hidden = false;
     els.modal.setAttribute("aria-hidden", "false");
     document.body.classList.add("modal-open");
+    resetSheetScroll(els.modal);
     itemFormBaseline = null;
     requestAnimationFrame(() => {
+      resetSheetScroll(els.modal);
       // After callers' same-tick setup (e.g. a tab presetting the type), before any typing.
       itemFormBaseline = serializeItemForm();
       // V2.7: never focus an input on open (Add, Edit, or cover-picker setup). A focused
@@ -2070,8 +2190,8 @@
         .filter(Boolean),
       progress: els.fieldProgress.value.trim(),
       barcode: els.fieldBarcode.value.trim(),
-      coverUrl: els.fieldCover.value.trim(),
-      coverSource: els.fieldCoverSource.value.trim(),
+      coverUrl: (els.fieldCoverPhoto && els.fieldCoverPhoto.value) || els.fieldCover.value.trim(),
+      coverSource: (els.fieldCoverPhoto && els.fieldCoverPhoto.value) ? "photo" : els.fieldCoverSource.value.trim(),
       coverSourceId: els.fieldCoverSourceId ? els.fieldCoverSourceId.value.trim() : "",
       igdbId: type === "game" ? $("#field-igdb-id").value : "",
       coverPlatform: els.fieldCoverPlatform ? els.fieldCoverPlatform.value.trim() : "",
@@ -2331,15 +2451,57 @@
       .replace(/"/g, "&quot;");
   }
 
+  /**
+   * Official marks live in assets/platforms/ (see SOURCES.md). Text abbreviations are used
+   * when no verified official asset was available for a 24px disc.
+   */
+  const PLATFORM_BADGES = {
+    Steam: { file: "", abbr: "Steam", label: "Steam" },
+    PSN: { file: "playstation.svg", label: "PlayStation" },
+    "PS1": { file: "playstation.svg", label: "PlayStation 1" },
+    "PS2": { file: "playstation.svg", label: "PlayStation 2" },
+    "PS3": { file: "playstation.svg", label: "PlayStation 3" },
+    "PS4": { file: "playstation.svg", label: "PlayStation 4" },
+    "PS5": { file: "playstation.svg", label: "PlayStation 5" },
+    Xbox: { file: "xbox.svg", label: "Xbox" },
+    "Xbox 360": { file: "xbox.svg", label: "Xbox 360" },
+    "Xbox One": { file: "xbox.svg", label: "Xbox One" },
+    "Series X|S": { file: "xbox.svg", label: "Xbox Series X|S" },
+    Switch: { file: "switch.svg", label: "Nintendo Switch" },
+    "Switch 2": { file: "", abbr: "NS2", label: "Switch 2" },
+    GameCube: { file: "", abbr: "GCN", label: "GameCube" },
+    Wii: { file: "wii.svg", label: "Wii" },
+    "Wii U": { file: "wiiu.svg", label: "Wii U" },
+    PC: { file: "", abbr: "PC", label: "PC" },
+    Other: { file: "", abbr: "OTH", label: "Other" },
+  };
+
+  function platformBadgeMarkup(item) {
+    if (!item || item.type !== "game") return "";
+    const raw = String(item.platform || "").trim();
+    if (!raw) return "";
+    const meta = PLATFORM_BADGES[raw] || PLATFORM_BADGES[normalizePlatform(raw)] || null;
+    if (!meta) {
+      const abbr = escapeHtml(raw.slice(0, 4).toUpperCase());
+      return `<span class="platform-badge platform-badge-text" title="${escapeHtml(raw)}">${abbr}</span>`;
+    }
+    const title = escapeHtml(meta.label || raw);
+    if (meta.file) {
+      return `<span class="platform-badge" title="${title}"><img src="./assets/platforms/${escapeHtml(meta.file)}" alt="" width="16" height="16"></span>`;
+    }
+    return `<span class="platform-badge platform-badge-text" title="${title}">${escapeHtml(meta.abbr || raw)}</span>`;
+  }
+
   function coverMarkup(item) {
     const label = escapeHtml(TYPE_LABELS[item.type] || item.type);
     const type = escapeHtml(item.type);
     // A stored GCD image URL (and, in names-only mode, a Metron one) is kept but never
     // requested; the card shows the Comic placeholder only (no cover-name line on the card).
     const url = comicImageSuppressed(item.type, item.coverUrl) ? "" : (item.coverUrl || "").trim();
+    const badge = platformBadgeMarkup(item);
     // The column keeps the 2:3 height for every type, so mixed lists line up; music
     // covers (square album art) sit top-aligned in it as a 1:1 frame.
-    const col = (inner) => `<div class="item-cover-col" data-type="${type}">${inner}</div>`;
+    const col = (inner) => `<div class="item-cover-col" data-type="${type}">${inner}${badge}</div>`;
     if (!url) {
       return col(`<div class="item-cover-placeholder ${type}" aria-hidden="true">${label}</div>`);
     }
@@ -5960,24 +6122,43 @@
     }
   }
 
-  async function openScanModal() {
+  let scanDest = "media";
+  async function openScanModal(dest = "media") {
+    scanDest = dest === "tabletop" ? "tabletop" : "media";
     dismissPlainToast();
     els.scanStatus.textContent = "Starting camera…";
     els.scanModal.hidden = false;
     els.scanModal.setAttribute("aria-hidden", "false");
     document.body.classList.add("modal-open");
+    resetSheetScroll(els.scanModal);
 
     try {
       const Html5Qrcode = await loadHtml5QrCode();
       await stopScanner();
       els.qrReader.innerHTML = "";
+      const box = els.qrReader.getBoundingClientRect();
+      const qw = Math.max(80, Math.min(240, Math.floor((box.width || 240) * 0.8)));
+      const qh = Math.max(60, Math.min(140, Math.floor((box.height || 180) * 0.5)));
       activeScanner = new Html5Qrcode("qr-reader");
       await activeScanner.start(
         { facingMode: "environment" },
-        { fps: 8, qrbox: { width: 240, height: 140 } },
+        { fps: 8, qrbox: { width: qw, height: qh } },
         async (decoded) => {
           const code = String(decoded || "").trim();
           if (!code) return;
+          if (scanDest === "tabletop") {
+            const input = document.getElementById("tt-barcode");
+            if (input) {
+              input.value = code;
+              input.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+            els.scanStatus.textContent = "Scanned — looking up…";
+            await stopScanner();
+            closeScanModal(true);
+            const go = document.getElementById("tt-upc-go");
+            if (go) go.click();
+            return;
+          }
           els.fieldBarcode.value = code;
           if (!editingId) {
             scannedNewItem = true;
@@ -6173,7 +6354,9 @@
     });
 
     els.sortSelect.addEventListener("change", () => {
-      sortMode = els.sortSelect.value;
+      const next = SORT_MODES.includes(els.sortSelect.value) ? els.sortSelect.value : "title";
+      sortMode = next;
+      try { localStorage.setItem(SORT_STORAGE, next); } catch {}
       render();
     });
 
@@ -6343,15 +6526,32 @@
       updateReferenceLinks();
     });
     els.fieldCover.addEventListener("input", () => {
+      if (els.fieldCoverPhoto) els.fieldCoverPhoto.value = "";
       els.fieldCoverSource.value = els.fieldCover.value.trim() ? "manual" : "";
       if (els.fieldCoverSourceId) els.fieldCoverSourceId.value = "";
       if (els.fieldCoverPlatform) els.fieldCoverPlatform.value = "";
       if (els.fieldCoverLabel) els.fieldCoverLabel.value = "";
       if (els.fieldCoverVariant) els.fieldCoverVariant.value = "";
+      setCoverPhotoStatus("");
       updateCoverPreview();
       renderCoverChoices();
       onComicCoverTyped(els.fieldCover.value);
     });
+    if (els.btnChoosePhoto && els.coverPhotoFile) {
+      els.btnChoosePhoto.addEventListener("click", () => els.coverPhotoFile.click());
+      els.coverPhotoFile.addEventListener("change", () => {
+        const f = els.coverPhotoFile.files && els.coverPhotoFile.files[0];
+        if (f) applyCoverPhotoFile(f);
+      });
+    }
+    if (els.btnTakePhoto && els.coverPhotoCamera) {
+      els.btnTakePhoto.addEventListener("click", () => els.coverPhotoCamera.click());
+      els.coverPhotoCamera.addEventListener("change", () => {
+        const f = els.coverPhotoCamera.files && els.coverPhotoCamera.files[0];
+        if (f) applyCoverPhotoFile(f);
+      });
+    }
+    if (els.btnRemovePhoto) els.btnRemovePhoto.addEventListener("click", () => clearCoverPhoto());
     // :user-invalid settles on blur and on a Save attempt; the message follows it.
     els.fieldCover.addEventListener("blur", () => requestAnimationFrame(updateCoverUrlError));
     els.form.addEventListener("submit", () => requestAnimationFrame(updateCoverUrlError));
@@ -6449,7 +6649,9 @@
       }
     });
     els.btnLookup.addEventListener("click", () => runLookup());
-    els.btnScan.addEventListener("click", () => openScanModal());
+    els.btnScan.addEventListener("click", () => openScanModal("media"));
+    const ttScan = document.getElementById("tt-btn-scan");
+    if (ttScan) ttScan.addEventListener("click", () => openScanModal("tabletop"));
     $("#scan-close").addEventListener("click", () => closeScanModal());
     $("#scan-cancel").addEventListener("click", () => closeScanModal());
     $$("[data-scan-close]").forEach((el) =>
@@ -8765,6 +8967,7 @@
   }
 
   async function init() {
+    if (els.sortSelect) els.sortSelect.value = sortMode;
     fillPlatformOptions();
     syncPlatformSelect("");
     updateCameraHints();

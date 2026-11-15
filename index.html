@@ -63,8 +63,8 @@
 
       <label class="sr-only" for="sort-select">Sort</label>
       <select id="sort-select" class="select">
+        <option value="title" selected>Title A–Z</option>
         <option value="updated">Recently updated</option>
-        <option value="title">Title A–Z</option>
         <option value="rating">Rating</option>
       </select>
 
@@ -399,6 +399,15 @@
           <div class="cover-preview-wrap">
             <img id="cover-preview" class="cover-preview" alt="" hidden />
             <div id="cover-preview-placeholder" class="cover-preview-placeholder" aria-hidden="true">No cover</div>
+            <div id="cover-photo-actions" class="cover-photo-actions">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-choose-photo">Choose photo</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-take-photo">Take photo</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-remove-photo" hidden>Remove photo</button>
+            </div>
+            <input type="hidden" id="field-cover-photo" value="" />
+            <input type="file" id="cover-photo-file" accept="image/*" hidden />
+            <input type="file" id="cover-photo-camera" accept="image/*" capture="environment" hidden />
+            <p id="cover-photo-status" class="field-hint" role="status" hidden></p>
             <p id="gb-cover-note" class="gb-cover-note" hidden>Cover from Google Books</p>
           </div>
         </div>
@@ -477,7 +486,12 @@
           <div class="form-row tt-stack-under-400"><label for="tt-players">Players</label><input type="text" id="tt-players" maxlength="20" placeholder="2–4" /></div>
           <div class="form-row tt-stack-under-400"><label for="tt-playTime">Play time (minutes)</label><input type="text" id="tt-playTime" maxlength="20" placeholder="60" /></div>
           <div class="form-row"><label for="tt-bggId">BGG id (optional)</label><input type="text" id="tt-bggId" inputmode="numeric" maxlength="12" autocomplete="off" /></div>
-          <div class="form-row"><label for="tt-barcode">Barcode (optional)</label><input type="text" id="tt-barcode" inputmode="numeric" maxlength="32" autocomplete="off" /></div>
+          <div class="form-row"><label for="tt-barcode">Barcode (optional)</label>
+            <div class="barcode-row">
+              <input type="text" id="tt-barcode" inputmode="numeric" maxlength="32" autocomplete="off" />
+              <button type="button" class="btn btn-ghost" id="tt-btn-scan" title="Scan with camera">Scan</button>
+            </div>
+          </div>
         </div>
         <div class="form-row"><label for="tt-coverUrl">Cover image URL</label><input type="url" id="tt-coverUrl" maxlength="500" /></div>
         <div class="form-row"><label for="tt-notes">Notes</label><textarea id="tt-notes" rows="3" maxlength="2000"></textarea></div>

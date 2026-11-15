@@ -196,11 +196,11 @@ check('Wishlist Owned-base Want-expansion markup: Expansion subtype badge', () =
   assert.match(src, /wishOwnedBase/);
   // V2.8: grid cards no longer carry the Base game label (detail sheet only).
   assert.doesNotMatch(src, /Base game: \$\{esc\(tidyColon\(base\)\)\}/);
-  assert.match(src, /subtypeBadge\(x\)/);
+  assert.match(src, /subtypeBadge\(x, expPillAttrs\(x\)\)/);
   assert.match(css, /\.tt-wish-base-label[\s\S]*?font-size:\s*13px/);
   assert.match(css, /\.tt-wish-base-label[\s\S]*?color:\s*#6b6158/);
   // Tag reuses existing badge-type tabletop → "Expansion" via SUBTYPE_LABELS
-  assert.match(src, /subtypeBadge = \(e\) => `<span class="badge badge-type tabletop">\$\{SUBTYPE_LABELS\[e\.subtype\]\}<\/span>`/);
+  assert.match(src, /subtypeBadge = \(e, attrs = ""\) => `<span class="badge badge-type tabletop"\$\{attrs\}>\$\{SUBTYPE_LABELS\[e\.subtype\]\}<\/span>`/);
   assert.equal(T.SUBTYPE_LABELS.expansion, 'Expansion');
 });
 
