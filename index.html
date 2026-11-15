@@ -201,6 +201,10 @@
             <div id="comic-cover-list" class="comic-cover-list"></div>
             <!-- Muted note under the covers when the picture source couldn't be asked (imagesPending). -->
             <p id="comic-show-all-status" class="lookup-status comic-show-all-status" role="status" aria-live="polite" hidden></p>
+            <button type="button" class="comic-no-cover" id="btn-comic-no-cover" aria-pressed="false">
+              <span class="comic-cover-thumb comic-cover-blank" aria-hidden="true"></span>
+              <span class="comic-cover-label">No cover</span>
+            </button>
             <div id="comic-picker-credit" class="comic-credit" hidden></div>
             <div class="comic-picker-url">
               <label for="field-comic-cover-url">Or paste a photo URL</label>
@@ -208,7 +212,6 @@
               <!-- cleared (Berean, 11:44pm): same line as under Cover URL -->
               <p id="comic-cover-url-error" class="field-error" hidden>Enter a full web address starting with https://, or clear this field.</p>
             </div>
-            <button type="button" class="btn btn-ghost btn-sm comic-no-cover" id="btn-comic-no-cover" aria-pressed="false">No cover</button>
           </div>
           <!-- Google Books attribution (developers.google.com/books/branding): the unmodified
                "powered by Google" mark beside Google Books results, plus a link to the book's

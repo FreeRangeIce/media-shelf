@@ -2481,20 +2481,46 @@ body.modal-open {
   gap: var(--space-2);
 }
 
+/* Unselected choices: cream fill and a 1px dark outline, like Cancel / Cancel lookup.
+   After the redesign, --bg-elevated is #242424 and --text is #1a1a1a, so the old
+   elevated fill made unselected "Separate copy" / "Skip" unreadable. */
 .clz-choice-btn {
   flex: 1 1 auto;
   min-height: 44px;
   min-width: 0;
   white-space: nowrap;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-elevated);
-  color: var(--text);
+  border: 1px solid #5c5348;
+  background: #fffdf8;
+  color: #1a1a1a;
 }
 
-.clz-choice-btn.is-selected {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--text-on-accent);
+.clz-choice-btn:hover {
+  background: #f7f7f7;
+  border-color: #5c5348;
+  color: #1a1a1a;
+}
+
+.clz-choice-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.clz-choice-btn:disabled,
+.clz-choice-btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: #fffdf8;
+  border-color: #5c5348;
+  color: #1a1a1a;
+}
+
+.clz-choice-btn.is-selected,
+.clz-choice-btn.is-selected:hover,
+.clz-choice-btn.is-selected:disabled {
+  border-color: #8B5E3C;
+  background: #8B5E3C;
+  color: #ffffff;
+  opacity: 1;
 }
 
 /* 10. "This row:" on its own small line just above a row's buttons: they override the
@@ -2560,6 +2586,43 @@ body.modal-open {
   width: 100%;
   min-width: 0;
   text-overflow: ellipsis;
+}
+
+/* Import sheet choice controls (CLZ + Import games): cream field, dark text and outline,
+   same readable unselected state as the row buttons. Locked to paper values so a later
+   token change cannot make them near-black on near-black. */
+.import-card .select,
+.import-card .import-input,
+.import-card textarea {
+  background-color: #fffdf8;
+  color: #1a1a1a;
+  border-color: #5c5348;
+}
+
+.import-card .select:hover,
+.import-card .import-input:hover,
+.import-card textarea:hover {
+  background-color: #fffdf8;
+  color: #1a1a1a;
+  border-color: #5c5348;
+}
+
+.import-card .select:focus-visible,
+.import-card .import-input:focus-visible,
+.import-card textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-color: #8B5E3C;
+}
+
+.import-card .select:disabled,
+.import-card .import-input:disabled,
+.import-card textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background-color: #fffdf8;
+  color: #1a1a1a;
+  border-color: #5c5348;
 }
 
 .clz-mapping-fields {
@@ -2841,22 +2904,50 @@ body.modal-open {
   min-width: 0;
   min-height: var(--tap);
   padding: var(--space-1);
-  border: 1px solid var(--border);
+  border: 1px solid #5c5348;
   border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  color: var(--text);
+  background: #fffdf8;
+  color: #1a1a1a;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
-.comic-cover img {
+.comic-cover:hover {
+  background: #f7f7f7;
+  border-color: #5c5348;
+  color: #1a1a1a;
+}
+
+.comic-cover:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.comic-cover:disabled,
+.comic-cover[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: #fffdf8;
+  border-color: #5c5348;
+  color: #1a1a1a;
+}
+
+.comic-cover img,
+.comic-cover-thumb {
   display: block;
-  width: 100%;
-  aspect-ratio: 2 / 3;
+  width: 48px;
+  height: 72px;
+  flex: 0 0 48px;
   object-fit: cover;
   border-radius: 4px;
-  background: var(--bg-card-hover);
+  background: #f7f7f7;
+}
+
+.comic-cover img {
+  width: 48px;
+  height: 72px;
+  aspect-ratio: 2 / 3;
 }
 
 /* Variant names: two lines with an ellipsis; the picked cover shows the full name. */
@@ -2878,25 +2969,27 @@ body.modal-open {
   overflow: visible;
 }
 
-/* A cover name with no image yet: a plain tile the size of a cover. */
+/* Placeholder when a thumb has no URL or the image failed: same 48×72 slot, no layout shift. */
 .comic-cover-blank {
-  display: block;
-  width: 100%;
-  aspect-ratio: 2 / 3;
-  border-radius: 4px;
-  border: 1px dashed var(--border-strong);
-  background: var(--bg-card-hover);
   display: flex;
+  box-sizing: border-box;
+  width: 48px;
+  height: 72px;
+  flex: 0 0 48px;
+  aspect-ratio: auto;
+  border-radius: 4px;
+  border: 1px dashed #5c5348;
+  background: #f7f7f7;
   align-items: center;
   justify-content: center;
-  padding: var(--space-2);
+  padding: 2px;
 }
 
 .comic-cover-blank-text {
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
+  font-size: 9px;
+  color: #1a1a1a;
   text-align: center;
-  line-height: 1.3;
+  line-height: 1.2;
 }
 
 /* Names-only mode (COMIC_COVER_IMAGES = false): no 2:3 boxes. One column, one variant
@@ -2960,20 +3053,37 @@ body.modal-open {
 
 .comic-cover.comic-name {
   flex: 1 1 0;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  min-height: 76px; /* 72px thumb + 2px padding each side */
+  padding: 2px var(--space-3) 2px 2px;
+  padding-right: calc(var(--space-3) + 26px); /* room for the check mark */
+  background: #fffdf8;
+  color: #1a1a1a;
+  border: 1px solid #5c5348;
+}
+
+.comic-cover-text {
+  display: flex;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: center;
   gap: 2px;
-  min-height: 44px;
-  padding: var(--space-2) var(--space-3);
-  padding-right: calc(var(--space-3) + 26px); /* room for the check mark */
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .comic-cover.comic-name .comic-cover-label {
   width: 100%;
   min-width: 0;
   font-size: var(--fs-sm);
+  color: #1a1a1a;
   overflow-wrap: break-word;
+  -webkit-line-clamp: unset;
+  line-clamp: none;
+  display: block;
+  overflow: visible;
 }
 
 .comic-cover.comic-name.is-selected::after {
@@ -2986,10 +3096,10 @@ body.modal-open {
 .comic-name-variant {
   flex: 0 0 auto;
   padding: 0 var(--space-1);
-  border: 1px solid var(--border-strong);
+  border: 1px solid #5c5348;
   border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
+  background: #fffdf8;
+  color: #1a1a1a;
   font-size: var(--fs-xs);
   font-weight: var(--fw-medium);
 }
@@ -3036,29 +3146,22 @@ body.modal-open {
 }
 
 .comic-cover-variant {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
+  position: static;
   padding: 1px var(--space-1);
+  border: 1px solid #5c5348;
   border-radius: 4px;
-  background: var(--text);
-  color: #fffdf8;
+  background: #fffdf8;
+  color: #1a1a1a;
   font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
 }
 
-.comic-cover:hover {
-  border-color: var(--border-strong);
-}
-
-.comic-cover:focus-visible {
-  outline: none;
-  box-shadow: var(--focus);
-}
-
-.comic-cover.is-selected {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 2px var(--accent);
+.comic-cover.is-selected,
+.comic-cover.is-selected:hover {
+  border-color: #8B5E3C;
+  box-shadow: inset 0 0 0 1px #8B5E3C;
+  background: #fffdf8;
+  color: #1a1a1a;
 }
 
 /* The check sits on the image's top-left corner; the Variant tag is top-right. */
@@ -3087,14 +3190,72 @@ body.modal-open {
   margin-top: var(--space-3);
 }
 
-.comic-no-cover {
+/* No cover: a visible outlined choice, not a ghost button, so it can't disappear on a dark token. */
+.comic-no-cover,
+.btn.btn-ghost.comic-no-cover,
+.btn.comic-no-cover {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 76px;
   margin-top: var(--space-2);
+  padding: 2px var(--space-3) 2px 2px;
+  padding-right: calc(var(--space-3) + 26px);
+  background: #fffdf8;
+  border: 1px solid #5c5348;
+  color: #1a1a1a;
+  font-size: var(--fs-sm);
+  text-align: left;
 }
 
-.comic-no-cover.is-selected {
-  border-color: var(--accent);
-  color: var(--accent-text);
-  box-shadow: inset 0 0 0 1px var(--accent);
+.comic-no-cover:hover,
+.btn.btn-ghost.comic-no-cover:hover,
+.btn.comic-no-cover:hover {
+  background: #f7f7f7;
+  border-color: #5c5348;
+  color: #1a1a1a;
+}
+
+.comic-no-cover:focus-visible,
+.btn.comic-no-cover:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.comic-no-cover:disabled,
+.comic-no-cover[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.comic-no-cover.is-selected,
+.btn.btn-ghost.comic-no-cover.is-selected,
+.btn.comic-no-cover.is-selected,
+.comic-no-cover.is-selected:hover {
+  border-color: #8B5E3C;
+  color: #1a1a1a;
+  background: #fffdf8;
+  box-shadow: inset 0 0 0 1px #8B5E3C;
+}
+
+.comic-no-cover.is-selected::after {
+  content: "✓";
+  position: absolute;
+  top: 50%;
+  right: var(--space-2);
+  left: auto;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: var(--fs-sm);
+  line-height: 22px;
+  text-align: center;
 }
 
 /* Save blocked until a comic cover is chosen: the disabled button plus the reason */

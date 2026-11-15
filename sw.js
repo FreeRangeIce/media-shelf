@@ -1,5 +1,5 @@
-/* FreeRangeMedia service worker — cache version V2.12 */
-const CACHE = "media-shelf-v2.12";
+/* FreeRangeMedia service worker — cache version V2.13 */
+const CACHE = "media-shelf-v2.13";
 /*
  * Cross-origin responses (cover images, APIs, CDNs) are never written to the cache: only
  * same-origin responses are (see the fetch handler). Comic data and covers from the Grand

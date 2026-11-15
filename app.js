@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6, 2.7…; bump APP_VERSION and
-  // the service worker cache name together (media-shelf-v2.12) so the Duo drops old files.
-  const APP_VERSION = "2.12";
+  // the service worker cache name together (media-shelf-v2.13) so the Duo drops old files.
+  const APP_VERSION = "2.13";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -5319,7 +5319,7 @@
     // Pictures: the answer's covers plus any variant row's image, allowed hosts only (a GCD
     // files1.comics.org URL is dropped here, so it's never requested).
     const rowImages = rawVariants.filter((v) => v.image).map((v) => ({ sourceId: v.sourceId, url: v.image, label: v.label, variant: v.variant }));
-    const covers = sanitizeComicCovers([...(res && Array.isArray(res.covers) ? res.covers : []), ...rowImages], okUrl).slice(0, COMIC_VARIANTS_MAX);
+    const covers = sanitizeComicCovers([...(res && Array.isArray(res.covers) ? res.covers : []), ...rowImages], okUrl, (u) => comicPickerImageUrl(u, fixture)).slice(0, COMIC_VARIANTS_MAX);
     const totalRaw = Math.floor(Number(res && res.total));
     const total = Number.isFinite(totalRaw) && totalRaw > 0 ? Math.min(totalRaw, COMIC_VARIANTS_MAX) : Math.max(variants.length, covers.length);
     // Candidates (other volumes with that name) are kept for a future "which series?" step;
@@ -5330,7 +5330,7 @@
       .map((c) => ({ series: cleanText(c.series), year: year(c.year), publisher: cleanText(c.publisher), sourceId: cleanText(c.sourceId, 80) }));
     const reason = res && typeof res.reason === "string" ? cleanText(res.reason, 40) : "";
     // Credit the picture source only when one of its pictures actually came through.
-    const imagesFrom = covers.length && res && comicImageSourceByKey(res.imagesFrom) ? res.imagesFrom : "";
+    const imagesFrom = covers.some((c) => c.url) && res && comicImageSourceByKey(res.imagesFrom) ? res.imagesFrom : "";
     const imagesPending = Boolean(res && res.imagesPending === true);
     return { match, covers, variants, total, candidates, reason, imagesFrom, imagesPending };
   }
@@ -5348,17 +5348,30 @@
     return url && comicImageSourceFor(url) ? url : "";
   }
 
-  /** Covers from any relay answer: URL kept as sent, no repeats. */
-  function sanitizeComicCovers(list, okUrl) {
+  /**
+   * HTTPS image URL for a picker thumbnail. Same hosts as a stored cover (Metron, and
+   * dev fixture files). GCD's files1.comics.org is never kept or requested: the live
+   * relay does not send those URLs, and those hosts refuse browsers outside comics.org.
+   * Never stored as a copy, never rewritten.
+   */
+  function comicPickerImageUrl(u, fixture) {
+    return comicCoverUrl(u, fixture);
+  }
+
+  /** Covers from any relay answer: URL kept as sent, no repeats.
+      url is only a picture-source host (stored if picked); thumb may be the lookup's https URL. */
+  function sanitizeComicCovers(list, okUrl, previewUrl) {
     const seen = new Set();
     const out = [];
+    const preview = previewUrl || okUrl;
     (Array.isArray(list) ? list : []).forEach((c) => {
       const url = c && okUrl(c.url);
+      const thumb = c && preview(c.url);
       const sourceId = c ? cleanText(c.sourceId, 80) : "";
-      const key = sourceId || url; // one entry per cover record (or per URL without ids)
-      if (!url || seen.has(key)) return;
+      const key = sourceId || url || thumb; // one entry per cover record (or per URL without ids)
+      if ((!url && !thumb && !sourceId) || !key || seen.has(key)) return;
       seen.add(key);
-      out.push({ sourceId, url, label: cleanText(c.label, 160), variant: c.variant === true });
+      out.push({ sourceId, url, thumb, label: cleanText(c.label, 160), variant: c.variant === true });
     });
     return out;
   }
@@ -5569,7 +5582,7 @@
     const tiles = variants.length
       ? variants.map((v, i) => {
           const c = (v.sourceId && byId.get(v.sourceId)) || (!v.sourceId && covers[i]) || null;
-          return { sourceId: v.sourceId, label: v.label || (c && c.label) || "", variant: v.variant, url: c ? c.url : "" };
+          return { sourceId: v.sourceId, label: v.label || (c && c.label) || "", variant: v.variant, url: c ? c.url : "", thumb: c ? (c.thumb || c.url) : "" };
         })
       : covers.map((c) => ({ ...c }));
     saveBlockedTried = false; // a new picker starts muted
@@ -5664,7 +5677,8 @@
   }
 
   function comicBlankTileArt(c) {
-    return `<span class="comic-cover-blank" aria-hidden="true"><span class="comic-cover-blank-text">${escapeHtml(COMIC_NOT_LOADED_LABEL)}</span></span>`;
+    const msg = c && c.imgFailed ? COMIC_NOT_LOADED_LABEL : "No cover";
+    return `<span class="comic-cover-thumb comic-cover-blank" aria-hidden="true"><span class="comic-cover-blank-text">${escapeHtml(msg)}</span></span>`;
   }
 
   /**
@@ -5677,7 +5691,8 @@
     const btn = img.closest("[data-comic-cover]");
     const i = btn ? Number(btn.dataset.comicCover) : -1;
     const t = comicPicker.tiles[i];
-    if (!t || !t.url || img.getAttribute("src") !== t.url) return;
+    const src = (t && (t.thumb || t.url)) || "";
+    if (!t || !src || img.getAttribute("src") !== src) return;
     t.imgFailed = true;
     img.insertAdjacentHTML("afterend", comicBlankTileArt(t));
     img.remove();
@@ -5700,23 +5715,28 @@
     const shown = comicPicker.expanded ? all : all.slice(0, COMIC_COVER_MAX);
     // NEW COPY (fact check): picker captions and the Show all button.
     const images = comicCoverImagesOn();
-    // Layout (Oholiab): every row has a picture -> the two-column grid; none -> names only;
-    // some -> the pictured row(s) on top as ~140px tiles, the other names as rows under them.
-    // A name without a picture is never put in a blank tile beside a photo.
-    const pictured = images ? all.filter((t) => t.url).length : 0;
-    const layout = !pictured ? "names" : pictured === all.length ? "grid" : "mixed";
     const selected = (i) => comicPicker.choice === "cover" && comicPicker.picked === i;
+    const thumbSrc = (c) => (images ? (c.thumb || c.url) : "");
     const nameRow = (c, i) => {
-      // Names only (Oholiab): one variant per row, ≥44px, the full name on up to two lines,
-      // the picker's outline + check when picked, the issue link at the row's end.
+      // One variant per row, ≥44px, 48×72 thumb on the left (placeholder if none / failed).
       const on = selected(i);
       const label = c.label || `Cover ${i + 1}`;
       const href = comicIssuePageUrl(c.sourceId);
+      const src = thumbSrc(c);
+      const showImg = Boolean(src && !c.imgFailed);
+      const art = images
+        ? (showImg
+          ? `<img class="comic-cover-thumb" src="${escapeHtml(src)}" alt="" width="48" height="72" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`
+          : comicBlankTileArt(c))
+        : "";
       return (
         `<div class="comic-name-row">` +
         `<button type="button" class="comic-cover comic-name${on ? " is-selected" : ""}" data-comic-cover="${i}" aria-pressed="${on}" title="${escapeHtml(label)}">` +
+        art +
+        `<span class="comic-cover-text">` +
         `<span class="comic-cover-label">${escapeHtml(label)}</span>` +
-        (c.variant && !/\bvariant\b/i.test(label) ? `<span class="comic-name-variant">Variant</span>` : "") /* no chip where the name already says it */ +
+        (c.variant && !/\bvariant\b/i.test(label) ? `<span class="comic-name-variant">Variant</span>` : "") +
+        `</span>` +
         `</button>` +
         (href
           ? `<a class="comic-cover-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(`${label}: ${comicSourceFor(c.sourceId).issueLinkText}`)}">${escapeHtml(comicSourceFor(c.sourceId).issueLinkShort)}</a>`
@@ -5724,54 +5744,19 @@
         `</div>`
       );
     };
-    const pictureTile = (c, i, extraClass = "") => {
-      // 2:3 picture with the GCD name under it; a picture that failed to load gets the plain
-      // "Cover didn't load" tile (never requested again in this picker).
-      const on = selected(i);
-      const label = c.label || `Cover ${i + 1}`;
-      const showImg = c.url && !c.imgFailed;
-      const art = showImg
-        ? `<img src="${escapeHtml(c.url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`
-        : comicBlankTileArt(c);
-      return (
-        `<button type="button" class="comic-cover${extraClass}${on ? " is-selected" : ""}${showImg ? "" : " is-blank"}" data-comic-cover="${i}" aria-pressed="${on}" title="${escapeHtml(label)}">` +
-        art +
-        `<span class="comic-cover-label">${escapeHtml(label)}</span>` +
-        (c.variant ? `<span class="comic-cover-variant">Variant</span>` : "") +
-        `</button>`
-      );
-    };
     const tiles = [];
-    if (layout === "names") shown.forEach((c, i) => tiles.push(nameRow(c, i)));
-    else if (layout === "grid") shown.forEach((c, i) => tiles.push(pictureTile(c, i)));
-    else {
-      // The pictured tile keeps its size and picked state; under it, outside the tile, its own
-      // small comics.org link (the names-only rows' link style, a separate ≥44px tap target).
-      const photoItem = (c, i) => {
-        const href = comicIssuePageUrl(c.sourceId);
-        const label = c.label || `Cover ${i + 1}`;
-        const src = comicSourceFor(c.sourceId);
-        const link = href && src
-          ? `<a class="comic-cover-link comic-photo-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(`${label}: ${src.issueLinkText}`)}">${escapeHtml(src.issueLinkShort)}</a>`
-          : "";
-        return `<div class="comic-photo-item">${pictureTile(c, i, " comic-photo")}${link}</div>`;
-      };
-      const photos = shown.map((c, i) => (c.url ? photoItem(c, i) : "")).filter(Boolean);
-      if (photos.length) tiles.push(`<div class="comic-photo-row">${photos.join("")}</div>`);
-      shown.forEach((c, i) => {
-        if (!c.url) tiles.push(nameRow(c, i));
-      });
-    }
+    shown.forEach((c, i) => tiles.push(nameRow(c, i)));
     // "Show all N covers" only when names are hidden (more than 5): it lists the rest, nothing
     // is fetched.
     const collapsed = !comicPicker.expanded && comicPicker.total > COMIC_COVER_MAX;
     if (collapsed) {
       tiles.push(`<button type="button" class="btn btn-ghost comic-show-all" id="btn-comic-show-all">Show all ${comicPicker.total} covers</button>`);
     }
+
     list.innerHTML = tiles.length ? tiles.join("") : `<p class="comic-picker-empty">No covers from this source.</p>`;
     list.setAttribute("aria-busy", "false");
-    list.classList.toggle("is-names", layout === "names");
-    list.classList.toggle("is-mixed", layout === "mixed");
+    list.classList.toggle("is-names", true);
+    list.classList.toggle("is-mixed", false);
     syncCoverRow();
     const urlInput = $("#field-comic-cover-url");
     if (urlInput && document.activeElement !== urlInput) {
@@ -8880,7 +8865,7 @@
     const tiles = variants.length
       ? variants.map((v, i) => {
           const c = (v.sourceId && byId.get(v.sourceId)) || (!v.sourceId && covers[i]) || null;
-          return { sourceId: v.sourceId, label: v.label || (c && c.label) || "", variant: v.variant, url: c ? c.url : "" };
+          return { sourceId: v.sourceId, label: v.label || (c && c.label) || "", variant: v.variant, url: c ? c.url : "", thumb: c ? (c.thumb || c.url) : "" };
         })
       : covers.map((c) => ({ ...c }));
     // A match with no cover at all: Needs a cover (the mark only).
