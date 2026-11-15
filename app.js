@@ -3331,8 +3331,16 @@
         let res = { added: 0, updated: 0 };
         let done = []; // what the merge actually did with each same-title match
         let ok;
+        let pendingStamps;
         try {
           ok = commitItems((list) => {
+            // Snapshot unreached import ids (and their dateUpdated) after sync, before the merge
+            // write, so a newer backup copy of the same id is not marked Needs lookup.
+            pendingStamps = {};
+            for (const id of readEnrichQueue().ids) {
+              const it = list.find((i) => i.id === id);
+              if (it) pendingStamps[it.id] = it.dateUpdated;
+            }
             res = mergeItems(list, incoming);
             return res.items;
           }, "restore");
@@ -3353,7 +3361,7 @@
           } else ttFailed = true;
         }
         restoreCoverQueue(parsed.coverQueueIds, false);
-        enrichAfterRestore(false); // V2.11: a restore never queues enrichment
+        enrichAfterRestore(false, pendingStamps); // V2.11: a restore never queues enrichment
         render();
         if (ttFailed || ttUnknown) {
           // Partial: the item merge was written; the tabletop merge was not. No "up to date" claim.
@@ -9291,18 +9299,49 @@
     if (!q.paused) startEnrich(ENRICH_START_MS);
   }
 
-  /** After a restore: Replace forgets the queue (those items are gone); Merge keeps it. Never starts one. */
-  /** After a restore (Replace or Merge, V2.12): nothing restarts. The queue on this device is dropped
+  /** After a restore (Replace or Merge): nothing restarts. The queue on this device is dropped
       (a cap that hasn't ended is remembered), an answer in flight is discarded, and no request follows.
-      Items and their Needs a pick / Needs lookup marks are kept as restored. */
-  function enrichAfterRestore(replace) { // eslint-disable-line no-unused-vars
+      Items already enriched keep their results and marks. On Merge, imported items the lookups had
+      not reached yet (still in the queue) are marked Needs lookup so they do not look finished. A
+      newer backup copy of the same id, a Replace, and a restore with no import running, stay as
+      they were. */
+  function enrichAfterRestore(replace, pendingStamps) { // eslint-disable-line no-unused-vars
     ENRICH.epoch = (ENRICH.epoch || 0) + 1;
     clearTimeout(ENRICH.timer);
     ENRICH.timer = null;
     const q = readEnrichQueue();
+    if (!replace && q.ids.length) enrichMarkUnreached(q.ids, pendingStamps);
     if (!q.ids.length && !q.seen) return renderEnrichUi();
     writeEnrichQueue({ ...enrichEmptyQueue(), until: q.until, reason: q.until > Date.now() ? q.reason : "", paused: false });
     renderEnrichUi();
+  }
+
+  /** Mark still-queued items Needs lookup. pendingStamps is id -> dateUpdated from before a Merge
+      write: a newer backup copy (different stamp) is left alone. Without stamps, every listed id
+      still on the shelf is marked (a direct call, or an answer in flight). dateUpdated and every
+      other field stay as they are. */
+  function enrichMarkUnreached(ids, pendingStamps) {
+    const want = new Set((ids || []).map(String));
+    if (!want.size) return;
+    const stamps = pendingStamps && typeof pendingStamps === "object" ? pendingStamps : null;
+    commitItems((list) => {
+      let changed = false;
+      const out = list.map((it) => {
+        if (!want.has(String(it.id))) return it;
+        if (stamps) {
+          const stamp = Object.prototype.hasOwnProperty.call(stamps, it.id)
+            ? stamps[it.id]
+            : Object.prototype.hasOwnProperty.call(stamps, String(it.id))
+              ? stamps[String(it.id)]
+              : undefined;
+          if (stamp === undefined || it.dateUpdated !== stamp) return it;
+        }
+        if (it.enrich === "lookup" || it.enrich === "pick") return it;
+        changed = true;
+        return normalizeItem({ ...it, enrich: "lookup" }); // dateUpdated and every other field untouched
+      });
+      return changed ? out : undefined;
+    }, "other");
   }
 
   function resumeEnrichOnOpen() {

@@ -652,7 +652,14 @@ check("V2.12 restore: Replace or Merge never restarts enrichment or the comic co
     b.clock.now += 120000;
     for (let i = 0; i < 30; i++) await new Promise((r) => setTimeout(r, 2));
     assert.equal(b.fetch.calls.length, 0, `${mode}: no network request after the restore (${b.fetch.calls.join(", ")})`);
-    assert.ok(b.stored().every((i) => !i.coverUrl && i.enrich === undefined), `${mode}: nothing written`);
+    assert.ok(b.stored().every((i) => !i.coverUrl), `${mode}: cover fill did not write`);
+    const queued = b.stored().find((i) => i.id === "g1");
+    if (mode === "merge") {
+      assert.equal(queued.enrich, "lookup", "merge: unreached queued game is marked Needs lookup");
+      assert.ok(b.stored().filter((i) => i.id !== "g1").every((i) => i.enrich === undefined), "merge: items not in the enrich queue stay unmarked");
+    } else {
+      assert.ok(b.stored().every((i) => i.enrich === undefined), "replace: backup items unmarked");
+    }
   }
   // A lookup already in flight when the restore lands: its answer is dropped, not written.
   let release;
@@ -669,11 +676,91 @@ check("V2.12 restore: Replace or Merge never restarts enrichment or the comic co
   release();
   await running;
   assert.equal(f.stored()[0].igdbId || "", "", "in-flight answer after a restore is not written");
-  assert.equal(f.stored()[0].enrich, undefined);
+  assert.equal(f.stored()[0].enrich, "lookup", "in-flight item, answer dropped, marked Needs lookup");
   assert.equal(f.api.readEnrichQueue().ids.length, 0);
   assert.deepEqual(inner.calls.map((u) => new URL(u).hostname), ["query.wikidata.org"], "only the request already sent; no IGDB search after the restore");
   const b = f;
   assert.equal(b.api.readEnrichQueue().ids.length, 0);
+});
+
+check("V2.12 Merge restore mid-enrichment: unreached items marked Needs lookup; already enriched kept; Replace and idle restore unchanged", async () => {
+  // Merge while an import is still queued: unreached rows are marked; finished rows keep their results.
+  const b = bootWith([[/./, () => ({ body: {} })]]);
+  const done = { ...BASE, id: "done1", type: "game", title: "Hades", platform: "Steam", barcode: "811949031150", igdbId: "123", coverUrl: "https://images.igdb.com/x.jpg", coverSource: "igdb" };
+  const pending = { ...BASE, id: "pend1", type: "game", title: "Celeste", platform: "Switch", barcode: "8123456789012" };
+  const pending2 = { ...BASE, id: "pend2", type: "book", title: "Dune", barcode: "9780441172719" };
+  const alreadyPick = { ...BASE, id: "pick1", type: "music", title: "OK Computer", enrich: "pick" };
+  b.seed([done, pending, pending2, alreadyPick]);
+  b.api.writeEnrichQueue({ ...b.api.readEnrichQueue(), ids: ["pend1", "pend2"], total: 4, done: 2, enriched: 1, pick: 1, seen: true, dismissed: false });
+  await b.restore("merge", {
+    app: "freerangemedia",
+    version: 3,
+    exportedAt: "2026-11-01T00:00:00.000Z",
+    items: [
+      { ...BASE, id: "bk-new", type: "movie", title: "Heat", year: 1995 },
+      { ...pending, dateUpdated: "2026-11-13T00:00:00.000Z", title: "Old Celeste" },
+    ],
+  });
+  assert.deepEqual([...b.api.readEnrichQueue().ids], [], "queue dropped");
+  const byId = Object.fromEntries(b.stored().map((i) => [i.id, i]));
+  assert.equal(byId.pend1.enrich, "lookup");
+  assert.equal(byId.pend1.title, "Celeste", "local unreached copy kept and marked");
+  assert.equal(byId.pend1.dateUpdated, BASE.dateUpdated, "dateUpdated untouched");
+  assert.equal(byId.pend2.enrich, "lookup");
+  assert.equal(byId.done1.igdbId, "123");
+  assert.equal(byId.done1.coverUrl, "https://images.igdb.com/x.jpg");
+  assert.equal(byId.done1.enrich, undefined, "already enriched kept, not marked");
+  assert.equal(byId.pick1.enrich, "pick", "already-picked result kept");
+  assert.equal(byId["bk-new"].enrich, undefined, "backup-only item unmarked");
+  assert.equal(byId["bk-new"].title, "Heat");
+  b.clock.now += 120000;
+  b.api.resumeEnrichOnOpen();
+  for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 2));
+  assert.equal(b.fetch.calls.length, 0, "restore sent no requests");
+
+  // Merge: a newer backup copy of a queued id is left as restored, not marked.
+  const c = bootWith([[/./, () => ({ body: {} })]]);
+  c.seed([{ ...BASE, id: "same", type: "game", title: "Imported", platform: "Switch", dateUpdated: "2026-11-14T00:00:00.000Z" }]);
+  c.api.writeEnrichQueue({ ...c.api.readEnrichQueue(), ids: ["same"], total: 1, seen: true, dismissed: false });
+  await c.restore("merge", {
+    app: "freerangemedia",
+    version: 3,
+    exportedAt: "2026-11-15T00:00:00.000Z",
+    items: [{ ...BASE, id: "same", type: "game", title: "Edited on other device", platform: "Switch", igdbId: "99", dateUpdated: "2026-11-15T00:00:00.000Z" }],
+  });
+  const got = c.stored().find((i) => i.id === "same");
+  assert.equal(got.title, "Edited on other device");
+  assert.equal(got.igdbId, "99");
+  assert.equal(got.enrich, undefined, "newer backup copy not marked");
+  assert.equal(c.fetch.calls.length, 0);
+
+  // Replace while a queue is still running: backup items stay unmarked, as before.
+  const r = bootWith([[/./, () => ({ body: {} })]]);
+  r.seed([pending, done]);
+  r.api.writeEnrichQueue({ ...r.api.readEnrichQueue(), ids: ["pend1"], total: 1, seen: true, dismissed: false });
+  await r.restore("replace", {
+    app: "freerangemedia",
+    version: 3,
+    exportedAt: "2026-11-01T00:00:00.000Z",
+    items: [pending, done, { ...BASE, id: "extra", type: "book", title: "Neuromancer" }],
+  });
+  assert.deepEqual([...r.api.readEnrichQueue().ids], []);
+  assert.ok(r.stored().every((i) => i.enrich === undefined), "Replace leaves backup items unmarked");
+  assert.ok(r.stored().some((i) => i.id === "extra"));
+  assert.equal(r.fetch.calls.length, 0);
+
+  // Merge with no import running: nothing is marked, as before.
+  const idle = bootWith([[/./, () => ({ body: {} })]]);
+  idle.seed([{ ...BASE, id: "shelf", type: "book", title: "Dune" }]);
+  await idle.restore("merge", {
+    app: "freerangemedia",
+    version: 3,
+    exportedAt: "2026-11-01T00:00:00.000Z",
+    items: [{ ...BASE, id: "other", type: "movie", title: "Heat" }],
+  });
+  assert.ok(idle.stored().every((i) => i.enrich === undefined));
+  assert.equal(idle.api.readEnrichQueue().ids.length, 0);
+  assert.equal(idle.fetch.calls.length, 0);
 });
 
 check("APP_VERSION 2.12 and cache media-shelf-v2.12", () => {
