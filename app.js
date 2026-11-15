@@ -9373,13 +9373,21 @@
     }
   }
 
-  function enrichGameCooldown(relay) {
+  /** The latest game cooldown still running, with the name of the source that set it. */
+  function enrichGameCooldownInfo(relay) {
     let until = 0;
-    for (const origin of [relay, "https://query.wikidata.org", "https://api.upcitemdb.com"]) {
+    let reason = "";
+    for (const [origin, name] of [[relay, "Game lookup"], ["https://query.wikidata.org", "Wikidata"], ["https://api.upcitemdb.com", "UPCitemdb"]]) {
       const t = origin ? gameCooldowns.get(origin) || 0 : 0;
-      if (t > until) until = t;
+      if (t > until) {
+        until = t;
+        reason = name;
+      }
     }
-    return until > Date.now() ? until : 0;
+    return until > Date.now() ? { until, reason } : { until: 0, reason: "" };
+  }
+  function enrichGameCooldown(relay) {
+    return enrichGameCooldownInfo(relay).until;
   }
 
   async function enrichGameSearch(relay, title, signal) {
@@ -9443,13 +9451,15 @@
         const compatible = !hit.platform || !known || known === hit.platform || (it.platform === "Steam" && hit.platform === "PC") || (it.platform === "PSN" && /^PS[1-5]$/.test(hit.platform)) || (it.platform === "Switch 2" && hit.platform === "Switch");
         if (!compatible) return { kind: "pick" }; // the barcode names another platform: the owner decides
         const platform = String(it.platform || "").trim() || hit.platform || "";
-        const fits = (await enrichGameSearch(relay, title, ctrl.signal)).filter((c) => gamePlatformMatches(c.platforms, platform));
+        // Match on the app's platform key ("Nintendo Switch" from a CLZ file is "Switch" here).
+        const matchOn = known || hit.platform || platform;
+        const fits = (await enrichGameSearch(relay, title, ctrl.signal)).filter((c) => gamePlatformMatches(c.platforms, matchOn));
         if (fits.length === 1) return { kind: "enriched", data: { ...fits[0], platform: hit.platform || "" } };
         return fits.length ? { kind: "pick" } : null;
       } catch (err) {
         if (err instanceof EnrichCap) return { kind: "cap", until: err.until, reason: err.reason };
-        const until = enrichGameCooldown(relay);
-        if (until) return { kind: "cap", until, reason: "game lookup" };
+        const cool = enrichGameCooldownInfo(relay);
+        if (cool.until) return { kind: "cap", until: cool.until, reason: cool.reason };
         return { kind: "failed" };
       } finally {
         clearTimeout(timer);
@@ -9798,7 +9808,7 @@
     const srKey = `${q.done}|${q.paused}|${active}|${showRun}`;
     if (sr && srKey !== enrichSrKey && (!active || q.paused || q.done % 10 === 0 || !enrichSrKey)) {
       enrichSrKey = srKey;
-      sr.textContent = showRun ? `${line}. ${enrichSummaryText(q)}.` : line;
+      sr.textContent = showRun ? `${line.replace(/\.$/, "")}. ${enrichSummaryText(q)}.` : line;
     }
     const bar = $("#enrich-bar");
     bar.hidden = !(showRun && active);

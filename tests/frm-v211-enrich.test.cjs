@@ -403,6 +403,53 @@ check("a relay 429 with Retry-After pauses until then; the comic relay's busy an
   assert.equal(c.stored()[0].enrich, undefined);
 });
 
+check("games: a CLZ platform name (Nintendo Switch, PlayStation 5) still matches IGDB's platform for a single barcode match", async () => {
+  for (const [plat, igdbPlat] of [["Nintendo Switch", "Nintendo Switch"], ["PlayStation 5", "PlayStation 5"], ["PS Vita", "PlayStation Vita"]]) {
+    const b = bootWith([
+      [/query\.wikidata\.org/, () => ({ body: { results: { bindings: [] } } })],
+      [/upcitemdb/, () => ({ body: { items: [{ title: `Some Game (${igdbPlat})` }] } })],
+      [/\/game\/search\?title=/, () => ({ body: { candidates: [{ igdbId: 9, title: "Some Game", creator: "Studio", year: 2020, platforms: [igdbPlat], coverUrl: "" }] } })],
+    ]);
+    b.seed([{ ...BASE, id: "p1", type: "game", title: "Some Game", platform: plat, barcode: "811949030023", format: "physical" }]);
+    const q = await queueAndRun(b, ["p1"]);
+    const it = b.stored()[0];
+    if (plat === "PS Vita") {
+      // No IGDB alias for Vita in gamePlatformMatches: never guessed, the owner picks.
+      assert.equal(q.pick, 1, plat);
+      assert.equal(it.igdbId, "");
+    } else {
+      assert.equal(q.enriched, 1, plat);
+      assert.equal(it.igdbId, "9", plat);
+      assert.equal(it.platform, plat, "the imported platform text is kept");
+    }
+  }
+});
+
+check("a UPCitemdb 429 names UPCitemdb in the pause and keeps every item queued", async () => {
+  const b = bootWith([
+    [/query\.wikidata\.org/, () => ({ body: { results: { bindings: [] } } })],
+    [/upcitemdb/, () => ({ status: 429, headers: { "Retry-After": "86400" }, body: { code: "TOO_FAST" } })],
+  ]);
+  b.seed([{ ...BASE, id: "q1", type: "game", title: "Halo 3", platform: "Xbox 360", barcode: "882224479325" }, { ...BASE, id: "q2", type: "game", title: "Celeste", platform: "Switch", barcode: "811949030023" }]);
+  const q = await queueAndRun(b, ["q1", "q2"]);
+  assert.equal(q.paused, true);
+  assert.equal(q.reason, "UPCitemdb");
+  assert.deepEqual([...q.ids], ["q1", "q2"]);
+  assert.equal(b.fetch.calls.filter((u) => /upcitemdb/.test(u)).length, 1, "one request, then stop");
+});
+
+check("short busy pauses resume in-session at most 3 times in a row, then wait for Resume or the next open", async () => {
+  const c = bootWith([[/\/comic\?/, () => ({ status: 503, headers: { "Retry-After": "60" }, body: { error: "busy" } })]]);
+  c.seed([{ ...BASE, id: "k1", type: "comic", series: "Saga", issue: "1" }]);
+  c.api.enqueueEnrich(["k1"]);
+  for (let i = 0; i < 400; i++) await new Promise((r) => setTimeout(r, 1));
+  const asked = c.fetch.calls.filter((u) => /\/comic\?/.test(u)).length;
+  assert.ok(asked >= 1 && asked <= 4, `asked ${asked} times`);
+  const q = c.api.readEnrichQueue();
+  assert.equal(q.paused, true);
+  assert.deepEqual([...q.ids], ["k1"], "nothing skipped");
+});
+
 /* ---------- 6. Summary ---------- */
 check("summary counts: enriched, need a pick, need lookup, failed (+ already complete, paused at cap)", () => {
   const { api } = H.bootFile();
