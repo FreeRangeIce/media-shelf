@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6, 2.7…; bump APP_VERSION and
-  // the service worker cache name together (media-shelf-v2.7) so the Duo drops old files.
-  const APP_VERSION = "2.8";
+  // the service worker cache name together (media-shelf-v2.9) so the Duo drops old files.
+  const APP_VERSION = "2.9";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -2452,8 +2452,9 @@
   }
 
   /**
-   * Official marks live in assets/platforms/ (see SOURCES.md). Text abbreviations are used
-   * when no verified official asset was available for a 24px disc.
+   * Official marks (white monochrome, see assets/platforms/SOURCES.md) live in
+   * assets/platforms/. Text abbreviations are used when no official asset is in
+   * this build (GameCube, Steam, Switch 2, PC, Other).
    */
   const PLATFORM_BADGES = {
     Steam: { file: "", abbr: "Steam", label: "Steam" },
@@ -2499,9 +2500,8 @@
     // requested; the card shows the Comic placeholder only (no cover-name line on the card).
     const url = comicImageSuppressed(item.type, item.coverUrl) ? "" : (item.coverUrl || "").trim();
     const badge = platformBadgeMarkup(item);
-    // The column keeps the 2:3 height for every type, so mixed lists line up; music
-    // covers (square album art) sit top-aligned in it as a 1:1 frame.
-    const col = (inner) => `<div class="item-cover-col" data-type="${type}">${inner}${badge}</div>`;
+    // Badge sits on the visible cover (letterboxed image or no-cover fill), not the card edge.
+    const col = (inner) => `<div class="item-cover-col" data-type="${type}"><div class="item-cover-fit">${inner}${badge}</div></div>`;
     if (!url) {
       return col(`<div class="item-cover-placeholder ${type}" aria-hidden="true">${label}</div>`);
     }

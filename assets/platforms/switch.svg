@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="283.5px" height="283.5px" viewBox="0 0 283.5 283.5" style="enable-background:new 0 0 283.5 283.5;" xml:space="preserve">
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="200px" height="206px" viewBox="48 38 200 206"  xml:space="preserve">
 <style type="text/css">
-	.st0{fill:#E60012;}
+	.st0{fill:none;}
 	.st1{fill:#FFFFFF;}
 </style>
 <g>
-	<rect class="st0" width="283.5" height="283.5"/>
 	<path class="st1" d="M128.4,241.6h6.7v-30h-6.7V241.6z M93.6,192.8l7.9,10.6h3.1v-15.9h-3.2V198l-7.8-10.4h-3.2v15.9h3.2V192.8z
 		 M129.4,187.5h-13.5v3.4h5.1v12.5h3.4v-12.5h5V187.5z M108.7,233.3l-6.4-21.8H97l-6.3,21.7l-5.8-21.7h-6.5l8.5,30h7.2l5.6-19.8
 		l5.6,19.8h7.2l8.5-30h-6.5L108.7,233.3z M153.8,168.1h19.6c18,0,32.6-14.6,32.6-32.6v-62c0-18-14.6-32.6-32.6-32.6h-19.7

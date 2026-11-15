@@ -13,9 +13,9 @@ let passed = 0;
 function check(name, fn) { fn(); passed++; console.log('PASS ' + name); }
 assert.ok(v28.length > 200, 'V2.8 CSS block missing');
 
-check('APP_VERSION 2.8 and cache media-shelf-v2.8, no suffixes', () => {
-  assert.match(app, /const APP_VERSION = "2\.8";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.8";/);
+check('APP_VERSION 2.9 and cache media-shelf-v2.9, no suffixes', () => {
+  assert.match(app, /const APP_VERSION = "2\.9";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.9";/);
 });
 check('item 1: grid card markup has no Base game pill; detail sheet keeps Base game', () => {
   const tile = tt.slice(tt.indexOf('function tileHtml'), tt.indexOf('function cardHtml'));

@@ -5858,3 +5858,103 @@ body.modal-open .toast {
   padding: 0 2px;
   max-width: 22px;
 }
+
+
+/* ========== V2.9 (Oholiab approve-with-fixes) ========== */
+
+/* Titles stay fully wrapped on every grid card (Library, Wishlist, every sort/filter). */
+.item-card .item-title,
+.item-card.tt-card .item-title {
+  min-height: 0;
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: none;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Fallback EXPANSION pill (including an unmatched / orphan expansion): darkened
+   tabletop pink with white text so contrast is at least 4.5:1 on the white card.
+   Sampled pills set fill/text inline and win over these colors (no !important). */
+.item-card .item-badges .badge-type.tabletop {
+  background: #8c1d5a;
+  color: #ffffff;
+}
+
+/* Platform badge: 24px disc, inset 8px from the visible cover (the letterboxed
+   image box or the no-cover fill), never the card edge. */
+.item-card .item-cover-col,
+.item-card.tt-card .item-cover-col {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.item-cover-fit {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  max-height: 100%;
+}
+.item-cover-fit:has(.item-cover-placeholder:not([hidden])) {
+  width: 100%;
+  height: 100%;
+}
+.item-card .item-cover-fit .item-cover,
+.item-card.tt-card .item-cover-fit .item-cover {
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  display: block;
+}
+.item-cover-fit .item-cover-placeholder:not([hidden]) {
+  width: 100% !important;
+  height: 100% !important;
+}
+.item-cover-fit .platform-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 1;
+}
+.platform-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.platform-badge img {
+  max-width: 16px;
+  max-height: 16px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  /* Official marks are already white monochrome in the SVG; no CSS recolor/filter. */
+  filter: none;
+}
+.platform-badge-text {
+  font-family: var(--font);
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: #ffffff;
+  line-height: 1;
+  text-align: center;
+  padding: 0 1px;
+  max-width: 22px;
+  overflow: hidden;
+  white-space: nowrap;
+}

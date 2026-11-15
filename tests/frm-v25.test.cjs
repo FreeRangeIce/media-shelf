@@ -14,13 +14,13 @@ const ttSrc = fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8');
 let passed = 0;
 const check = (n, fn) => { fn(); passed++; console.log('PASS', n); };
 
-check('APP_VERSION is 2.8; sw cache is media-shelf-v2.8', () => {
-  assert.match(app, /const APP_VERSION = "2\.8"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.8"/);
+check('APP_VERSION is 2.9; sw cache is media-shelf-v2.9', () => {
+  assert.match(app, /const APP_VERSION = "2\.9"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.9"/);
 });
 
 check('item A: no-cover / failed-image placeholder is #0d0d0d with #b5aa9c label', () => {
-  const v25 = css.slice(css.lastIndexOf('.item-cover-placeholder:not([hidden])'));
+  const v25 = css.slice(css.lastIndexOf('V2.5 item A:'));
   const block = v25.slice(0, v25.indexOf('}', v25.indexOf('background:')) + 1);
   assert.match(block, /background:\s*#0d0d0d\s*!important/);
   assert.match(block, /color:\s*#b5aa9c\s*!important/);
