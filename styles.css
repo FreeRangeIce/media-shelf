@@ -5690,3 +5690,46 @@ body.frm-short-vv #tt-form-modal .item-form .form-actions {
 .item-card .tt-wish-base-label {
   display: none;
 }
+
+/* Item 6: sticky header block (logo artwork + "FreeRangeMedia" title).
+   Earlier redesign rules force position:static !important on .frm-site-header,
+   .frm-brand, .frm-logo and .pin-bar (and padding-top:0) so the old fixed pin-row
+   cannot return. Those child/pin-bar outcomes stay: brand, logo and title remain
+   in normal flow, and .pin-bar / ::before stay hidden. The header itself is
+   restored to sticky, with an opaque #1a1a1a fill so cards pass under it with
+   no see-through gap, and padding-top for env(safe-area-inset-top).
+   Category and status/sort rows are not pinned — they scroll away under the header.
+   The 80px folded-Duo sheet inset is unchanged. */
+.frm-site-header,
+.site-header.frm-site-header {
+  position: sticky !important;
+  top: 0 !important;
+  bottom: auto !important;
+  z-index: 40;
+  background: #1a1a1a !important;
+  background-color: #1a1a1a !important;
+  background-image: none !important;
+  padding-top: env(safe-area-inset-top, 0px) !important;
+  padding-bottom: 8px;
+}
+.frm-site-header .frm-header,
+.frm-site-header .frm-brand,
+.frm-site-header .frm-logo,
+.frm-site-header .frm-title {
+  position: static;
+  background: transparent !important;
+}
+.frm-site-header::before,
+.frm-site-header > .pin-bar,
+.site-header.frm-site-header::before,
+.site-header.frm-site-header > .pin-bar {
+  content: none !important;
+  display: none !important;
+}
+/* Reload banner stacks above the sticky header (40) and the bottom nav (50);
+   sheets/modals stay at z-index 100 and the toast at 200. */
+#update-banner,
+.update-banner {
+  position: relative;
+  z-index: 60;
+}

@@ -1,5 +1,5 @@
 // V2.8: content-sized grid cards (Asaph option B, Micah-approved): no Base game pill on cards,
-// compact Expansion pill 7px under the title, no 3-line reservation, 13px bottom, chips stay 40px.
+// compact Expansion pill 7px under the title, no 3-line reservation, 13px bottom, chips stay 40px, sticky logo+title header.
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -47,7 +47,28 @@ check('item 4: grids align-items:start; cards height:auto, min-height:0', () => 
   assert.doesNotMatch(v28, /stretch/);
 });
 check('item 5 + unchanged: chips 40px, hub clearance 80px untouched by V2.8', () => {
-  assert.doesNotMatch(v28, /chip|filter|pill-row|--frm-duo-hub-clearance|position:\s*static|focus/i);
+  const rules = v28.replace(/\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, '');
+  assert.doesNotMatch(rules, /\.chip|\.filters-row|pill-row|--frm-duo-hub-clearance/i);
   assert.match(css, /--frm-duo-hub-clearance:\s*80px/);
 });
-console.log(`${passed}/${passed} passed (v2.8 card sizing)`);
+check('item 6: logo + title header is sticky at top with #1a1a1a and safe-area padding', () => {
+  const header = v28.match(/\.frm-site-header,\s*\n\.site-header\.frm-site-header\s*\{[^}]+\}/);
+  assert.ok(header, 'expected a V2.8 .frm-site-header sticky rule');
+  assert.match(header[0], /position:\s*sticky\s*!important/);
+  assert.match(header[0], /top:\s*0\s*!important/);
+  assert.match(header[0], /z-index:\s*40/);
+  assert.match(header[0], /background:\s*#1a1a1a\s*!important/);
+  assert.match(header[0], /padding-top:\s*env\(safe-area-inset-top,\s*0px\)\s*!important/);
+  // Historical static !important still exists; the V2.8 block is the winner.
+  assert.match(css, /\.frm-site-header[\s\S]*position:\s*static\s*!important/);
+  // pin-bar stays hidden; do not resurrect the old fixed pin row
+  assert.match(v28, /\.frm-site-header > \.pin-bar[\s\S]*display:\s*none\s*!important/);
+  // pills/filters are not pinned — they scroll away under the header
+  assert.doesNotMatch(v28, /\.toolbar|\.frm-categories|\.filters-row|\.type-tabs/);
+  // Reload banner above header (40) and nav (50); sheets remain 100
+  assert.match(v28, /#update-banner,[\s\S]*z-index:\s*60/);
+  assert.match(css, /\.modal\s*\{[\s\S]*?z-index:\s*100/);
+  assert.match(css, /\.toast\s*\{[\s\S]*?z-index:\s*200/);
+  assert.match(css, /--frm-duo-hub-clearance:\s*80px/);
+});
+console.log(`${passed}/${passed} passed (v2.8 card sizing + sticky header)`);
