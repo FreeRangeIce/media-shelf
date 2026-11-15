@@ -25,7 +25,7 @@ function harness({ TT, tabletop, mediaFails = false, mediaThrows = false }) {
     incoming: [{ id: 'm-new' }],
     commitItems: (mutate) => { if (mediaThrows) { const e = new Error('bad'); if (mediaThrows === 'changed') e.storageChanged = true; throw e; } if (mediaFails) return false; const n = mutate(media.items); if (Array.isArray(n)) media.items = n; return true; },
     mergeItems: (list, inc) => ({ items: list.concat(inc), added: inc.length, updated: 0 }),
-    closeConfirm() {}, restoreCoverQueue() {}, enrichAfterRestore() {}, readEnrichQueue: () => ({ ids: [] }), render() {}, showToast: (m) => toasts.push(m),
+    closeConfirm() {}, restoreCoverQueue() {}, enrichAfterRestore() {}, readEnrichQueue: () => ({ ids: [] }), enrichApplyUnreachedMarks: (list) => list, render() {}, showToast: (m) => toasts.push(m),
     countLabel: (n, k) => `${n} ${k === 'item' ? (n === 1 ? 'item' : 'items') : (n === 1 ? 'tabletop game' : 'tabletop games')}`,
   };
   ctx.both = (a, b) => `${ctx.countLabel(a, 'item')} and ${ctx.countLabel(b, 'tt')}`;

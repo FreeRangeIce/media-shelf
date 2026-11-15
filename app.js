@@ -3336,13 +3336,16 @@
           ok = commitItems((list) => {
             // Snapshot unreached import ids (and their dateUpdated) after sync, before the merge
             // write, so a newer backup copy of the same id is not marked Needs lookup.
+            // Marks are applied in this same write so a storage failure rolls the merge back too,
+            // and the success toast never hides a failed mark save.
             pendingStamps = {};
-            for (const id of readEnrichQueue().ids) {
+            const pendingIds = readEnrichQueue().ids.slice();
+            for (const id of pendingIds) {
               const it = list.find((i) => i.id === id);
               if (it) pendingStamps[it.id] = it.dateUpdated;
             }
             res = mergeItems(list, incoming);
-            return res.items;
+            return enrichApplyUnreachedMarks(res.items, pendingIds, pendingStamps);
           }, "restore");
         } catch (err) {
           ok = false;
@@ -9310,37 +9313,46 @@
     clearTimeout(ENRICH.timer);
     ENRICH.timer = null;
     const q = readEnrichQueue();
-    if (!replace && q.ids.length) enrichMarkUnreached(q.ids, pendingStamps);
+    // Merge already folded the marks into its write (pendingStamps is then an object). A direct
+    // call, such as an in-flight answer in this tab, still marks here.
+    if (!replace && q.ids.length && pendingStamps === undefined) enrichMarkUnreached(q.ids);
     if (!q.ids.length && !q.seen) return renderEnrichUi();
     writeEnrichQueue({ ...enrichEmptyQueue(), until: q.until, reason: q.until > Date.now() ? q.reason : "", paused: false });
     renderEnrichUi();
   }
 
-  /** Mark still-queued items Needs lookup. pendingStamps is id -> dateUpdated from before a Merge
-      write: a newer backup copy (different stamp) is left alone. Without stamps, every listed id
-      still on the shelf is marked (a direct call, or an answer in flight). dateUpdated and every
-      other field stay as they are. */
-  function enrichMarkUnreached(ids, pendingStamps) {
+  /** Apply Needs lookup to still-queued items on a list. pendingStamps is id -> dateUpdated from
+      before a Merge write: a newer backup copy (different stamp) is left alone. Without stamps,
+      every listed id still on the shelf is marked. dateUpdated and every other field stay as they
+      are. Returns the same array when nothing changed. */
+  function enrichApplyUnreachedMarks(list, ids, pendingStamps) {
     const want = new Set((ids || []).map(String));
-    if (!want.size) return;
+    if (!want.size) return list;
     const stamps = pendingStamps && typeof pendingStamps === "object" ? pendingStamps : null;
+    let changed = false;
+    const out = list.map((it) => {
+      if (!want.has(String(it.id))) return it;
+      if (stamps) {
+        const stamp = Object.prototype.hasOwnProperty.call(stamps, it.id)
+          ? stamps[it.id]
+          : Object.prototype.hasOwnProperty.call(stamps, String(it.id))
+            ? stamps[String(it.id)]
+            : undefined;
+        if (stamp === undefined || it.dateUpdated !== stamp) return it;
+      }
+      if (it.enrich === "lookup" || it.enrich === "pick") return it;
+      changed = true;
+      return normalizeItem({ ...it, enrich: "lookup" }); // dateUpdated and every other field untouched
+    });
+    return changed ? out : list;
+  }
+
+  /** Mark still-queued items Needs lookup (direct enrichAfterRestore path only). */
+  function enrichMarkUnreached(ids, pendingStamps) {
+    if (!(ids || []).length) return;
     commitItems((list) => {
-      let changed = false;
-      const out = list.map((it) => {
-        if (!want.has(String(it.id))) return it;
-        if (stamps) {
-          const stamp = Object.prototype.hasOwnProperty.call(stamps, it.id)
-            ? stamps[it.id]
-            : Object.prototype.hasOwnProperty.call(stamps, String(it.id))
-              ? stamps[String(it.id)]
-              : undefined;
-          if (stamp === undefined || it.dateUpdated !== stamp) return it;
-        }
-        if (it.enrich === "lookup" || it.enrich === "pick") return it;
-        changed = true;
-        return normalizeItem({ ...it, enrich: "lookup" }); // dateUpdated and every other field untouched
-      });
-      return changed ? out : undefined;
+      const out = enrichApplyUnreachedMarks(list, ids, pendingStamps);
+      return out === list ? undefined : out;
     }, "other");
   }
 
@@ -9665,8 +9677,11 @@
     return it ? [it.type, it.title, it.barcode, it.series || "", it.issue || "", it.platform || ""].join("\u0001") : "";
   }
 
-  /** Write one outcome onto the row. -> { state: "written" | "nothing" | "dropped" | "failed", filled } */
-  function enrichWrite(id, outcome, key) {
+  /** Write one outcome onto the row. -> { state: "written" | "nothing" | "dropped" | "failed", filled }
+      seenUpdated is dateUpdated when this run started the lookup. commitItems re-reads storage first.
+      A Needs lookup mark this run did not place (another tab's Merge) is left alone: do not fill or
+      clear it. A newer copy (backup or other tab) is never overwritten. */
+  function enrichWrite(id, outcome, key, seenUpdated) {
     let state = "dropped";
     let filled = 0;
     const ok = commitItems((list) => {
@@ -9674,6 +9689,9 @@
       if (idx < 0) return;
       const cur = list[idx];
       if (enrichKey(cur) !== key) return; // edited while the lookup ran: drop the answer
+      if (seenUpdated !== undefined && parseTime(cur.dateUpdated) > parseTime(seenUpdated)) return;
+      // Marked Needs lookup after this lookup started (a Merge in another tab): this run no longer owns it.
+      if (cur.enrich === "lookup" && !(outcome.kind === "mark" && outcome.mark === "lookup")) return;
       let next;
       if (outcome.kind === "enriched") {
         const fields = enrichFillEmpty(cur, outcome.data);
@@ -9752,6 +9770,7 @@
           /* ignore */
         }
         const key = enrichKey(it);
+        const seenUpdated = it.dateUpdated;
         const epoch = ENRICH.epoch || 0;
         if (!readEnrichQueue().ids.includes(id)) break; // a restore dropped the queue during the gap
         let res;
@@ -9786,7 +9805,7 @@
             q.ids.push(id); // one more try, after the rest
           } else {
             delete q.tries[id];
-            const w = enrichWrite(id, { kind: "mark", mark: "lookup" }, key);
+            const w = enrichWrite(id, { kind: "mark", mark: "lookup" }, key, seenUpdated);
             if (w.state === "failed") {
               q.ids.unshift(id);
               q.paused = true;
@@ -9808,7 +9827,7 @@
           fails = 0;
           ENRICH.shortPauses = 0;
           const outcome = res.kind === "enriched" ? res : { kind: "mark", mark: res.kind === "pick" ? "pick" : "lookup" };
-          const w = enrichWrite(id, outcome, key);
+          const w = enrichWrite(id, outcome, key, seenUpdated);
           if (w.state === "failed") {
             q.paused = true;
             q.reason = "storage";

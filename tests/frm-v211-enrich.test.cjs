@@ -763,7 +763,84 @@ check("V2.12 Merge restore mid-enrichment: unreached items marked Needs lookup; 
   assert.equal(idle.fetch.calls.length, 0);
 });
 
+check("V2.12 Merge mid-enrichment: a failed marks write shows the storage error, not the success toast, and unreached items do not look finished", async () => {
+  const b = bootWith([[/./, () => ({ body: {} })]]);
+  const pending = { ...BASE, id: "pend1", type: "game", title: "Celeste", platform: "Switch", barcode: "8123456789012" };
+  b.seed([pending]);
+  b.api.writeEnrichQueue({ ...b.api.readEnrichQueue(), ids: ["pend1"], total: 1, seen: true, dismissed: false });
+  const MEDIA = "media-tracker-v1";
+  const orig = b.store.set.bind(b.store);
+  b.store.set = (k, v) => {
+    if (k === MEDIA) {
+      const err = new Error("quota");
+      err.name = "QuotaExceededError";
+      err.code = 22;
+      throw err;
+    }
+    return orig(k, v);
+  };
+  await b.restore("merge", {
+    app: "freerangemedia",
+    version: 3,
+    exportedAt: "2026-11-01T00:00:00.000Z",
+    items: [{ ...BASE, id: "bk-new", type: "movie", title: "Heat", year: 1995 }],
+  });
+  assert.ok(b.toasts.some((m) => /didn’t fit in this browser’s storage, so nothing was restored/.test(m)), `storage error shown: ${b.toasts.join(" | ")}`);
+  assert.ok(b.toasts.every((m) => !/^Merged/.test(m) && !/^Items merged/.test(m)), `success toast must not appear: ${b.toasts.join(" | ")}`);
+  assert.deepEqual(b.stored().map((i) => i.id), ["pend1"], "merge rolled back; backup item not added");
+  assert.equal(b.stored()[0].enrich, undefined, "unreached item not left looking finished");
+  assert.deepEqual([...b.api.readEnrichQueue().ids], ["pend1"], "queue kept so enrichment can continue");
+  assert.equal(b.fetch.calls.length, 0);
+});
+
+check("V2.12 enrich write: skip a Needs lookup mark this run did not own, and never overwrite a newer backup copy", () => {
+  const data = { igdbId: "19029", title: "Celeste", coverUrl: "https://images.igdb.com/x.jpg", coverSource: "igdb" };
+  const item = { ...BASE, id: "s1", type: "game", title: "Celeste", platform: "Switch", barcode: "8123456789012" };
+
+  // Another tab's Merge marked the still-local item Needs lookup while this lookup was in flight.
+  const a = bootWith([]);
+  a.seed([item]);
+  const key = a.api.enrichKey(a.stored()[0]);
+  const stamp = a.stored()[0].dateUpdated;
+  const env = JSON.parse(a.store.get("media-tracker-v1"));
+  env.items = [{ ...a.stored()[0], enrich: "lookup" }];
+  env.savedAt = "2026-11-15T17:00:00.000Z";
+  a.store.set("media-tracker-v1", JSON.stringify(env));
+  const w = a.api.enrichWrite("s1", { kind: "enriched", data }, key, stamp);
+  assert.equal(w.state, "dropped", "late fill does not clear another tab's Needs lookup mark");
+  assert.equal(a.stored()[0].enrich, "lookup");
+  assert.equal(a.stored()[0].igdbId || "", "");
+  assert.equal(a.stored()[0].coverUrl || "", "");
+
+  // This run's own "Needs lookup" outcome may still write the mark when the row is unmarked.
+  const own = bootWith([]);
+  own.seed([item]);
+  const wOwn = own.api.enrichWrite("s1", { kind: "mark", mark: "lookup" }, own.api.enrichKey(own.stored()[0]), own.stored()[0].dateUpdated);
+  assert.equal(wOwn.state, "written");
+  assert.equal(own.stored()[0].enrich, "lookup");
+
+  // A newer backup copy of the same id (same enrich key: title/platform/barcode unchanged) is not overwritten.
+  const c = bootWith([]);
+  c.seed([item]);
+  const keyC = c.api.enrichKey(c.stored()[0]);
+  const stampC = c.stored()[0].dateUpdated;
+  const newer = c.api.normalizeItem({ ...item, igdbId: "99", notes: "edited on other device", dateUpdated: "2026-11-15T00:00:00.000Z" });
+  const envC = JSON.parse(c.store.get("media-tracker-v1"));
+  envC.items = [newer];
+  envC.savedAt = "2026-11-15T17:00:00.000Z";
+  c.store.set("media-tracker-v1", JSON.stringify(envC));
+  const wC = c.api.enrichWrite("s1", { kind: "enriched", data }, keyC, stampC);
+  assert.equal(wC.state, "dropped", "late fill does not write onto a newer backup copy");
+  const got = c.stored()[0];
+  assert.equal(got.igdbId, "99");
+  assert.equal(got.notes, "edited on other device");
+  assert.equal(got.coverUrl || "", "", "empty fields on the newer copy are not filled");
+  assert.equal(got.enrich, undefined);
+  assert.equal(got.dateUpdated, "2026-11-15T00:00:00.000Z");
+});
+
 check("APP_VERSION 2.12 and cache media-shelf-v2.12", () => {
+
   assert.match(app, /const APP_VERSION = "2\.12";/);
   assert.match(sw, /const CACHE = "media-shelf-v2\.12";/);
 });
