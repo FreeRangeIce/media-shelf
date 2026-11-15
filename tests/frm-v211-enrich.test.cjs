@@ -82,11 +82,11 @@ async function queueAndRun(b, ids) {
   return b.api.readEnrichQueue();
 }
 
-/* ---------- 1. CLZ Comics mapping against Micah's real export ---------- */
-const REAL = fs.readFileSync(path.join(FIX, "clz-comics-micah.csv"), "utf8");
+/* ---------- 1. CLZ Comics mapping (synthetic export, same headers as a real CLZ Comics CSV) ---------- */
+const REAL = fs.readFileSync(path.join(FIX, "clz-comics-fixture.csv"), "utf8");
 const REAL_ROWS = readCsv(REAL);
 
-check("Micah's export: headers exactly Series, Issue, Variant Description, Publisher, Release Date, Format, Added Date", () => {
+check("CLZ Comics export: headers exactly Series, Issue, Variant Description, Publisher, Release Date, Format, Added Date", () => {
   assert.deepEqual(REAL_ROWS[0], ["Series", "Issue", "Variant Description", "Publisher", "Release Date", "Format", "Added Date"]);
   const { api } = H.bootFile();
   const parsed = api.parseClzCsv(REAL);
@@ -99,11 +99,11 @@ check("Micah's export: headers exactly Series, Issue, Variant Description, Publi
   assert.ok(scores[0] > Math.max(...scores.slice(1)), String(scores));
 });
 
-check("Micah's export: every one of the 744 rows maps (series, issue, variant, publisher, year, format); none skipped", () => {
+check("CLZ Comics export: every one of the 17 rows maps (series, issue, variant, publisher, year, format); none skipped", () => {
   const { api } = H.bootFile();
   const land = H.landClz(api, "comics", REAL);
-  assert.equal(REAL_ROWS.length - 1, 744);
-  assert.equal(land.rows.length, 744);
+  assert.equal(REAL_ROWS.length - 1, 17);
+  assert.equal(land.rows.length, 17);
   assert.equal(land.rows.filter((r) => r.skip).length, 0);
   const counts = { issue: 0, collected: 0, unknown: 0, digital: 0, variant: 0, noYear: 0, issueCut: 0 };
   land.rows.forEach((r, i) => {
@@ -128,8 +128,8 @@ check("Micah's export: every one of the 744 rows maps (series, issue, variant, p
     assert.equal(it.status, "owned");
     assert.equal(it.enrich, undefined, "nothing is marked at import time");
   });
-  console.log("   real export:", JSON.stringify(counts));
-  assert.deepEqual(counts, { issue: 687, collected: 53, unknown: 4, digital: 1, variant: 239, noYear: 6, issueCut: 1 });
+  console.log("   export:", JSON.stringify(counts));
+  assert.deepEqual(counts, { issue: 9, collected: 7, unknown: 1, digital: 1, variant: 5, noYear: 1, issueCut: 1 });
 });
 
 check("Comics fixture (same headers): issues vs collected editions, variants, dates, empty fields", () => {
@@ -137,11 +137,11 @@ check("Comics fixture (same headers): issues vs collected editions, variants, da
   const land = H.landClz(api, "comics", fs.readFileSync(path.join(FIX, "clz-comics-fixture.csv"), "utf8"));
   const by = (row) => land.rows.find((r) => r.row === row).item;
   const pick = (it) => ({ series: it.series, issue: it.issue, coverLabel: it.coverLabel, coverVariant: it.coverVariant, publisher: it.publisher, year: it.year, comicFormat: it.comicFormat, edition: it.edition, format: it.format });
-  assert.deepEqual(pick(by(2)), { series: "52", issue: "26", coverLabel: "", coverVariant: false, publisher: "DC Comics", year: 2006, comicFormat: "Comic", edition: "issue", format: "physical" });
-  assert.deepEqual(pick(by(3)), { series: "Action Comics, Vol. 1", issue: "812B", coverLabel: "Second Print", coverVariant: false, publisher: "DC Comics", year: 2004, comicFormat: "Comic", edition: "issue", format: "physical" });
-  assert.equal(by(4).coverLabel, "Rafael Albuquerque Regular Cover");
+  assert.deepEqual(pick(by(2)), { series: "77", issue: "26", coverLabel: "", coverVariant: false, publisher: "Northwind Press", year: 2006, comicFormat: "Comic", edition: "issue", format: "physical" });
+  assert.deepEqual(pick(by(3)), { series: "Harbor Patrol, Vol. 1", issue: "812B", coverLabel: "Late Reprint", coverVariant: false, publisher: "Northwind Press", year: 2004, comicFormat: "Comic", edition: "issue", format: "physical" });
+  assert.equal(by(4).coverLabel, "Ines Varga Regular Cover");
   assert.equal(by(4).coverVariant, false, "a Regular cover is not a variant");
-  assert.equal(by(5).coverVariant, true, "1st Print, Variant Cover");
+  assert.equal(by(5).coverVariant, true, "Lamplight Variant, Glow Ink");
   assert.equal(by(6).issue, "3.1A");
   for (const row of [7, 8, 9, 10, 11, 13, 16]) assert.equal(by(row).edition, "collected", `row ${row}`);
   assert.equal(by(7).comicFormat, "Trade Paperback");
@@ -150,6 +150,8 @@ check("Comics fixture (same headers): issues vs collected editions, variants, da
   assert.equal(by(12).edition, "issue", "Squarebound is a single issue");
   assert.deepEqual([by(14).format, by(14).edition, by(14).year], ["digital", "issue", null], "Digital Comic, blank Release Date");
   assert.deepEqual([by(15).publisher, by(15).comicFormat, by(15).edition], ["", undefined, undefined], "blank Publisher and Format stay blank");
+  assert.equal(by(17).issue, "7Collector Edition: ", "an issue longer than 20 characters is cut as before");
+  assert.deepEqual([by(18).series, by(18).coverLabel, by(18).coverVariant], ['The "Quiet" Hour', "Foil Variant, Moth Edition", true], "quoted quotes and commas");
   // The issue number sent to the comic lookup drops CLZ's cover letter / TP mark; the stored issue doesn't.
   assert.deepEqual(["812B", "1A", "3.1A", "1TP", "HC", "TP-A", "0", ""].map(api.clzComicIssue), ["812", "1", "3.1", "1", "", "", "0", ""]);
 });
@@ -305,7 +307,7 @@ check("games: barcode -> one IGDB match on the platform auto-fills; two -> Needs
 });
 
 check("comics: series + issue + year is a title search -> Needs a pick, never auto-filled; no number -> Needs lookup", async () => {
-  const b = bootWith([[/frm-gcd\.freerangeice\.workers\.dev\/comic\?/, (u) => ({ body: { match: { series: "Action Comics", issue: "812", year: 2004, publisher: "DC", writer: ["Chuck Austen"], artist: [], sourceId: "gcd-issue-1", sourceName: "Grand Comics Database", sourceUrl: "https://www.comics.org/issue/1/" }, variants: [{ sourceId: "gcd-issue-1", label: "Direct", variant: false, image: "https://static.metron.cloud/x.jpg" }], covers: [{ sourceId: "gcd-issue-1", url: "https://static.metron.cloud/x.jpg", label: "Direct", variant: false }], total: 1 } })]]);
+  const b = bootWith([[/frm-gcd\.freerangeice\.workers\.dev\/comic\?/, (u) => ({ body: { match: { series: "Harbor Patrol", issue: "812", year: 2004, publisher: "Northwind Press", writer: ["Ada Quill"], artist: [], sourceId: "gcd-issue-1", sourceName: "Grand Comics Database", sourceUrl: "https://www.comics.org/issue/1/" }, variants: [{ sourceId: "gcd-issue-1", label: "Direct", variant: false, image: "https://static.metron.cloud/x.jpg" }], covers: [{ sourceId: "gcd-issue-1", url: "https://static.metron.cloud/x.jpg", label: "Direct", variant: false }], total: 1 } })]]);
   const { api } = b;
   const land = H.landClz(api, "comics", fs.readFileSync(path.join(FIX, "clz-comics-fixture.csv"), "utf8"));
   const rows = [land.rows[1].item, land.rows[9].item].map((it, i) => ({ ...it, id: `c${i}` })); // 812B, and a HC with no number
@@ -315,7 +317,7 @@ check("comics: series + issue + year is a title search -> Needs a pick, never au
   assert.equal(c0.enrich, "pick");
   assert.equal(c0.coverUrl, "", "even one cover is not attached from a title search");
   assert.equal(c0.writer, "");
-  assert.equal(c0.coverLabel, "Second Print", "the CSV variant stays");
+  assert.equal(c0.coverLabel, "Late Reprint", "the CSV variant stays");
   assert.equal(c1.enrich, "lookup");
   const asked = b.fetch.calls.filter((u) => /\/comic\?/.test(u));
   assert.equal(asked.length, 1, "the comic without a number is never sent");

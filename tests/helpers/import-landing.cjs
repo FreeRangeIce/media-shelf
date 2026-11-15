@@ -6,7 +6,7 @@ const path = require('node:path');
 const { bootSource, landClz, landGamesPaste } = require('./import-harness.cjs');
 const FIX = path.join(__dirname, '../fixtures');
 const CLZ = [
-  ['comics', 'clz-comics-micah.csv'], ['comics', 'clz-comics-fixture.csv'], ['games', 'clz-games.csv'],
+  ['comics', 'clz-comics-fixture.csv'], ['games', 'clz-games.csv'],
   ['books', 'clz-books.csv'], ['movies', 'clz-movies.csv'], ['music', 'clz-music.csv'],
 ];
 function landingFor(src) {
