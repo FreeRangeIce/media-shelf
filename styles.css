@@ -6299,12 +6299,14 @@ html {
 }
 #game-match-picker #game-match-use:not(:disabled) { color: #ffffff !important; }
 
-/* ========== V2.13b (Oholiab: saved covers fill the card) ==========
+/* ========== V2.13c (Oholiab: scale up with contain, do not crop) ==========
    A low-res saved picture (for example a 48×72 Metron thumb) was drawn at its
-   intrinsic size, floating on the black letterbox. That came from .item-cover-fit
-   shrinking to the image and .item-cover using width/height: auto. The fit box
-   and the image now fill the card; object-fit: cover scales even a small thumb
-   to the full cover box, the same as any other saved cover. */
+   intrinsic size, floating on the black letterbox, because .item-cover-fit
+   shrank to the image and .item-cover used width/height: auto. The fit box and
+   the image now fill the card (width/height 100%) with object-fit: contain, so
+   a small thumb scales up without cropping and the card's dark fill shows only
+   around wide or square art. That is the approved V2.9 fit for game boxes,
+   albums and tabletop. */
 .item-card .item-cover-fit,
 .item-card.tt-card .item-cover-fit {
   width: 100%;
@@ -6318,6 +6320,6 @@ html {
   height: 100% !important;
   max-width: 100% !important;
   max-height: 100% !important;
-  object-fit: cover !important;
+  object-fit: contain !important;
   object-position: center;
 }

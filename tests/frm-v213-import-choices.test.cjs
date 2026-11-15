@@ -15,10 +15,47 @@ const RELAY = "https://frm-gcd.freerangeice.workers.dev";
 const METRON = "https://static.metron.cloud/media/issue/2019/12/10/saga-1.jpg";
 const GCD_IMG = "https://files1.comics.org/img/gcd/covers_by_id/fake.jpg";
 const T0 = "2026-11-15T00:00:00.000Z";
-const PNG = Buffer.from(
-  "89504e470d0a1a0a0000000d49484452000000300000004808020000003f11e17c0000005349444154789cedce410d00200c00b109430b86308d0b8e47930ae89cbdbe32f940484848a81e08090909d503212121a17a20242424540f84848484ea81909090503d10121212aa0742424242f5404848e8b10be8737462c27d9c870000000049454e44ae426082",
-  "hex"
-);
+const zlib = require("zlib");
+function rgbPng(w, h, r, g, b) {
+  const raw = Buffer.alloc((1 + w * 3) * h);
+  for (let y = 0; y < h; y++) {
+    const row = y * (1 + w * 3);
+    raw[row] = 0;
+    for (let x = 0; x < w; x++) {
+      const o = row + 1 + x * 3;
+      raw[o] = r; raw[o + 1] = g; raw[o + 2] = b;
+    }
+  }
+  const chunk = (tag, data) => {
+    const crc = zlib.crc32(Buffer.concat([tag, data]));
+    const out = Buffer.alloc(8 + data.length + 4);
+    out.writeUInt32BE(data.length, 0);
+    tag.copy(out, 4);
+    data.copy(out, 8);
+    out.writeUInt32BE(crc, 8 + data.length);
+    return out;
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk(Buffer.from("IHDR"), ihdr),
+    chunk(Buffer.from("IDAT"), zlib.deflateSync(raw)),
+    chunk(Buffer.from("IEND"), Buffer.alloc(0)),
+  ]);
+}
+const PNG = rgbPng(48, 72, 0x8b, 0x5e, 0x3c);
+const PORTRAIT = "https://fixture.media-shelf.test/portrait.png";
+const WIDE = "https://fixture.media-shelf.test/wide.png";
+const SQUARE = "https://fixture.media-shelf.test/square.png";
+const FIXTURE_PNGS = {
+  "/portrait.png": rgbPng(200, 300, 0x2e, 0x5a, 0x88),
+  "/wide.png": rgbPng(400, 180, 0x3d, 0x8b, 0x5e),
+  "/square.png": rgbPng(200, 200, 0x8b, 0x3c, 0x6a),
+};
 
 const COMICS = [
   { id: "c1", type: "comic", series: "Harbor Patrol", issue: "1", year: 2004, publisher: "Northwind Press", status: "owned", format: "physical", dateAdded: T0, dateUpdated: T0, coverUrl: "" },
@@ -26,6 +63,16 @@ const COMICS = [
   { id: "c3", type: "comic", series: "Night Orchard", issue: "3", year: 2012, publisher: "Northwind Press", status: "owned", format: "physical", dateAdded: T0, dateUpdated: T0, coverUrl: "" },
 ];
 const SHELF = { version: 1, savedAt: T0, items: COMICS };
+const MIXED_SHELF = {
+  version: 1,
+  savedAt: T0,
+  items: [
+    { ...COMICS[0] },
+    { ...COMICS[1], coverUrl: PORTRAIT },
+    { id: "g1", type: "game", title: "Arcade League", platform: "Switch", status: "owned", format: "physical", dateAdded: T0, dateUpdated: T0, coverUrl: WIDE },
+    { id: "m1", type: "music", title: "Kind of Blue", creator: "Miles Davis", status: "owned", format: "physical", dateAdded: T0, dateUpdated: T0, coverUrl: SQUARE },
+  ],
+};
 const CLZ_CSV = `Series,Issue,Publisher,Release Date
 Harbor Patrol,1,Northwind Press,Apr 2004
 Copper Moth,2,Bellweather Comics,2011
@@ -99,7 +146,7 @@ check("No cover sits under the tile list, before the paste-URL field", (() => {
 check("cover list is click-only (no touchend selection workaround)", !/comicCoverList\.addEventListener\("touchend"/.test(app) && /comicCoverList\.addEventListener\("click"/.test(app));
 check("thumbs are 48×72 with a same-size placeholder", /\.comic-cover-thumb\s*\{[^}]*width:\s*48px/.test(css) && /\.comic-cover-thumb\s*\{[^}]*height:\s*72px/.test(css) && /\.comic-cover-blank\s*\{[^}]*width:\s*48px/.test(css) && /\.comic-cover-blank\s*\{[^}]*height:\s*72px/.test(css));
 check("empty cover-list placeholders are a plain dashed frame with no words", app.includes('return `<span class="comic-cover-thumb comic-cover-blank" aria-hidden="true"></span>`;') && !/comicBlankTileArt[\s\S]{0,400}"No cover"/.test(app));
-check("saved library covers fill the card with object-fit: cover (even a low-res thumb)", /V2\.13b/.test(css) && /\.item-card \.item-cover-fit \.item-cover[\s\S]{0,280}width:\s*100%\s*!important/.test(css) && /\.item-card \.item-cover-fit \.item-cover[\s\S]{0,400}object-fit:\s*cover\s*!important/.test(css));
+check("saved library covers fill the card with object-fit: contain (even a low-res thumb scales up, no crop)", /V2\.13c/.test(css) && /\.item-card \.item-cover-fit,\s*\n\.item-card\.tt-card \.item-cover-fit\s*\{[^}]*width:\s*100%;/.test(css) && /\.item-card \.item-cover-fit \.item-cover[\s\S]{0,280}width:\s*100%\s*!important/.test(css) && /\.item-card \.item-cover-fit \.item-cover[\s\S]{0,400}object-fit:\s*contain\s*!important/.test(css) && !/V2\.13c[\s\S]{0,900}object-fit:\s*cover/.test(css));
 check("No cover uses the same 8px radius as the cover tiles", /\.comic-no-cover[\s\S]{0,500}border-radius:\s*var\(--radius-sm\)/.test(css) && /\.comic-cover\s*\{[^}]*border-radius:\s*var\(--radius-sm\)/.test(css));
 
 function startServer() {
@@ -115,16 +162,16 @@ function startServer() {
   return new Promise((r) => server.listen(0, "127.0.0.1", () => r({ server, base: `http://127.0.0.1:${server.address().port}` })));
 }
 
-async function openPage(browser, base, width, { track = null } = {}) {
+async function openPage(browser, base, width, { track = null, shelf = SHELF } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: "block" });
-  await ctx.addInitScript((shelf) => {
+  await ctx.addInitScript((data) => {
     if (sessionStorage.getItem("t")) return;
     sessionStorage.setItem("t", "1");
     localStorage.clear();
     localStorage.setItem("media-shelf-seeded", "2026-01-01T00:00:00Z");
     localStorage.setItem("media-shelf-last-backup", new Date().toISOString());
-    localStorage.setItem("media-tracker-v1", JSON.stringify(shelf));
-  }, SHELF);
+    localStorage.setItem("media-tracker-v1", JSON.stringify(data));
+  }, shelf);
   const calls = [];
   const writes = [];
   await ctx.route("**/*", async (r) => {
@@ -139,6 +186,10 @@ async function openPage(browser, base, width, { track = null } = {}) {
     if (u.hostname === "static.metron.cloud") {
       calls.push("metron");
       return r.fulfill({ contentType: "image/png", headers: hdr, body: PNG });
+    }
+    if (u.hostname === "fixture.media-shelf.test" && FIXTURE_PNGS[u.pathname]) {
+      calls.push("fixture:" + u.pathname);
+      return r.fulfill({ contentType: "image/png", headers: hdr, body: FIXTURE_PNGS[u.pathname] });
     }
     if (/(^|\.)comics\.org$/i.test(u.hostname)) {
       calls.push("gcd-host:" + u.hostname + u.pathname);
@@ -231,7 +282,7 @@ function styleOf() {
         ratios.push([`${width} duplicates dropdown`, dr, measured.drop]);
         check(`${width}: Duplicates dropdown is cream with dark text, contrast ≥ 4.5:1`, dr >= 4.5 && measured.drop.bg === "rgb(255, 253, 248)" && measured.drop.color === "rgb(26, 26, 26)", `${dr.toFixed(2)} ${JSON.stringify(measured.drop)}`);
         await page.locator("#clz-dups").scrollIntoViewIfNeeded();
-        if (!/v2\.13b\/?$/.test(SHOTS.replace(/\\/g, "/"))) {
+        if (!/v2\.13[bc]\/?$/.test(SHOTS.replace(/\\/g, "/"))) {
           await shot(page, `import-dups-${width}.png`, page.locator("#clz-dups"));
           await shot(page, `import-dups-dropdown-closed-${width}.png`, page.locator("#clz-dup-mode"));
           await page.locator("#clz-dup-mode").evaluate((el) => { el.size = el.options.length; el.focus(); });
@@ -245,7 +296,7 @@ function styleOf() {
       // ----- Cover sheet + library card -----
       {
         const track = {};
-        const { ctx, page, calls, errors } = await openPage(browser, base, width, { track });
+        const { ctx, page, calls, errors } = await openPage(browser, base, width, { track, shelf: MIXED_SHELF });
         await page.click('.item-card[data-id="c1"]');
         await page.waitForSelector("#item-detail-edit");
         await page.click("#item-detail-edit");
@@ -328,7 +379,7 @@ function styleOf() {
         });
         check(`${width}: tapping Cover A selects it, enables Save, and stores the Metron URL`, picked.selected && picked.saveDisabled === false && picked.cover === METRON && picked.label === "Cover A" && picked.border === "rgb(139, 94, 60)", JSON.stringify(picked));
         await page.locator("#comic-picker").scrollIntoViewIfNeeded();
-        await shot(page, `cover-selected-${width}.png`, page.locator("#comic-picker"));
+        if (!/v2\.13c\/?$/.test(SHOTS.replace(/\\/g, "/"))) await shot(page, `cover-selected-${width}.png`, page.locator("#comic-picker"));
 
         // A names-only tile (GCD-only / no Metron URL) does not write a comics.org cover URL.
         await page.locator('[data-comic-cover="1"]').click();
@@ -365,7 +416,7 @@ function styleOf() {
         check(`${width}: No cover selects, enables Save, and clears the cover field`, none.selected && none.saveDisabled === false && none.cover === "" && none.border === "rgb(139, 94, 60)" && none.tileSelected === false, JSON.stringify(none));
         check(`${width}: selected No cover uses the same radius, padding and check as the tiles`, none.radius === none.tileRadius && none.padding === none.tilePadding && none.check.width === "22px" && none.check.height === "22px" && none.check.content.includes("✓") && none.check.background === "rgb(139, 94, 60)", JSON.stringify(none));
         await page.locator("#comic-picker").scrollIntoViewIfNeeded();
-        await shot(page, `cover-no-cover-${width}.png`, page.locator("#comic-picker"));
+        if (!/v2\.13c\/?$/.test(SHOTS.replace(/\\/g, "/"))) await shot(page, `cover-no-cover-${width}.png`, page.locator("#comic-picker"));
 
         // Save Cover A and confirm the library card shows the Metron picture (not a grey placeholder).
         await page.locator('[data-comic-cover="0"]').click();
@@ -396,10 +447,28 @@ function styleOf() {
           };
         }, METRON);
         check(`${width}: library card shows the saved Metron cover (not the grey placeholder)`, card.src === METRON && card.coverUrl === METRON && card.coverLabel === "Cover A" && card.imgHidden === false, JSON.stringify(card));
-        check(`${width}: saved cover fills the card at object-fit cover (not a floating thumb)`, card.fit === "cover" && Math.abs(card.img.w - card.col.w) <= 1 && Math.abs(card.img.h - card.col.h) <= 1 && card.col.w > 80 && card.col.h > 80, JSON.stringify(card));
+        check(`${width}: saved Metron thumb scales up with object-fit contain (img box fills the card, no crop)`, card.fit === "contain" && Math.abs(card.img.w - card.col.w) <= 1 && Math.abs(card.img.h - card.col.h) <= 1 && card.col.w > 80 && card.col.h > 80, JSON.stringify(card));
         check(`${width}: stored cover is not a comics.org URL`, !/comics\.org/i.test(card.coverUrl));
-        await page.locator('.item-card[data-id="c1"]').scrollIntoViewIfNeeded();
-        await shot(page, `library-card-cover-${width}.png`, page.locator('.item-card[data-id="c1"]'));
+        await page.waitForFunction(() => ["c1", "c2", "g1", "m1"].every((id) => { const img = document.querySelector(`.item-card[data-id="${id}"] img.item-cover`); return img && img.complete && img.naturalWidth > 0; }));
+        const mixed = await page.evaluate(() => {
+          const read = (id) => {
+            const card = document.querySelector(`.item-card[data-id="${id}"]`);
+            const col = card.querySelector(".item-cover-col");
+            const img = card.querySelector("img.item-cover");
+            const cr = col.getBoundingClientRect(), ir = img.getBoundingClientRect();
+            return { type: col.getAttribute("data-type"), fit: getComputedStyle(img).objectFit, src: img.getAttribute("src"), col: { w: Math.round(cr.width), h: Math.round(cr.height) }, img: { w: Math.round(ir.width), h: Math.round(ir.height) }, ratio: cr.height / cr.width };
+          };
+          return { harbor: read("c1"), portrait: read("c2"), game: read("g1"), album: read("m1") };
+        });
+        for (const [name, row] of Object.entries(mixed)) {
+          check(`${width}: ${name} cover uses contain and the img box fills the card`, row.fit === "contain" && Math.abs(row.img.w - row.col.w) <= 1 && Math.abs(row.img.h - row.col.h) <= 1, JSON.stringify({ name, ...row }));
+        }
+        check(`${width}: comic cards stay 2:3; game and album cards stay 1:1`, mixed.harbor.ratio > 1.4 && mixed.harbor.ratio < 1.6 && mixed.portrait.ratio > 1.4 && mixed.portrait.ratio < 1.6 && mixed.game.ratio > 0.9 && mixed.game.ratio < 1.1 && mixed.album.ratio > 0.9 && mixed.album.ratio < 1.1, JSON.stringify(mixed));
+        await page.evaluate(() => { document.querySelectorAll(".toast").forEach((t) => t.remove()); });
+        await page.setViewportSize({ width, height: 1200 });
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.waitForTimeout(150);
+        await shot(page, `library-card-cover-${width}.png`);
         check(`${width}: no request was made to comics.org or files1.comics.org`, !calls.some((c) => String(c).startsWith("gcd-host:")), JSON.stringify(calls));
         check(`${width}: cover sheet has no page errors`, errors.length === 0, errors.join(" | "));
         await ctx.close();
