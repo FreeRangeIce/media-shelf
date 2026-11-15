@@ -6023,7 +6023,7 @@ html {
 .enrich-bar {
   height: 4px;
   border-radius: 2px;
-  background: rgba(243, 234, 215, 0.25);
+  background: #3a3a3a;
   overflow: hidden;
 }
 .enrich-bar[hidden] { display: none; }
@@ -6031,13 +6031,14 @@ html {
   display: block;
   height: 100%;
   width: 0;
-  background: #f3ead7;
+  border-radius: 2px;
+  background: #8B5E3C;
   transition: width 0.3s ease;
 }
 .enrich-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: 8px;
 }
 .enrich-status .enrich-btn {
   min-height: var(--tap);
@@ -6061,6 +6062,10 @@ html {
   margin-top: var(--space-2);
 }
 .enrich-detail .enrich-detail-btn { min-height: var(--tap); }
+.enrich-detail .enrich-detail-btn.btn-primary { background: #8B5E3C; border-color: #8B5E3C; color: #ffffff; }
+.enrich-detail .enrich-detail-btn.btn-primary:hover { background: #7a5234; border-color: #7a5234; color: #ffffff; } /* 6.8:1, a darker hover keeps white text above 4.5:1 */
+.tt-detail-badges .enrich-badge-ref { align-self: center; }
+#item-detail-edit.btn-outline { min-height: var(--tap); }
 @media (prefers-reduced-motion: reduce) {
   .enrich-bar-fill { transition: none; }
 }

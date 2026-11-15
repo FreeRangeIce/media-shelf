@@ -369,7 +369,11 @@ check("UPCitemdb local cap (100/day): pause with the item still first, nothing a
   assert.deepEqual([...q.ids], ["u1", "u2"], "position kept: the capped item stays first");
   assert.ok(q.until > b.clock.now);
   assert.equal(b.fetch.calls.filter((u) => /upcitemdb/.test(u)).length, 0, "never asked past the cap");
-  assert.equal(b.api.enrichSummaryText(q), "0 enriched · 0 need a pick · 0 need lookup · 0 failed · 2 paused at cap");
+  assert.equal(b.api.enrichSummaryText(q), "", "all zero: no counts line; the pause has its own two lines");
+  const [p1, p2] = b.api.enrichPauseLines(q);
+  assert.equal(p1, "Paused: UPCitemdb’s daily limit.");
+  assert.match(p2, /^2 items will continue when you open the app after (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{1,2}:\d{2}\s?(AM|PM)\.$/);
+  assert.ok(p2.endsWith(`${b.api.enrichResumeClock(q.until)}.`), "computed from the real resume time");
   // Reopen before the cap ends: still paused, no request.
   const early = bootWith(routes, { store: b.store, clock: { ...H.makeClock(b.clock.now + 60000) } });
   early.api.resumeEnrichOnOpen();
@@ -451,11 +455,43 @@ check("short busy pauses resume in-session at most 3 times in a row, then wait f
 });
 
 /* ---------- 6. Summary ---------- */
-check("summary counts: enriched, need a pick, need lookup, failed (+ already complete, paused at cap)", () => {
+check("summary counts: only nonzero counts, on screen and for screen readers", () => {
   const { api } = H.bootFile();
   const q = { ...api.readEnrichQueue(), enriched: 12, pick: 30, lookup: 1, failed: 2, complete: 0, ids: [], paused: false };
   assert.equal(api.enrichSummaryText(q), "12 enriched · 30 need a pick · 1 needs lookup · 2 failed");
-  assert.equal(api.enrichSummaryText({ ...q, pick: 1, complete: 3, paused: true, ids: ["a", "b"] }), "12 enriched · 1 needs a pick · 1 needs lookup · 2 failed · 3 already complete · 2 paused at cap");
+  assert.equal(api.enrichSummaryText({ ...q, pick: 1, complete: 3, paused: true, ids: ["a", "b"] }), "12 enriched · 1 needs a pick · 1 needs lookup · 2 failed · 3 already complete");
+  assert.equal(api.enrichSummaryText({ ...q, enriched: 4, pick: 4, lookup: 0, failed: 0 }), "4 enriched · 4 need a pick");
+  assert.equal(api.enrichSummaryText({ ...q, enriched: 0, pick: 0, lookup: 0, failed: 0 }), "");
+  assert.doesNotMatch(app, /paused at cap/, "no 'paused at cap' count");
+  // The screen-reader line is built from the same summary text (plus the pause lines), never zeros.
+  assert.match(app, /const said = \[line\.replace\(\/\\\.\$\/, ""\), pauseLines \? pauseLines\[1\]\.replace\(\/\\\.\$\/, ""\) : "", enrichSummaryText\(q\)\]\.filter\(Boolean\);/);
+  assert.match(app, /counts\.hidden = !countText;/);
+});
+
+check("paused: two plain lines from the real resume time; one item reads singular; progress bar hidden", () => {
+  const { api } = H.bootFile();
+  const until = Date.parse("2026-11-16T09:05:00-08:00");
+  const real = Date.now;
+  const q = { ...api.readEnrichQueue(), ids: ["a"], total: 8, paused: true, reason: "UPCitemdb", until: Date.now() + 86400000 };
+  const lines = api.enrichPauseLines(q);
+  assert.equal(lines[0], "Paused: UPCitemdb’s daily limit.");
+  assert.match(lines[1], /^1 item will continue when you open the app after /);
+  assert.equal(api.enrichResumeClock(until), new Date(until).toLocaleDateString("en-US", { weekday: "short" }) + " " + new Date(until).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }));
+  assert.match(api.enrichResumeClock(until), /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{1,2}:\d{2}\s?(AM|PM)$/);
+  assert.equal(Date.now, real);
+  assert.doesNotMatch(app, /Paused at a daily limit after/, "the 'after 0 of 8' line is gone");
+  assert.match(app, /bar\.hidden = !\(showRun && active && !q\.paused\);/);
+});
+
+check("progress bar: fills to the shown count, #8B5E3C on #3a3a3a, 4px, rounded ends", () => {
+  assert.match(app, /const shown = Math\.max\(1, pos\);/);
+  assert.match(app, /line = `Enriching \$\{shown\.toLocaleString\(\)\} of/);
+  assert.match(app, /\$\("#enrich-bar-fill"\)\.style\.width = `\$\{q\.total \? Math\.round\(\(Math\.min\(shown, q\.total\) \/ q\.total\) \* 100\) : 0\}%`;/);
+  const block = css.slice(css.indexOf("========== V2.11 import enrichment"));
+  assert.match(block, /\.enrich-bar \{\s*height: 4px;\s*border-radius: 2px;\s*background: #3a3a3a;/);
+  assert.match(block, /\.enrich-bar-fill \{[^}]*border-radius: 2px;[^}]*background: #8B5E3C;/);
+  assert.match(block, /\.enrich-actions \{[^}]*gap: 8px;/);
+  assert.match(html, /id="btn-enrich-all" hidden>Show all<\/button>/);
 });
 
 check("progress UI: role=status, in the page flow above the list, 44px buttons, reduced motion, hidden on Profile", () => {
@@ -480,6 +516,17 @@ check("Needs a pick / Needs lookup filter keeps the Library / Wishlist split; de
   const d = api.detailHtml(api.normalizeItem({ id: "p1", type: "book", title: "X", enrich: "pick" }));
   assert.match(d, /Needs a pick/);
   assert.match(d, /data-enrich-lookup="p1"/);
+  assert.match(d, /class="btn btn-primary enrich-detail-btn" data-enrich-lookup/, "Look up is the filled primary");
+  for (const mark of ["pick", "lookup"]) {
+    const g = api.detailHtml(api.normalizeItem({ id: "g1", type: "game", title: "Crisis Core", platform: "PSP", enrich: mark }));
+    const badges = g.slice(g.indexOf('<div class="tt-detail-badges">'), g.indexOf("</div>"));
+    assert.match(badges, /class="card-ref enrich-badge-ref"[^>]*>IGDB<\/a>/, `${mark}: IGDB pill on the badge row`);
+    assert.doesNotMatch(g, /<div class="card-refs">/, `${mark}: no lone pill on the right`);
+  }
+  const plain = api.detailHtml(api.normalizeItem({ id: "g2", type: "game", title: "Crisis Core", platform: "PSP" }));
+  assert.match(plain, /<div class="card-refs"><a class="card-ref" [^>]*>IGDB<\/a><\/div>/, "unmarked items unchanged");
+  assert.doesNotMatch(plain, /enrich-badge-ref/);
+  assert.match(app, /edit\.classList\.toggle\("btn-primary", !marked\);\s*edit\.classList\.toggle\("btn-outline", marked\);/, "Edit outlined only on marked items");
   assert.doesNotMatch(api.detailHtml(api.normalizeItem({ id: "p2", type: "book", title: "X" })), /data-enrich-lookup/);
   assert.match(api.detailHtml(api.normalizeItem({ id: "c", type: "comic", series: "S", issue: "1", comicFormat: "Trade Paperback", edition: "collected" })), /Trade Paperback \(collected edition\)/);
   // Saving from the form answers the mark; manual Lookup code paths are untouched.

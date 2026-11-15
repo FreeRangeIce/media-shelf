@@ -2694,7 +2694,7 @@
       $(".empty-hint", els.empty).textContent = filterNeedsCover
         ? "Every comic here has its cover or was left as typed."
         : filterEnrich
-        ? "Try the other shelf, another category, or Show all items."
+        ? "Try the other shelf, another category, or Show all."
         : totalFilteredOut
         ? "Try a different filter or search."
         : "Add a book, video game, movie, or album to get started."; // PLACEHOLDER (Berean)
@@ -2734,6 +2734,7 @@
       : String(item.creator || "").trim();
     const yearText = item.year != null && String(item.year).trim() !== "" ? String(item.year).trim() : "";
     const meta = [creatorText, yearText].filter(Boolean).join("\u00a0· ");
+    const marked = item.enrich === "pick" || item.enrich === "lookup";
     const head =
       `<div class="tt-detail-badges"><span class="badge badge-type ${escapeHtml(item.type)}">${escapeHtml(TYPE_LABELS[item.type] || item.type)}</span>` +
       `<span class="badge badge-status ${escapeHtml(item.status)}">${escapeHtml(STATUS_LABELS[item.status] || item.status)}</span>` +
@@ -2750,7 +2751,7 @@
       const why = item.enrich === "pick"
         ? "Needs a pick. The import found possible matches but filled nothing. Look up to choose one."
         : "Needs lookup. The import couldn’t find this automatically. Look up, or add the details yourself.";
-      rows.push(`<div class="enrich-detail"><p class="tt-detail-line enrich-detail-text">${escapeHtml(why)}</p><button type="button" class="btn btn-outline btn-sm enrich-detail-btn" data-enrich-lookup="${escapeHtml(item.id)}">Look up</button></div>`);
+      rows.push(`<div class="enrich-detail"><p class="tt-detail-line enrich-detail-text">${escapeHtml(why)}</p><button type="button" class="btn btn-primary enrich-detail-btn" data-enrich-lookup="${escapeHtml(item.id)}">Look up</button></div>`);
     }
     const starStr = stars(item.rating);
     if (starStr) rows.push(`<p class="tt-detail-line"><span class="item-detail-label">Rating</span> <span class="stars" aria-label="Rating ${escapeHtml(item.rating)} of 5">${starStr}</span></p>`);
@@ -2764,7 +2765,12 @@
     if (item.type === "book") refs.push(["ISFDB", buildIsfdbUrl(item.title)]);
     if (item.type === "game") refs.push(["IGDB", buildIgdbUrl(item.title)]);
     const refLinks = refs.filter((r) => r[1]).map(([n, u]) => `<a class="card-ref" href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer">${n}</a>`);
-    if (refLinks.length) rows.push(`<div class="card-refs">${refLinks.join("")}</div>`);
+    if (refLinks.length && marked) {
+      // V2.11: an item marked Needs a pick / Needs lookup carries its reference pill on the badge
+      // row instead of alone on the right. Every other item is unchanged.
+      const end = rows[0].indexOf("</div>", rows[0].indexOf("badge badge-format"));
+      rows[0] = rows[0].slice(0, end) + refLinks.map((l) => l.replace('class="card-ref"', 'class="card-ref enrich-badge-ref"')).join("") + rows[0].slice(end);
+    } else if (refLinks.length) rows.push(`<div class="card-refs">${refLinks.join("")}</div>`);
     const gbUrl = item.coverSource === "googlebooks" ? safeGoogleBooksUrl(item.googleBooksUrl) : "";
     if (gbUrl) rows.push(`<p class="card-credit"><a class="card-credit-link" href="${escapeHtml(gbUrl)}" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">Cover from Google Books</span></a></p>`);
     return rows.filter(Boolean).join("");
@@ -2778,6 +2784,13 @@
     $("#item-detail-title").textContent = displayTitle(item);
     const body = $("#item-detail-body");
     body.innerHTML = detailHtml(item);
+    // V2.11: on a Needs a pick / Needs lookup item, Look up is the primary action and Edit the outlined one.
+    const marked = item.enrich === "pick" || item.enrich === "lookup";
+    const edit = $("#item-detail-edit");
+    if (edit) {
+      edit.classList.toggle("btn-primary", !marked);
+      edit.classList.toggle("btn-outline", marked);
+    }
     const cov = body.querySelector(".tt-detail-cover img");
     if (cov) cov.addEventListener("error", () => { const w = cov.closest(".tt-detail-cover"); if (w) w.remove(); }, { once: true });
     m.hidden = false;
@@ -9762,23 +9775,34 @@
     return items.filter((i) => i.enrich === mark && (!shelfOnly || (shelfMode === "wishlist" ? isWantStatus(i.status) : isLibraryStatus(i.status))));
   }
 
-  /** "12 enriched · 30 need a pick · 5 need lookup · 2 failed · 31 paused at cap" */
+  /** Only the counts that aren't zero: "4 enriched · 4 need a pick" ("" when all are zero).
+      A pause is told in its own two lines (enrichPauseLines), never here. */
   function enrichSummaryText(q) {
-    const parts = [
-      `${q.enriched.toLocaleString()} enriched`,
-      `${q.pick.toLocaleString()} ${q.pick === 1 ? "needs" : "need"} a pick`,
-      `${q.lookup.toLocaleString()} ${q.lookup === 1 ? "needs" : "need"} lookup`,
-      `${q.failed.toLocaleString()} failed`,
-    ];
+    const parts = [];
+    if (q.enriched) parts.push(`${q.enriched.toLocaleString()} enriched`);
+    if (q.pick) parts.push(`${q.pick.toLocaleString()} ${q.pick === 1 ? "needs" : "need"} a pick`);
+    if (q.lookup) parts.push(`${q.lookup.toLocaleString()} ${q.lookup === 1 ? "needs" : "need"} lookup`);
+    if (q.failed) parts.push(`${q.failed.toLocaleString()} failed`);
     if (q.complete) parts.push(`${q.complete.toLocaleString()} already complete`);
-    if (q.paused && q.ids.length) parts.push(`${q.ids.length.toLocaleString()} paused at cap`);
     return parts.join(" · ");
   }
 
-  function enrichClock(t) {
+  /** "Wed 9:05 AM" in local time, always with the weekday. */
+  function enrichResumeClock(t) {
     const d = new Date(t);
-    const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    return enrichLocalDay(t) === enrichLocalDay() ? time : `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
+    return `${d.toLocaleDateString("en-US", { weekday: "short" })} ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  }
+
+  /** A cap pause as two plain lines, from the real resume time. */
+  function enrichPauseLines(q) {
+    const n = q.ids.length;
+    const items = `${n.toLocaleString()} ${n === 1 ? "item" : "items"}`;
+    const src = q.reason || "A source";
+    if (q.until > Date.now() + ENRICH_SHORT_WAIT_MS) {
+      return [`Paused: ${src}’s daily limit.`, `${items} will continue when you open the app after ${enrichResumeClock(q.until)}.`];
+    }
+    if (q.until > Date.now()) return [`Paused: ${src} is busy.`, `${items} will continue at ${enrichResumeClock(q.until)}.`];
+    return [`Paused: ${src}’s limit.`, `${items} will continue when you open the app, or tap Resume.`];
   }
 
   let enrichSrKey = "";
@@ -9794,12 +9818,16 @@
     box.hidden = !show;
     if (!show) return;
     const pos = Math.min(q.total, q.done + (ENRICH.running && active ? 1 : 0));
+    const shown = Math.max(1, pos); // the number in "Enriching {shown} of {total}"; the bar fills to it
+    const errorPause = q.reason === "errors" || q.reason === "storage";
+    const capPause = showRun && active && q.paused && !errorPause;
+    const pauseLines = capPause ? enrichPauseLines(q) : null;
     let line = "";
     if (showRun && active && q.paused) {
-      line = q.reason === "errors" || q.reason === "storage"
+      line = errorPause
         ? `Paused after ${q.done.toLocaleString()} of ${q.total.toLocaleString()}. Lookups aren’t working right now.`
-        : `Paused at a daily limit after ${q.done.toLocaleString()} of ${q.total.toLocaleString()}.`;
-    } else if (showRun && active) line = `Enriching ${Math.max(1, pos).toLocaleString()} of ${q.total.toLocaleString()}`;
+        : pauseLines[0];
+    } else if (showRun && active) line = `Enriching ${shown.toLocaleString()} of ${q.total.toLocaleString()}`;
     else if (showRun) line = `Finished: ${q.done.toLocaleString()} imported ${q.done === 1 ? "item" : "items"} checked.`;
     else line = "Imported items to finish";
     $("#enrich-line").textContent = line;
@@ -9808,20 +9836,21 @@
     const srKey = `${q.done}|${q.paused}|${active}|${showRun}`;
     if (sr && srKey !== enrichSrKey && (!active || q.paused || q.done % 10 === 0 || !enrichSrKey)) {
       enrichSrKey = srKey;
-      sr.textContent = showRun ? `${line.replace(/\.$/, "")}. ${enrichSummaryText(q)}.` : line;
+      const said = [line.replace(/\.$/, ""), pauseLines ? pauseLines[1].replace(/\.$/, "") : "", enrichSummaryText(q)].filter(Boolean);
+      sr.textContent = showRun ? `${said.join(". ")}.` : line;
     }
     const bar = $("#enrich-bar");
-    bar.hidden = !(showRun && active);
-    $("#enrich-bar-fill").style.width = `${q.total ? Math.round((q.done / q.total) * 100) : 0}%`;
+    bar.hidden = !(showRun && active && !q.paused); // hidden while paused
+    $("#enrich-bar-fill").style.width = `${q.total ? Math.round((Math.min(shown, q.total) / q.total) * 100) : 0}%`;
     const counts = $("#enrich-counts");
-    counts.hidden = !showRun;
-    counts.textContent = showRun ? enrichSummaryText(q) : "";
+    const countText = showRun ? enrichSummaryText(q) : "";
+    counts.hidden = !countText;
+    counts.textContent = countText;
     const note = $("#enrich-note");
     let msg = "";
-    if (showRun && active && q.paused) {
-      msg = q.until > Date.now()
-        ? `${q.reason ? `${q.reason} limit reached. ` : ""}It picks up where it stopped when you open the app after ${enrichClock(q.until)}.`
-        : "It picks up where it stopped the next time you open the app, or tap Resume.";
+    if (pauseLines) msg = pauseLines[1];
+    else if (showRun && active && q.paused) {
+      msg = "It picks up where it stopped the next time you open the app, or tap Resume.";
     } else if (showRun && active) msg = "You can keep using the app. Only empty fields are filled.";
     if (filterEnrich) {
       const here = enrichMarked(filterEnrich, true).length;
