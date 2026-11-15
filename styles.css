@@ -6064,7 +6064,24 @@ html {
 .enrich-detail .enrich-detail-btn { min-height: var(--tap); }
 .enrich-detail .enrich-detail-btn.btn-primary { background: #8B5E3C; border-color: #8B5E3C; color: #ffffff; }
 .enrich-detail .enrich-detail-btn.btn-primary:hover { background: #7a5234; border-color: #7a5234; color: #ffffff; } /* 6.8:1, a darker hover keeps white text above 4.5:1 */
-.tt-detail-badges .enrich-badge-ref { align-self: center; }
+/* Detail sheet source (IMDb / ISFDB / IGDB) on the year line: muted like the format badge text,
+   same size as the year, underlined link; padding gives a 24px target without moving the line. */
+.tt-detail-line .detail-source-sep { color: var(--text-muted); }
+.tt-detail-line .detail-source-link {
+  display: inline-block;
+  padding: 4px 2px;
+  margin: -4px -2px;
+  min-height: 24px;
+  min-width: 24px;
+  box-sizing: border-box;
+  color: var(--text-muted);
+  font-size: inherit;
+  font-weight: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tt-detail-line .detail-source-link:hover { color: var(--text); }
+.tt-detail-line .detail-source-link:focus-visible { outline: none; box-shadow: var(--focus); border-radius: 2px; }
 #item-detail-edit.btn-outline { min-height: var(--tap); }
 @media (prefers-reduced-motion: reduce) {
   .enrich-bar-fill { transition: none; }

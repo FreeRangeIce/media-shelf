@@ -2734,12 +2734,19 @@
       : String(item.creator || "").trim();
     const yearText = item.year != null && String(item.year).trim() !== "" ? String(item.year).trim() : "";
     const meta = [creatorText, yearText].filter(Boolean).join("\u00a0· ");
-    const marked = item.enrich === "pick" || item.enrich === "lookup";
+    // V2.11: the reference source (IMDb, ISFDB, IGDB) sits on the year line as muted text,
+    // still a link to its page ("2008 · IGDB"), in every detail state. No pill.
+    const refs = [];
+    if (item.type === "movie") refs.push(["IMDb", buildImdbUrl(item.title, item.year)]);
+    if (item.type === "book") refs.push(["ISFDB", buildIsfdbUrl(item.title)]);
+    if (item.type === "game") refs.push(["IGDB", buildIgdbUrl(item.title)]);
+    const srcLinks = refs.filter((r) => r[1]).map(([n, u]) => `<a class="detail-source-link" href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer" aria-label="${n} (opens in a new tab)">${n}</a>`);
+    const metaLine = [meta ? escapeHtml(meta) : "", ...srcLinks].filter(Boolean).join(`<span class="detail-source-sep">\u00a0· </span>`);
     const head =
       `<div class="tt-detail-badges"><span class="badge badge-type ${escapeHtml(item.type)}">${escapeHtml(TYPE_LABELS[item.type] || item.type)}</span>` +
       `<span class="badge badge-status ${escapeHtml(item.status)}">${escapeHtml(STATUS_LABELS[item.status] || item.status)}</span>` +
       `<span class="badge badge-format">${escapeHtml(formatBadgeText(item))}</span></div>` +
-      (meta ? `<p class="tt-detail-line">${escapeHtml(meta)}</p>` : "");
+      (metaLine ? `<p class="tt-detail-line">${metaLine}</p>` : "");
     const url = comicImageSuppressed(item.type, item.coverUrl) ? "" : String(item.coverUrl || "").trim();
     const rows = [url
       ? `<div class="tt-detail-top"><span class="tt-detail-cover"><img src="${escapeHtml(url)}" alt="" referrerpolicy="no-referrer" /></span><div class="tt-detail-meta">${head}</div></div>`
@@ -2760,17 +2767,6 @@
     rows.push(row("Barcode", item.barcode));
     if ((item.tags || []).length) rows.push(row("Tags", item.tags.join(", ")));
     if (item.notes) rows.push(`<p class="tt-detail-line item-detail-notes">${escapeHtml(item.notes)}</p>`);
-    const refs = [];
-    if (item.type === "movie") refs.push(["IMDb", buildImdbUrl(item.title, item.year)]);
-    if (item.type === "book") refs.push(["ISFDB", buildIsfdbUrl(item.title)]);
-    if (item.type === "game") refs.push(["IGDB", buildIgdbUrl(item.title)]);
-    const refLinks = refs.filter((r) => r[1]).map(([n, u]) => `<a class="card-ref" href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer">${n}</a>`);
-    if (refLinks.length && marked) {
-      // V2.11: an item marked Needs a pick / Needs lookup carries its reference pill on the badge
-      // row instead of alone on the right. Every other item is unchanged.
-      const end = rows[0].indexOf("</div>", rows[0].indexOf("badge badge-format"));
-      rows[0] = rows[0].slice(0, end) + refLinks.map((l) => l.replace('class="card-ref"', 'class="card-ref enrich-badge-ref"')).join("") + rows[0].slice(end);
-    } else if (refLinks.length) rows.push(`<div class="card-refs">${refLinks.join("")}</div>`);
     const gbUrl = item.coverSource === "googlebooks" ? safeGoogleBooksUrl(item.googleBooksUrl) : "";
     if (gbUrl) rows.push(`<p class="card-credit"><a class="card-credit-link" href="${escapeHtml(gbUrl)}" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">Cover from Google Books</span></a></p>`);
     return rows.filter(Boolean).join("");

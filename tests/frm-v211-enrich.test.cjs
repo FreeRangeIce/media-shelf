@@ -517,15 +517,22 @@ check("Needs a pick / Needs lookup filter keeps the Library / Wishlist split; de
   assert.match(d, /Needs a pick/);
   assert.match(d, /data-enrich-lookup="p1"/);
   assert.match(d, /class="btn btn-primary enrich-detail-btn" data-enrich-lookup/, "Look up is the filled primary");
-  for (const mark of ["pick", "lookup"]) {
-    const g = api.detailHtml(api.normalizeItem({ id: "g1", type: "game", title: "Crisis Core", platform: "PSP", enrich: mark }));
-    const badges = g.slice(g.indexOf('<div class="tt-detail-badges">'), g.indexOf("</div>"));
-    assert.match(badges, /class="card-ref enrich-badge-ref"[^>]*>IGDB<\/a>/, `${mark}: IGDB pill on the badge row`);
-    assert.doesNotMatch(g, /<div class="card-refs">/, `${mark}: no lone pill on the right`);
+  // V2.11c: in every state the source is muted text on the year line ("2008 · IGDB"), still a link; no pill.
+  for (const [mark, it] of [["pick", { type: "game", title: "Crisis Core", platform: "PSP", year: 2008 }], ["lookup", { type: "movie", title: "Heat", year: 1995 }], ["", { type: "book", title: "Dune", creator: "Frank Herbert", year: 1965 }], ["", { type: "game", title: "Celeste", platform: "Switch" }]]) {
+    const h = api.detailHtml(api.normalizeItem({ id: "s1", ...it, ...(mark ? { enrich: mark } : {}) }));
+    const name = { game: "IGDB", movie: "IMDb", book: "ISFDB" }[it.type];
+    const badges = h.slice(h.indexOf('<div class="tt-detail-badges">'), h.indexOf("</div>"));
+    assert.doesNotMatch(badges, /card-ref|IGDB|IMDb|ISFDB/, `${it.title}: nothing on the badge row`);
+    assert.doesNotMatch(h, /card-refs|class="card-ref/, `${it.title}: no pill anywhere`);
+    const line = h.slice(h.indexOf("</div>") + 6, h.indexOf("</p>", h.indexOf("</div>")) + 4);
+    const lead = it.year ? `${[it.creator, it.year].filter(Boolean).join("\u00a0· ")}<span class="detail-source-sep">\u00a0· </span>` : "";
+    assert.match(line, new RegExp(`^<p class="tt-detail-line">${lead}<a class="detail-source-link" href="https://[^"]+" target="_blank" rel="noopener noreferrer" aria-label="${name} \\(opens in a new tab\\)">${name}</a></p>$`), `${it.title}: ${line}`);
   }
-  const plain = api.detailHtml(api.normalizeItem({ id: "g2", type: "game", title: "Crisis Core", platform: "PSP" }));
-  assert.match(plain, /<div class="card-refs"><a class="card-ref" [^>]*>IGDB<\/a><\/div>/, "unmarked items unchanged");
-  assert.doesNotMatch(plain, /enrich-badge-ref/);
+  assert.doesNotMatch(api.detailHtml(api.normalizeItem({ id: "u", type: "music", title: "OK Computer", year: 1997 })), /detail-source/, "music has no source link");
+  assert.doesNotMatch(app, /enrich-badge-ref/);
+  const dcss = css.slice(css.indexOf(".tt-detail-line .detail-source-link {"));
+  assert.match(dcss, /^\.tt-detail-line \.detail-source-link \{[^}]*min-height: 24px;[^}]*color: var\(--text-muted\);[^}]*font-size: inherit;[^}]*text-decoration: underline;/);
+  assert.match(css, /\.badge-format \{[^}]*color: var\(--text-muted\);/, "same gray as the format badge");
   assert.match(app, /edit\.classList\.toggle\("btn-primary", !marked\);\s*edit\.classList\.toggle\("btn-outline", marked\);/, "Edit outlined only on marked items");
   assert.doesNotMatch(api.detailHtml(api.normalizeItem({ id: "p2", type: "book", title: "X" })), /data-enrich-lookup/);
   assert.match(api.detailHtml(api.normalizeItem({ id: "c", type: "comic", series: "S", issue: "1", comicFormat: "Trade Paperback", edition: "collected" })), /Trade Paperback \(collected edition\)/);

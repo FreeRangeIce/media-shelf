@@ -48,7 +48,9 @@ check('title-only cards: cover + title; clamp 2 lines; focus ring; detail keeps 
   const slice = app.slice(app.indexOf('Title-only redesign card'), app.indexOf('Title-only redesign card') + 700);
   assert.match(slice, /item-title/);
   assert.doesNotMatch(slice, /item-meta|badge-status|badge-format|btn-pick-cover|card-ref|item-notes/);
-  assert.match(app, /function detailHtml[\s\S]*badge-status[\s\S]*badge-format[\s\S]*Rating[\s\S]*Progress[\s\S]*Tags[\s\S]*ISFDB[\s\S]*IGDB[\s\S]*Cover from Google Books/);
+  // V2.11c: the source (IMDb / ISFDB / IGDB) moved from a pill after Tags onto the year line, so it is
+  // built before the badges and rendered in the meta line; the rest of the order is unchanged.
+  assert.match(app, /function detailHtml[\s\S]*ISFDB[\s\S]*IGDB[\s\S]*badge-status[\s\S]*badge-format[\s\S]*metaLine[\s\S]*Rating[\s\S]*Progress[\s\S]*Tags[\s\S]*Cover from Google Books/);
   assert.match(app, /fieldCover|field-cover/); // cover still settable in the edit form
   assert.match(css, /-webkit-line-clamp:\s*2/);
   assert.match(css, /\.item-card:focus-visible/);
