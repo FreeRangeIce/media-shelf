@@ -83,14 +83,14 @@ async function queueAndRun(b, ids) {
 }
 
 /* ---------- 1. CLZ Comics mapping (synthetic export, same headers as a real CLZ Comics CSV) ---------- */
-const REAL = fs.readFileSync(path.join(FIX, "clz-comics-fixture.csv"), "utf8");
-const REAL_ROWS = readCsv(REAL);
+const COMICS_CSV = fs.readFileSync(path.join(FIX, "clz-comics-fixture.csv"), "utf8");
+const COMICS_ROWS = readCsv(COMICS_CSV);
 
 check("CLZ Comics export: headers exactly Series, Issue, Variant Description, Publisher, Release Date, Format, Added Date", () => {
-  assert.deepEqual(REAL_ROWS[0], ["Series", "Issue", "Variant Description", "Publisher", "Release Date", "Format", "Added Date"]);
+  assert.deepEqual(COMICS_ROWS[0], ["Series", "Issue", "Variant Description", "Publisher", "Release Date", "Format", "Added Date"]);
   const { api } = H.bootFile();
-  const parsed = api.parseClzCsv(REAL);
-  assert.deepEqual([...parsed.headers], REAL_ROWS[0]);
+  const parsed = api.parseClzCsv(COMICS_CSV);
+  assert.deepEqual([...parsed.headers], COMICS_ROWS[0]);
   const m = api.clzAutoMapping("comics", parsed.headers);
   assert.deepEqual({ ...m }, { series: 0, issue: 1, publisher: 3, year: 4, variant: 2, format: 5 });
   assert.equal(Object.values(m).includes(6), false, "Added Date is not imported");
@@ -101,13 +101,13 @@ check("CLZ Comics export: headers exactly Series, Issue, Variant Description, Pu
 
 check("CLZ Comics export: every one of the 17 rows maps (series, issue, variant, publisher, year, format); none skipped", () => {
   const { api } = H.bootFile();
-  const land = H.landClz(api, "comics", REAL);
-  assert.equal(REAL_ROWS.length - 1, 17);
+  const land = H.landClz(api, "comics", COMICS_CSV);
+  assert.equal(COMICS_ROWS.length - 1, 17);
   assert.equal(land.rows.length, 17);
   assert.equal(land.rows.filter((r) => r.skip).length, 0);
   const counts = { issue: 0, collected: 0, unknown: 0, digital: 0, variant: 0, noYear: 0, issueCut: 0 };
   land.rows.forEach((r, i) => {
-    const [series, issue, variant, publisher, release, format] = REAL_ROWS[i + 1];
+    const [series, issue, variant, publisher, release, format] = COMICS_ROWS[i + 1];
     const it = r.item;
     const tidy = (s) => s.replace(/\s+/g, " ").trim();
     assert.equal(it.type, "comic");

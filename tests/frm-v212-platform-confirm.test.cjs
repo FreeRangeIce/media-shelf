@@ -106,7 +106,32 @@ const form = (page) => page.evaluate(() => ({ title: document.getElementById("fi
       await page.waitForSelector("[data-game-pick]");
       check(`${width}: Pick another returns to the candidate list, nothing filled, Use disabled`, (await page.$$("[data-game-pick]")).length === 2 && JSON.stringify(await form(page)) === JSON.stringify(before) && await page.isDisabled("#game-match-use"));
       check(`${width}: Pick another sends no new request`, calls.filter((c) => c.startsWith("igdb:")).length === 1, JSON.stringify(calls));
+      // V2.12b list layout: heading like "Add item" with 24px above; Use first, Cancel after, left-aligned, 8px, 44px.
+      const lay = async () => page.evaluate(() => {
+        const r = (e) => e.getBoundingClientRect();
+        const h = document.getElementById("game-match-heading"), t = document.getElementById("modal-title");
+        const hc = getComputedStyle(h), tc = getComputedStyle(t);
+        const row = document.querySelector("#game-match-picker .lookup-actions");
+        const btns = [...row.querySelectorAll("button")];
+        const use = document.getElementById("game-match-use"), cancel = document.getElementById("game-match-cancel"), uc = getComputedStyle(use), cc = getComputedStyle(cancel);
+        const card = document.querySelector("[data-game-pick]");
+        let hover = "";
+        for (const sh of document.styleSheets) for (const rule of sh.cssRules) if (rule.selectorText === "#game-match-picker #game-match-use:not(:disabled):hover") hover = rule.style.backgroundColor + "|" + rule.style.color;
+        return { padTop: hc.paddingTop, size: [hc.fontSize, hc.fontWeight, hc.lineHeight], title: [tc.fontSize, tc.fontWeight, tc.lineHeight], order: btns.map((b) => b.id),
+          useLeft: Math.round(r(use).left), cardLeft: Math.round(r(card).left), gap: Math.round(r(cancel).left - r(use).right), sameRow: Math.round(r(use).top) === Math.round(r(cancel).top),
+          useH: r(use).height, cancelH: r(cancel).height, use: [uc.backgroundColor, uc.color, uc.borderColor], cancel: [cc.backgroundColor, cc.borderColor], hover };
+      });
+      const L0 = await lay();
+      check(`${width}: list heading has 24px above it and matches "Add item" size/weight`, L0.padTop === "24px" && JSON.stringify(L0.size) === JSON.stringify(L0.title), JSON.stringify(L0));
+      check(`${width}: Use this match first, Cancel lookup after, left-aligned with the cards, 8px gap, one row, 44px`, L0.order.join() === "game-match-use,game-match-cancel" && L0.useLeft === L0.cardLeft && L0.gap === 8 && L0.sameRow && L0.useH >= 44 && L0.cancelH >= 44, JSON.stringify(L0));
+      check(`${width}: Use keeps the gray disabled outline until a match is picked; Cancel outlined`, L0.use[0] === "rgba(0, 0, 0, 0)" && L0.use[1] === "rgb(154, 144, 136)" && L0.cancel[0] === "rgba(0, 0, 0, 0)" && L0.cancel[1] !== "rgba(0, 0, 0, 0)", JSON.stringify(L0));
       if (SHOTS) { await page.evaluate(() => document.getElementById("game-match-picker").scrollIntoView({ block: "start" })); await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `pick-another-list-${width}.png`) }); }
+      await page.click('[data-game-pick="0"]');
+      await page.waitForFunction(() => !document.getElementById("game-match-use").disabled);
+      await page.waitForTimeout(350); // let the button's color transition finish
+      const L1 = await lay();
+      check(`${width}: once picked, Use is filled #8B5E3C with white text (hover #7a5234)`, L1.use[0] === "rgb(139, 94, 60)" && L1.use[1] === "rgb(255, 255, 255)" && L1.hover === "rgb(122, 82, 52)|rgb(255, 255, 255)", JSON.stringify(L1));
+      if (SHOTS) { await page.waitForTimeout(100); await page.screenshot({ path: path.join(SHOTS, `pick-another-list-selected-${width}.png`) }); }
       // Yes: fills like Use; the chosen platform stays Switch.
       await page.click('[data-game-pick="0"]'); await page.click("#game-match-use"); await page.click("#game-confirm-yes");
       await page.waitForFunction(() => document.getElementById("game-match-picker").hidden);

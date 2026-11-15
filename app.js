@@ -6068,11 +6068,11 @@
     const noneNote = !anySelectable && selectedPlat
       ? `<p class="game-match-platform-note">None of these are listed for ${escapeHtml(selectedPlat)}. Change the platform or clear it to see them.</p>`
       : "";
-    panel.innerHTML = `<h3 id="game-match-heading" tabindex="-1">Choose your game</h3><p class="field-hint">Check the title, year and platform. Nothing is saved until you press Save.</p>${noneNote}<div class="game-match-list">${gameCandidates.map((c, i) => {
+    panel.innerHTML = `<h3 id="game-match-heading" class="game-match-list-heading" tabindex="-1">Choose your game</h3><p class="field-hint">Check the title, year and platform. Nothing is saved until you press Save.</p>${noneNote}<div class="game-match-list">${gameCandidates.map((c, i) => {
       const matches = gamePlatformMatches(c.platforms, selectedPlat);
       const reason = !matches && selectedPlat ? `<span class="game-match-reason">Not listed for ${escapeHtml(selectedPlat)}.</span>` : "";
       return `<button type="button" class="game-match" data-game-pick="${i}" aria-pressed="false" ${matches ? "" : "disabled"}><span class="game-match-cover">${c.coverUrl ? `<img src="${escapeHtml(c.coverUrl)}" alt="" width="64" height="96" onerror="this.hidden=true;this.nextElementSibling.hidden=false" />` : ""}<span class="game-match-no-cover" ${c.coverUrl ? "hidden" : ""} aria-hidden="true">VIDEO GAME</span></span><span class="game-match-text"><span class="game-match-name">${escapeHtml(c.title)}</span>${reason}<span class="game-match-meta">${c.year || "Year unknown"} · ${escapeHtml(c.platforms.join(", ") || "Platform unknown")}</span></span></button>`;
-    }).join("")}</div><div class="lookup-actions"><button type="button" class="btn btn-outline btn-sm lookup-cancel" id="game-match-cancel">Cancel lookup</button><button type="button" class="btn btn-primary" id="game-match-use" disabled>Use this match</button></div>`;
+    }).join("")}</div><div class="lookup-actions"><button type="button" class="btn btn-primary" id="game-match-use" disabled>Use this match</button><button type="button" class="btn btn-outline btn-sm lookup-cancel" id="game-match-cancel">Cancel lookup</button></div>`;
     $("#game-match-heading").focus();
     setLookupStatus(!anySelectable && selectedPlat
       ? `None of these are listed for ${selectedPlat}. Change the platform or clear it to see them.`

@@ -6095,3 +6095,28 @@ html {
 .game-confirm-actions .btn { min-height: var(--tap); }
 #game-match-picker .game-confirm-yes { background: #8B5E3C; border-color: #8B5E3C; color: #ffffff; }
 #game-match-picker .game-confirm-yes:hover { background: #7a5234; border-color: #7a5234; color: #ffffff; }
+
+/* V2.12b: the IGDB match list (also where Pick another returns). Heading sized like "Add item"
+   with 24px above it; Use this match first, then Cancel lookup, left-aligned like the confirm
+   buttons, 8px apart, 44px targets. Disabled Use keeps its gray outline until a match is picked. */
+#game-match-picker .game-match-list-heading {
+  margin: 0 0 var(--space-2);
+  padding-top: 24px;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  line-height: 1.5;
+}
+#game-match-picker .lookup-actions {
+  justify-content: flex-start;
+  gap: 8px;
+}
+#game-match-picker .lookup-actions .btn,
+#game-match-picker .lookup-actions #game-match-cancel.lookup-cancel {
+  min-height: var(--tap);
+}
+#game-match-picker #game-match-use:not(:disabled):hover {
+  background: #7a5234 !important;
+  border-color: #7a5234 !important;
+  color: #ffffff !important;
+}
+#game-match-picker #game-match-use:not(:disabled) { color: #ffffff !important; }
