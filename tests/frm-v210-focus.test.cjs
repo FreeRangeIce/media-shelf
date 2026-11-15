@@ -1,5 +1,6 @@
-// V2.10: focused fields and cards stay clear of the sticky header, including
-// a simulated keyboard-up visual viewport, at 320 / 344 / 411 / 673.
+// V2.10: focused fields and cards stay clear of the sticky header and the
+// bottom nav/Add, including a simulated keyboard-up visual viewport, at
+// 320 / 344 / 411 / 673. The field plus its focus ring must sit between them.
 "use strict";
 const { strict: assert } = require("assert");
 const http = require("http");
@@ -133,23 +134,86 @@ function check(name, fn) {
       const search = await page.evaluate(() => {
         const el = document.getElementById("search");
         const header = document.querySelector(".frm-site-header, .site-header");
+        const nav = document.querySelector(".frm-bottom-nav");
         const r = el.getBoundingClientRect();
         const h = header.getBoundingClientRect();
-        const pad = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+        const cs = getComputedStyle(el);
+        let ring = 0;
+        if (cs.outlineStyle && cs.outlineStyle !== "none") ring = Math.max(ring, parseFloat(cs.outlineWidth) || 0);
+        const shadows = cs.boxShadow && cs.boxShadow !== "none" ? cs.boxShadow : "";
+        for (const part of shadows.split(/,(?![^(]*\))/)) {
+          const nums = [...part.matchAll(/(-?\d+(?:\.\d+)?)px/g)].map((m) => parseFloat(m[1]));
+          if (nums.length >= 4) {
+            const [x, y, blur, spread] = nums;
+            ring = Math.max(ring, Math.abs(x) + blur + Math.max(spread, 0), Math.abs(y) + blur + Math.max(spread, 0));
+          } else if (nums.length === 3) {
+            const [x, y, blur] = nums;
+            ring = Math.max(ring, Math.abs(x) + blur, Math.abs(y) + blur);
+          }
+        }
+        const vv = window.visualViewport;
+        const viewTop = vv ? vv.offsetTop : 0;
+        const viewBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+        const ncs = nav ? getComputedStyle(nav) : null;
+        const navHidden = !nav || nav.hidden || (ncs && (ncs.display === "none" || ncs.visibility === "hidden" || Number(ncs.opacity) === 0));
+        let navTop = null, overlay = 0;
+        if (!navHidden) {
+          const parts = [nav, nav.querySelector(".frm-nav-add"), nav.querySelector(".frm-nav-add-circle")];
+          let top = Infinity, bottom = -Infinity;
+          for (const node of parts) {
+            if (!node) continue;
+            const b = node.getBoundingClientRect();
+            if (b.width <= 0 && b.height <= 0) continue;
+            top = Math.min(top, b.top);
+            bottom = Math.max(bottom, b.bottom);
+          }
+          if (Number.isFinite(top)) {
+            const overlap = Math.min(bottom, viewBottom) - Math.max(top, viewTop);
+            if (overlap > 0) {
+              overlay = Math.ceil(overlap);
+              navTop = Math.max(top, viewTop);
+            }
+          }
+        }
+        const root = getComputedStyle(document.documentElement);
+        const topPad = parseFloat(root.scrollPaddingTop) || 0;
+        const bottomPad = parseFloat(root.scrollPaddingBottom) || 0;
+        const varNav = root.getPropertyValue("--frm-nav-pad").trim();
         return {
           top: r.top,
           bottom: r.bottom,
           headerBottom: h.bottom,
-          pad,
-          hidden: r.bottom <= h.bottom && r.top < h.bottom,
+          ring,
+          navTop,
+          overlay,
+          viewBottom,
+          topPad,
+          bottomPad,
+          varNav,
+          expectedNavPad: overlay > 0 ? `${overlay + 8}px` : "0px",
         };
       });
-      check(`${width}: focused Search is fully below the header with keyboard up`, () => {
-        assert.equal(search.hidden, false, JSON.stringify(search));
+      check(`${width}: --frm-nav-pad equals visible nav/Add height + 8px (0 if off-screen)`, () => {
+        assert.equal(search.varNav, search.expectedNavPad, JSON.stringify(search));
+        assert.equal(`${search.bottomPad}px`, search.expectedNavPad === "0px" ? "0px" : search.expectedNavPad, JSON.stringify(search));
+      });
+      check(`${width}: focused Search plus its ring clears the header and the nav with keyboard up`, () => {
+        const ring = search.ring || 0;
         assert.ok(
-          search.top >= search.headerBottom - 1 || search.top >= search.pad - 1,
-          "Search top " + search.top + " must clear header " + search.headerBottom + " / pad " + search.pad
+          search.top - ring >= search.headerBottom - 1,
+          "Search+ring top " + (search.top - ring) + " must clear header " + search.headerBottom + " " + JSON.stringify(search)
         );
+        if (search.navTop != null) {
+          assert.ok(
+            search.bottom + ring <= search.navTop + 1,
+            "Search+ring bottom " + (search.bottom + ring) + " must clear nav/Add " + search.navTop + " " + JSON.stringify(search)
+          );
+        } else {
+          assert.ok(
+            search.bottom + ring <= search.viewBottom + 1,
+            "Search+ring must stay in the visible viewport when the nav is off-screen " + JSON.stringify(search)
+          );
+        }
       });
 
       // Restore a taller viewport and walk focus up through cards.

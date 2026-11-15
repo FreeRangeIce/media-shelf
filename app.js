@@ -9074,11 +9074,47 @@
     if (dl) dl.innerHTML = PLATFORM_SUGGESTIONS.map((p) => `<option value="${escapeHtml(p)}"></option>`).join("");
   }
 
+  function visibleViewportBounds() {
+    const vv = window.visualViewport;
+    if (vv) return { top: vv.offsetTop, bottom: vv.offsetTop + vv.height };
+    return { top: 0, bottom: window.innerHeight };
+  }
+
   function syncStickyHeaderPad() {
     const header = document.querySelector(".frm-site-header, .site-header");
-    if (!header) return;
-    const h = Math.ceil(header.getBoundingClientRect().height);
-    document.documentElement.style.setProperty("--frm-sticky-pad", `${h + 8}px`);
+    if (header) {
+      const h = Math.ceil(header.getBoundingClientRect().height);
+      document.documentElement.style.setProperty("--frm-sticky-pad", `${h + 8}px`);
+    }
+    syncNavPad();
+  }
+
+  /** Visible overlap of the bottom nav and raised Add button with the visual
+   *  viewport. 0 when the nav is hidden or fully off-screen (e.g. under a keyboard). */
+  function navOverlayHeight() {
+    const nav = document.querySelector(".frm-bottom-nav");
+    if (!nav) return 0;
+    const cs = getComputedStyle(nav);
+    if (nav.hidden || cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return 0;
+    const view = visibleViewportBounds();
+    const parts = [nav, nav.querySelector(".frm-nav-add"), nav.querySelector(".frm-nav-add-circle")];
+    let top = Infinity, bottom = -Infinity;
+    for (const el of parts) {
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 && r.height <= 0) continue;
+      top = Math.min(top, r.top);
+      bottom = Math.max(bottom, r.bottom);
+    }
+    if (!Number.isFinite(top)) return 0;
+    const overlap = Math.min(bottom, view.bottom) - Math.max(top, view.top);
+    return overlap > 0 ? Math.ceil(overlap) : 0;
+  }
+
+  function syncNavPad() {
+    const overlay = navOverlayHeight();
+    const pad = overlay > 0 ? overlay + 8 : 0;
+    document.documentElement.style.setProperty("--frm-nav-pad", `${pad}px`);
   }
 
   function revealFocusedUnderHeader() {
@@ -9091,11 +9127,12 @@
 
   function watchStickyHeaderPad() {
     const header = document.querySelector(".frm-site-header, .site-header");
-    if (!header) return;
+    const nav = document.querySelector(".frm-bottom-nav");
     syncStickyHeaderPad();
     if (typeof ResizeObserver === "function") {
       const ro = new ResizeObserver(() => syncStickyHeaderPad());
-      ro.observe(header);
+      if (header) ro.observe(header);
+      if (nav) ro.observe(nav);
     }
     window.addEventListener("resize", syncStickyHeaderPad);
     document.addEventListener("focusin", revealFocusedUnderHeader);

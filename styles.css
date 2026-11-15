@@ -5962,11 +5962,14 @@ body.modal-open .toast {
 
 /* ========== V2.10 (badge name mapping, text size, Wii U mark, sticky focus pad) ========== */
 
-/* Keep focused fields and cards clear of the sticky header. --frm-sticky-pad is
-   the measured header height plus 8px, kept in sync by a ResizeObserver. The
-   header itself is unchanged (no compacting). Duo X clearance is unchanged. */
+/* Keep focused fields and cards clear of the sticky header and the bottom nav.
+   --frm-sticky-pad is the measured header height plus 8px; --frm-nav-pad is the
+   visible bottom nav/Add overlap plus 8px (0 when the nav is hidden or off-screen).
+   Both are kept in sync by a ResizeObserver, including the visualViewport.
+   The header itself is unchanged (no compacting). Duo X clearance is unchanged. */
 html {
   scroll-padding-top: var(--frm-sticky-pad, 0px);
+  scroll-padding-bottom: var(--frm-nav-pad, 0px);
 }
 
 /* Text badges: 9px minimum, bold, up to 3 characters, centered in the 24px disc. */
