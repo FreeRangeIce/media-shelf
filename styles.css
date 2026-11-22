@@ -6434,9 +6434,9 @@ html {
    Square marks (GameCube, Steam, original Xbox) sit in the existing 24px disc
    with an 18px image. Wordmarks (Switch 2, Series X|S, Xbox One, Xbox 360)
    stay 24px tall with the same rgba(0,0,0,.55) scrim and 8px cover inset, but
-   size the mark by height (12px) with a max width of 44px so 360 and ONE stay
-   readable. The disc becomes a pill. PlayStation, Switch, Wii and Wii U are
-   unchanged. */
+   size the mark by height so cap height is about 9px, with a max width of 44px,
+   matching One and 360. The disc becomes a pill. PlayStation, Switch, Wii and
+   Wii U are unchanged. */
 .platform-badge.platform-badge-square img,
 .platform-badge-square img {
   max-width: 18px;
@@ -6456,8 +6456,19 @@ html {
 .platform-badge.platform-badge-wordmark img,
 .platform-badge-wordmark img {
   max-width: 44px;
-  max-height: 12px;
+  max-height: 9px;
   width: auto;
-  height: 12px;
+  height: 9px;
   object-fit: contain;
+}
+
+/* ========== V2.16.1 (Oholiab approve-with-fixes) ==========
+   Wordmark cap height is 9px (see the V2.16 wordmark img rule). Switch 2 and
+   Series X|S use the same 24px pill as Xbox One and Xbox 360. The Series badge
+   is the trimmed X|S-only mark (Micah-approved). The original Xbox X is nudged so
+   it reads centered in the disc. Scrim, 8px inset, and corner are unchanged. */
+.platform-badge.platform-badge-xbox img,
+.platform-badge-xbox img {
+  /* Optical centering: in the 24px disc the mark read slightly low and left. */
+  transform: translate(0.6px, -0.6px);
 }

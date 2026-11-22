@@ -1,4 +1,4 @@
-// V2.16: Micah-supplied platform marks for GameCube, Steam, Switch 2, and each Xbox.
+// V2.16.1: Micah-supplied platform marks for GameCube, Steam, Switch 2, and each Xbox.
 "use strict";
 const { strict: assert } = require("assert");
 const fs = require("fs");
@@ -11,7 +11,9 @@ const css = fs.readFileSync(path.join(root, "styles.css"), "utf8");
 const sw = fs.readFileSync(path.join(root, "sw.js"), "utf8");
 const sources = fs.readFileSync(path.join(root, "assets/platforms/SOURCES.md"), "utf8");
 const v216 = css.slice(css.indexOf("========== V2.16"));
+const v2161 = css.slice(css.indexOf("========== V2.16.1"));
 assert.ok(v216.length > 200, "V2.16 CSS block missing");
+assert.ok(v2161.length > 100, "V2.16.1 CSS block missing");
 
 let passed = 0;
 function check(name, fn) {
@@ -44,16 +46,16 @@ const NEW_MARKS = [
   ["Xbox 360", "xbox-360.svg"],
   ["Xbox One", "xbox-one.svg"],
   ["Xbox", "xbox-original.svg"],
-  ["Series X|S", "xbox-series-xs.svg"],
+  ["Series X|S", "xbox-series-xs-trimmed.svg"],
   ["Switch 2", "switch2.svg"],
   ["Steam", "steam.svg"],
 ];
 
-check("APP_VERSION 2.16 and cache media-shelf-v2.16, no suffixes", () => {
-  assert.match(app, /const APP_VERSION = "2\.16";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.16";/);
-  assert.doesNotMatch(app, /const APP_VERSION = "2\.16-/);
-  assert.doesNotMatch(sw, /media-shelf-v2\.16-/);
+check("APP_VERSION 2.16.1 and cache media-shelf-v2.16.1, no suffixes", () => {
+  assert.match(app, /const APP_VERSION = "2\.16.1";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.16.1";/);
+  assert.doesNotMatch(app, /const APP_VERSION = "2\.16.1-/);
+  assert.doesNotMatch(sw, /media-shelf-v2\.16.1-/);
 });
 
 check("each of the 7 platforms resolves to its own file; no shared xbox.svg; files exist", () => {
@@ -139,7 +141,7 @@ check("SOURCES.md records Micah-supplied 2026-11-22 originals; SW precaches the 
   assert.match(sources, /steam\.png/);
 });
 
-check("wordmarks size by height at 12px with max-width 44px; squares stay in the 24px disc at 18px", () => {
+check("wordmarks size by height at 9px with max-width 44px; squares stay in the 24px disc at 18px", () => {
   assert.match(v216, /platform-badge-wordmark/);
   assert.match(v216, /platform-badge-square/);
   const word = v216.match(/\.platform-badge\.platform-badge-wordmark\s*\{[^}]+\}/)[0];
@@ -148,7 +150,7 @@ check("wordmarks size by height at 12px with max-width 44px; squares stay in the
   assert.match(word, /border-radius:\s*12px/);
   const wordImg = v216.match(/\.platform-badge-wordmark img\s*\{[^}]+\}/)[0];
   assert.match(wordImg, /max-width:\s*44px/);
-  assert.match(wordImg, /height:\s*12px/);
+  assert.match(wordImg, /height:\s*9px/);
   const squareImg = v216.match(/\.platform-badge-square img\s*\{[^}]+\}/)[0];
   assert.match(squareImg, /width:\s*18px/);
   assert.match(squareImg, /height:\s*18px/);
@@ -164,10 +166,63 @@ check("wordmarks size by height at 12px with max-width 44px; squares stay in the
   const cube = B.platformBadgeMarkup({ type: "game", platform: "GameCube" });
   assert.match(one, /platform-badge-wordmark/);
   assert.match(one, /width="44"/);
-  assert.match(one, /height="12"/);
+  assert.match(one, /height="9"/);
   assert.match(cube, /platform-badge-square/);
   assert.match(cube, /width="18"/);
   assert.match(cube, /height="18"/);
+  const sw2 = B.platformBadgeMarkup({ type: "game", platform: "Switch 2" });
+  const xs = B.platformBadgeMarkup({ type: "game", platform: "Series X|S" });
+  assert.match(sw2, /platform-badge-wordmark/);
+  assert.match(sw2, /switch2\.svg/);
+  assert.match(sw2, /height="9"/);
+  assert.match(xs, /platform-badge-wordmark/);
+  assert.match(xs, /xbox-series-xs-trimmed\.svg/);
+  assert.doesNotMatch(xs, /xbox-series-xs-full\.svg/);
+  assert.match(xs, /height="9"/);
+});
+
+check("Series X|S uses the trimmed X|S-only mark; full mark is in the repo but unmapped", () => {
+  const trimmed = path.join(root, "assets/platforms/xbox-series-xs-trimmed.svg");
+  const full = path.join(root, "assets/platforms/xbox-series-xs-full.svg");
+  assert.ok(fs.existsSync(trimmed));
+  assert.ok(fs.existsSync(full));
+  const html = B.platformBadgeMarkup({ type: "game", platform: "Series X|S" });
+  assert.match(html, /xbox-series-xs-trimmed\.svg/);
+  assert.doesNotMatch(html, /xbox-series-xs-full\.svg/);
+  assert.match(app, /file:\s*"xbox-series-xs-trimmed\.svg"/);
+  assert.doesNotMatch(app, /file:\s*"xbox-series-xs-full\.svg"/);
+  assert.match(sources, /xbox-series-xs-full\.svg/);
+  assert.match(sources, /Micah-approved 2026-11-22/);
+  assert.match(sources, /alteration of Microsoft's mark/);
+});
+
+check("xbox.svg is retired from the precache; the file is kept", () => {
+  assert.doesNotMatch(sw, /\.\/assets\/platforms\/xbox\.svg/);
+  assert.ok(fs.existsSync(path.join(root, "assets/platforms/xbox.svg")));
+  assert.match(sources, /retired/i);
+  assert.match(sw, /\.\/assets\/platforms\/xbox-original\.svg/);
+});
+
+check("SOURCES records trademark owners, source sha256, and unknown upstream origin", () => {
+  assert.match(sources, /Upstream origin \(where Micah obtained each file\) not recorded\./);
+  assert.match(sources, /Nintendo/);
+  assert.match(sources, /Microsoft/);
+  assert.match(sources, /Valve Corporation/);
+  assert.match(sources, /af63ee1cb5210028645f2b1cabaa129029687bc1ef132c7ee824e212abe99fe4/);
+  assert.match(sources, /bb63f872b1f512688638b2735667ae9165530c5f9c679da6be74def6f16ae4bf/);
+  assert.match(sources, /743c46e4bccfdf916b1b8a206efd55944580f0ecaaf917d616fc549afaba17ca/);
+  assert.match(sources, /d4220ffc91e34f15147e3458cd327abbd111cac24219b558bb1ec9bb0e017b80/);
+  assert.match(sources, /3e7f41e6e9cc04cf29002d05efd334bdd14ca23d84a945ec5dfb2d85344f6759/);
+  assert.match(sources, /e02421331385f3a4c7b5ae0e90790baec281d47d4f481250882ed66d476ed7ef/);
+  assert.match(sources, /9122acb9d4e64dc209d9670e0d7fba353a64789756782be812638b9758499554/);
+});
+
+check("original Xbox X is optically nudged in the disc", () => {
+  const html = B.platformBadgeMarkup({ type: "game", platform: "Xbox" });
+  assert.match(html, /platform-badge-xbox/);
+  assert.match(html, /xbox-original\.svg/);
+  assert.match(v2161, /platform-badge-xbox/);
+  assert.match(v2161, /translate\(0\.6px,\s*-0\.6px\)/);
 });
 
 console.log(passed + " checks passed");

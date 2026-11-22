@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6, 2.7…; bump APP_VERSION and
-  // the service worker cache name together (media-shelf-v2.16) so the Duo drops old files.
-  const APP_VERSION = "2.16";
+  // the service worker cache name together (media-shelf-v2.16.1) so the Duo drops old files.
+  const APP_VERSION = "2.16.1";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -2537,7 +2537,7 @@
     Xbox: { file: "xbox-original.svg", square: true, label: "Xbox" },
     "Xbox 360": { file: "xbox-360.svg", wordmark: true, label: "Xbox 360" },
     "Xbox One": { file: "xbox-one.svg", wordmark: true, label: "Xbox One" },
-    "Series X|S": { file: "xbox-series-xs.svg", wordmark: true, label: "Xbox Series X|S" },
+    "Series X|S": { file: "xbox-series-xs-trimmed.svg", wordmark: true, label: "Xbox Series X|S" },
     Switch: { file: "switch.svg", label: "Nintendo Switch" },
     "Switch 2": { file: "switch2.svg", wordmark: true, label: "Switch 2" },
     GameCube: { file: "gamecube.svg", square: true, label: "GameCube" },
@@ -2676,10 +2676,11 @@
         imgSize = ` width="18" height="7"`;
       } else if (meta.wordmark) {
         extraClass = " platform-badge-wordmark";
-        imgSize = ` width="44" height="12"`;
+        imgSize = ` width="44" height="9"`;
       } else if (meta.square) {
         extraClass = " platform-badge-square";
         imgSize = ` width="18" height="18"`;
+        if (meta.file === "xbox-original.svg") extraClass += " platform-badge-xbox";
       }
       return `<span class="platform-badge${extraClass}" title="${title}"><img src="./assets/platforms/${escapeHtml(meta.file)}" alt=""${imgSize}></span>`;
     }

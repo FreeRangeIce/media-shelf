@@ -13,9 +13,9 @@ let passed = 0;
 function check(name, fn) { fn(); passed++; console.log('PASS ' + name); }
 assert.ok(v28.length > 200, 'V2.8 CSS block missing');
 
-check('APP_VERSION 2.16 and cache media-shelf-v2.16, no suffixes', () => {
-  assert.match(app, /const APP_VERSION = "2\.16";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.16";/);
+check('APP_VERSION 2.16.1 and cache media-shelf-v2.16.1, no suffixes', () => {
+  assert.match(app, /const APP_VERSION = "2\.16.1";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.16.1";/);
 });
 check('item 1: grid card markup has no Base game pill; detail sheet keeps Base game', () => {
   const tile = tt.slice(tt.indexOf('function tileHtml'), tt.indexOf('function cardHtml'));
@@ -164,7 +164,7 @@ check('follow-up 6: platform badges use official assets or text fallbacks; SW BG
   assert.match(v28, /right:\s*8px/);
   assert.match(v28, /bottom:\s*8px/);
   assert.match(v28, /background:\s*rgba\(0,\s*0,\s*0,\s*0\.55\)/);
-  assert.match(sw, /\.\/assets\/platforms\/xbox\.svg/);
+  assert.doesNotMatch(sw, /\.\/assets\/platforms\/xbox\.svg/);
   assert.doesNotMatch(sw, /boardgamegeek|geekdo/);
   const fetchHandler = sw.slice(sw.indexOf('self.addEventListener("fetch"'));
   assert.doesNotMatch(fetchHandler, /NEVER_HANDLE_HOSTS[\s\S]*bgg|geekdo|boardgamegeek/i);

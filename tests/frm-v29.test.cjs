@@ -22,11 +22,11 @@ function check(name, fn) {
   console.log("PASS", name);
 }
 
-check("APP_VERSION 2.16 and cache media-shelf-v2.16, no suffixes", () => {
-  assert.match(app, /const APP_VERSION = "2\.16";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.16";/);
+check("APP_VERSION 2.16.1 and cache media-shelf-v2.16.1, no suffixes", () => {
+  assert.match(app, /const APP_VERSION = "2\.16.1";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.16.1";/);
   assert.doesNotMatch(app, /const APP_VERSION = "2\.12-/);
-  assert.doesNotMatch(sw, /media-shelf-v2\.16-/);
+  assert.doesNotMatch(sw, /media-shelf-v2\.16.1-/);
 });
 
 check("item 1: official marks are white monochrome; text badges for the rest; Micah personal-use note", () => {
@@ -64,7 +64,7 @@ check("item 1: official marks are white monochrome; text badges for the rest; Mi
   assert.match(app, /Steam:\s*\{\s*file:\s*"steam\.svg"/);
   assert.match(app, /"Switch 2":\s*\{\s*file:\s*"switch2\.svg"/);
   assert.match(app, /GameCube:\s*\{\s*file:\s*"gamecube\.svg"/);
-  assert.match(sw, /\.\/assets\/platforms\/xbox\.svg/);
+  assert.doesNotMatch(sw, /\.\/assets\/platforms\/xbox\.svg/);
   assert.match(sw, /\.\/assets\/platforms\/wiiu\.svg/);
   assert.doesNotMatch(sw, /boardgamegeek|geekdo/);
 });

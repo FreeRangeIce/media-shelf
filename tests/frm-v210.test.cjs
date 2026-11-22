@@ -48,11 +48,11 @@ function hexToRgb(hex) {
 
 const B = loadBadgeFns();
 
-check("APP_VERSION 2.16 and cache media-shelf-v2.16, no suffixes", () => {
-  assert.match(app, /const APP_VERSION = "2\.16";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.16";/);
+check("APP_VERSION 2.16.1 and cache media-shelf-v2.16.1, no suffixes", () => {
+  assert.match(app, /const APP_VERSION = "2\.16.1";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.16.1";/);
   assert.doesNotMatch(app, /const APP_VERSION = "2\.12-/);
-  assert.doesNotMatch(sw, /media-shelf-v2\.16-/);
+  assert.doesNotMatch(sw, /media-shelf-v2\.16.1-/);
   assert.doesNotMatch(app, /const APP_VERSION = "2\.9";/);
   assert.doesNotMatch(sw, /const CACHE = "media-shelf-v2\.9";/);
 });
@@ -157,7 +157,7 @@ check("badge markup: PSN / long names / lowercase share one logo per family", ()
     ["ps4", "playstation.svg"],
     ["Nintendo Switch", "switch.svg"],
     ["Switch", "switch.svg"],
-    ["Xbox Series X|S", "xbox-series-xs.svg"],
+    ["Xbox Series X|S", "xbox-series-xs-trimmed.svg"],
     ["Xbox One", "xbox-one.svg"],
     ["Xbox 360", "xbox-360.svg"],
     ["Xbox", "xbox-original.svg"],
@@ -267,7 +267,7 @@ check("badgePlatformKey is not used to write storage; cache name scheme unchange
   assert.match(ttSrc, /function dominantHueFromPixels/);
   assert.match(ttSrc, /sat < 0\.20/);
   assert.match(ttSrc, /function darkenRgbForWhiteText/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.16"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.16.1"/);
 });
 
 console.log(`${passed}/${passed} passed (v2.10 badge mapping + text size + Wii U + pills + scroll pad)`);
