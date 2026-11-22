@@ -295,7 +295,7 @@ check("games: barcode -> one IGDB match on the platform auto-fills; two -> Needs
       assert.equal(it.enrich, "pick");
       assert.equal(it.igdbId, "");
     }
-    assert.equal(b.fetch.calls.some((u) => /upcitemdb/.test(u)), false, "UPCitemdb only when Wikidata misses");
+    assert.equal(b.fetch.calls.some((u) => /upcitemdb/.test(u)), false, "UPCitemdb is never asked");
   }
   const t = bootWith([[/\/game\/search\?title=/, () => ({ body: { candidates: igdb(1) } })]]);
   t.seed([{ ...BASE, id: "g2", type: "game", title: "Halo 3", platform: "Xbox 360", status: "want", sources: ["csv"] }]);
@@ -306,24 +306,26 @@ check("games: barcode -> one IGDB match on the platform auto-fills; two -> Needs
   assert.equal(t.stored()[0].status, "want", "Want stays Want (Wishlist)");
 });
 
-check("comics: series + issue + year is a title search -> Needs a pick, never auto-filled; no number -> Needs lookup", async () => {
-  const b = bootWith([[/frm-gcd\.freerangeice\.workers\.dev\/comic\?/, (u) => ({ body: { match: { series: "Harbor Patrol", issue: "812", year: 2004, publisher: "Northwind Press", writer: ["Ada Quill"], artist: [], sourceId: "gcd-issue-1", sourceName: "Grand Comics Database", sourceUrl: "https://www.comics.org/issue/1/" }, variants: [{ sourceId: "gcd-issue-1", label: "Direct", variant: false, image: "https://static.metron.cloud/x.jpg" }], covers: [{ sourceId: "gcd-issue-1", url: "https://static.metron.cloud/x.jpg", label: "Direct", variant: false }], total: 1 } })]]);
+check("comics: a single Metron cover auto-fills empty cover fields; CSV label is kept; no number -> Needs lookup", async () => {
+  const b = bootWith([[/frm-gcd\.freerangeice\.workers\.dev\/comic\?/, (u) => ({ body: { match: { series: "Harbor Patrol", issue: "812", year: 2004, publisher: "Northwind Press", writer: ["Ada Quill"], artist: [], sourceId: "gcd-issue-1", sourceName: "Grand Comics Database", sourceUrl: "https://www.comics.org/issue/1/" }, variants: [{ sourceId: "gcd-issue-1", label: "Direct", variant: false, image: "https://static.metron.cloud/x.jpg" }], covers: [{ sourceId: "gcd-issue-1", url: "https://static.metron.cloud/x.jpg", label: "Direct", variant: false }], total: 1, imagesFrom: "metron" } })]]);
   const { api } = b;
   const land = H.landClz(api, "comics", fs.readFileSync(path.join(FIX, "clz-comics-fixture.csv"), "utf8"));
   const rows = [land.rows[1].item, land.rows[9].item].map((it, i) => ({ ...it, id: `c${i}` })); // 812B, and a HC with no number
   b.seed(rows);
   const q = await queueAndRun(b, ["c0", "c1"]);
   const [c0, c1] = b.stored();
-  assert.equal(c0.enrich, "pick");
-  assert.equal(c0.coverUrl, "", "even one cover is not attached from a title search");
-  assert.equal(c0.writer, "");
-  assert.equal(c0.coverLabel, "Late Reprint", "the CSV variant stays");
+  assert.equal(c0.coverUrl, "https://static.metron.cloud/x.jpg", "a single clear cover is attached");
+  assert.equal(c0.coverSource, "comiclookup");
+  assert.equal(c0.enrich, undefined);
+  assert.equal(c0.writer, "", "writer is not a cover field and is not filled");
+  assert.equal(c0.coverLabel, "Late Reprint", "an existing CSV variant label is not overwritten");
   assert.equal(c1.enrich, "lookup");
+  assert.equal(c1.coverUrl || "", "");
   const asked = b.fetch.calls.filter((u) => /\/comic\?/.test(u));
   assert.equal(asked.length, 1, "the comic without a number is never sent");
   assert.match(asked[0], /issue=812(&|$)/, "CLZ's cover letter is dropped for the lookup");
   assert.match(asked[0], /year=2004/);
-  assert.deepEqual([q.pick, q.lookup], [1, 1]);
+  assert.deepEqual([q.enriched, q.lookup], [1, 1]);
 });
 
 check("too little data or no source -> Needs lookup with no request; a movie barcode alone is never sent", async () => {
@@ -354,42 +356,19 @@ check("errors leave the row as imported: one retry, then failed + Needs lookup; 
 });
 
 /* ---------- 5. Daily caps: pause, keep the place, resume on the next open ---------- */
-check("UPCitemdb local cap (100/day): pause with the item still first, nothing asked, resume after midnight on reopen", async () => {
+check("UPCitemdb is never requested; a Wikidata miss falls through to a title search", async () => {
   const routes = [
     [/query\.wikidata\.org/, () => ({ body: { results: { bindings: [] } } })],
     [/upcitemdb/, () => ({ body: { items: [{ title: "Halo 3 Xbox 360" }] } })],
     [/\/game\/search\?title=/, () => ({ body: { candidates: [{ igdbId: 7, title: "Halo 3", creator: "Bungie", year: 2007, platforms: ["Xbox 360"], coverUrl: "" }] } })],
   ];
   const b = bootWith(routes);
-  const today = new Date(b.clock.now);
-  const day = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  b.store.set("freerangemedia-enrich-caps", JSON.stringify({ day, n: { upcitemdb: 100 } }));
   b.seed([{ ...BASE, id: "u1", type: "game", title: "Halo 3", platform: "Xbox 360", barcode: "882224479325" }, { ...BASE, id: "u2", type: "game", title: "Halo 3", platform: "Xbox 360", barcode: "882224479325" }]);
   const q = await queueAndRun(b, ["u1", "u2"]);
-  assert.equal(q.paused, true);
-  assert.equal(q.reason, "UPCitemdb");
-  assert.deepEqual([...q.ids], ["u1", "u2"], "position kept: the capped item stays first");
-  assert.ok(q.until > b.clock.now);
-  assert.equal(b.fetch.calls.filter((u) => /upcitemdb/.test(u)).length, 0, "never asked past the cap");
-  assert.equal(b.api.enrichSummaryText(q), "", "all zero: no counts line; the pause has its own two lines");
-  const [p1, p2] = b.api.enrichPauseLines(q);
-  assert.equal(p1, "Paused: UPCitemdb’s daily limit.");
-  assert.match(p2, /^2 items will continue when you open the app after (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{1,2}:\d{2}\s?(AM|PM)\.$/);
-  assert.ok(p2.endsWith(`${b.api.enrichResumeClock(q.until)}.`), "computed from the real resume time");
-  // Reopen before the cap ends: still paused, no request.
-  const early = bootWith(routes, { store: b.store, clock: { ...H.makeClock(b.clock.now + 60000) } });
-  early.api.resumeEnrichOnOpen();
-  await new Promise((r) => setTimeout(r, 20));
-  assert.equal(early.fetch.calls.length, 0);
-  // Reopen the next day: resumes from u1 and finishes.
-  const next = bootWith(routes, { store: b.store, clock: H.makeClock(q.until + 1000) });
-  next.api.resumeEnrichOnOpen();
-  for (let i = 0; i < 50 && next.api.readEnrichQueue().ids.length; i++) await new Promise((r) => setTimeout(r, 10));
-  const done = next.api.readEnrichQueue();
-  assert.equal(done.ids.length, 0);
-  assert.equal(done.enriched, 2);
-  assert.equal(next.fetch.calls.filter((u) => /upcitemdb/.test(u)).length, 2);
-  assert.ok(next.stored().every((i) => i.igdbId === "7"));
+  assert.equal(b.fetch.calls.filter((u) => /upcitemdb/.test(u)).length, 0, "UPCitemdb is never asked");
+  assert.equal(q.paused, false);
+  assert.equal(q.pick, 2, "title search with one result is Needs a pick");
+  assert.ok(b.stored().every((i) => i.enrich === "pick" && !i.igdbId));
 });
 
 check("a relay 429 with Retry-After pauses until then; the comic relay's busy answer too; never retried in a loop", async () => {
@@ -412,8 +391,8 @@ check("a relay 429 with Retry-After pauses until then; the comic relay's busy an
 check("games: a CLZ platform name (Nintendo Switch, PlayStation 5) still matches IGDB's platform for a single barcode match", async () => {
   for (const [plat, igdbPlat] of [["Nintendo Switch", "Nintendo Switch"], ["PlayStation 5", "PlayStation 5"], ["PS Vita", "PlayStation Vita"]]) {
     const b = bootWith([
-      [/query\.wikidata\.org/, () => ({ body: { results: { bindings: [] } } })],
-      [/upcitemdb/, () => ({ body: { items: [{ title: `Some Game (${igdbPlat})` }] } })],
+      [/query\.wikidata\.org/, () => ({ body: { results: { bindings: [{ itemLabel: { value: "Some Game" }, platLabel: { value: igdbPlat } }] } } })],
+      [/upcitemdb/, () => ({ body: { items: [{ title: `SHOULD NOT BE ASKED (${igdbPlat})` }] } })],
       [/\/game\/search\?title=/, () => ({ body: { candidates: [{ igdbId: 9, title: "Some Game", creator: "Studio", year: 2020, platforms: [igdbPlat], coverUrl: "" }] } })],
     ]);
     b.seed([{ ...BASE, id: "p1", type: "game", title: "Some Game", platform: plat, barcode: "811949030023", format: "physical" }]);
@@ -431,17 +410,17 @@ check("games: a CLZ platform name (Nintendo Switch, PlayStation 5) still matches
   }
 });
 
-check("a UPCitemdb 429 names UPCitemdb in the pause and keeps every item queued", async () => {
+check("UPCitemdb is not asked even when Wikidata misses on every queued game", async () => {
   const b = bootWith([
     [/query\.wikidata\.org/, () => ({ body: { results: { bindings: [] } } })],
     [/upcitemdb/, () => ({ status: 429, headers: { "Retry-After": "86400" }, body: { code: "TOO_FAST" } })],
+    [/\/game\/search\?title=/, () => ({ body: { candidates: [] } })],
   ]);
   b.seed([{ ...BASE, id: "q1", type: "game", title: "Halo 3", platform: "Xbox 360", barcode: "882224479325" }, { ...BASE, id: "q2", type: "game", title: "Celeste", platform: "Switch", barcode: "811949030023" }]);
   const q = await queueAndRun(b, ["q1", "q2"]);
-  assert.equal(q.paused, true);
-  assert.equal(q.reason, "UPCitemdb");
-  assert.deepEqual([...q.ids], ["q1", "q2"]);
-  assert.equal(b.fetch.calls.filter((u) => /upcitemdb/.test(u)).length, 1, "one request, then stop");
+  assert.equal(b.fetch.calls.filter((u) => /upcitemdb/.test(u)).length, 0, "UPCitemdb is never asked");
+  assert.equal(q.paused, false);
+  assert.equal(q.lookup, 2, "a title miss is Needs lookup, and the queue was not paused by UPCitemdb");
 });
 
 check("short busy pauses resume in-session at most 3 times in a row, then wait for Resume or the next open", async () => {
@@ -474,9 +453,9 @@ check("paused: two plain lines from the real resume time; one item reads singula
   const { api } = H.bootFile();
   const until = Date.parse("2026-11-16T09:05:00-08:00");
   const real = Date.now;
-  const q = { ...api.readEnrichQueue(), ids: ["a"], total: 8, paused: true, reason: "UPCitemdb", until: Date.now() + 86400000 };
+  const q = { ...api.readEnrichQueue(), ids: ["a"], total: 8, paused: true, reason: "Open Library", until: Date.now() + 86400000 };
   const lines = api.enrichPauseLines(q);
-  assert.equal(lines[0], "Paused: UPCitemdb’s daily limit.");
+  assert.equal(lines[0], "Paused: Open Library’s daily limit.");
   assert.match(lines[1], /^1 item will continue when you open the app after /);
   assert.equal(api.enrichResumeClock(until), new Date(until).toLocaleDateString("en-US", { weekday: "short" }) + " " + new Date(until).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }));
   assert.match(api.enrichResumeClock(until), /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{1,2}:\d{2}\s?(AM|PM)$/);

@@ -3921,7 +3921,13 @@
 
   const LOOKUP_FETCH_MS = 15000;
 
-  /** Retry-After as an epoch ms, or 0 if the header is missing or unreadable. */
+  /**
+   * Retry-After as an epoch ms, or 0 if the header is missing or unreadable.
+   * Cross-origin answers hide Retry-After unless the source sends
+   * Access-Control-Expose-Headers: Retry-After. Open Library, Google Books and
+   * MusicBrainz do not, so in the browser headers.get("Retry-After") is null and
+   * the enrichment queue falls back to 60 seconds (see enrichIssueOutcome).
+   */
   function retryAfterUntil(res) {
     if (!res || !res.headers) return 0;
     const raw = res.headers.get("Retry-After");
@@ -5056,17 +5062,7 @@
         if (title) return { title, rawTitle: String(rows[0].itemLabel.value), platform, platforms, barcodeSource: "Wikidata" };
       }
     }
-    const upc = await fetchGameBarcodeJson(
-      "https://api.upcitemdb.com/prod/trial/lookup?upc=" + encodeURIComponent(digits), signal
-    );
-    const item = upc && Array.isArray(upc.items) ? upc.items[0] : null;
-    if (item && item.title) {
-      const blob = `${item.title} ${item.description || ""} ${item.brand || ""}`;
-      const title = usableGameTitle(item.title);
-      const platform = mapExternalPlatform(blob);
-      if (title) return { title, rawTitle: String(item.title), platform, platforms: platform ? [platform] : [], barcodeSource: "UPCitemdb" };
-    }
-    return null; // Only the existing Wikidata + UPCitemdb barcode-to-title step is used.
+    return null; // Barcode-to-title is Wikidata only; a miss falls through to a title search.
   }
 
   function clearCoverChoices() {
@@ -6104,16 +6100,9 @@
     }
     if (res.status === 429) {
       const header = res.headers.get("Retry-After"), resetRaw = res.headers.get("X-RateLimit-Reset"), reset = Number(resetRaw);
-      let seconds;
-      // UPCitemdb: a readable X-RateLimit-Reset is the stop time; never retry earlier
-      // (a shorter Retry-After must not win). Unix seconds, or ms if the value is already large.
-      if (key === "https://api.upcitemdb.com" && Number.isFinite(reset) && reset > 0) {
-        const until = reset > 1e12 ? reset : reset * 1000;
-        seconds = Math.max(1, Math.ceil((until - Date.now()) / 1000));
-      } else {
-        const n = header && /^\d+$/.test(header) ? Number(header) : header ? (Date.parse(header) - Date.now()) / 1000 : reset ? (reset * 1000 - Date.now()) / 1000 : 60;
-        seconds = Number.isFinite(n) ? Math.max(1, Math.ceil(n)) : 60;
-      }
+      // If Retry-After isn't readable (missing, or hidden by CORS), wait 60 seconds.
+      const n = header && /^\d+$/.test(header) ? Number(header) : header ? (Date.parse(header) - Date.now()) / 1000 : reset ? (reset * 1000 - Date.now()) / 1000 : 60;
+      const seconds = Number.isFinite(n) ? Math.max(1, Math.ceil(n)) : 60;
       gameCooldowns.set(key, Date.now() + seconds * 1000);
       throw new Error(`This source is limiting requests. Try again in ${seconds} seconds. What you typed is kept.`);
     }
@@ -6122,27 +6111,7 @@
     catch { throw new Error("Game lookup returned unreadable details. Try again, or enter the details yourself. What you typed is kept."); }
   }
   async function fetchGameBarcodeJson(url, signal) {
-    const isUpc = /^https:\/\/api\.upcitemdb\.com\//.test(url);
-    enrichGuardUpc(url);
-    try {
-      const data = await gameJson(url, signal);
-      if (isUpc) enrichNoteUpcCall();
-      return data;
-    } catch (err) {
-      if (!isUpc) throw err;
-      if (err instanceof EnrichCap) throw err;
-      // A 429 is a real answer (pause until the reset). Count it, then let the cooldown stand.
-      if (err && /limiting requests/i.test(err.message)) {
-        enrichNoteUpcCall();
-        throw err;
-      }
-      // CORS or network-type failure: the browser never gives us a usable body (UPCitemdb
-      // answers Access-Control-Allow-Origin: https://www.upcitemdb.com). Do not count the
-      // daily cap, do not pause, and treat it as no match so enrichment falls through.
-      if (signal && signal.aborted) return null;
-      if (err && /couldn’t connect/i.test(err.message)) return null;
-      throw err;
-    }
+    return gameJson(url, signal);
   }
   async function runGameLookup(byTitle) {
     if (gameBusy || lookupBusy || els.fieldType.value !== "game") return;
@@ -9326,32 +9295,32 @@
    * looked up one at a time with the lookups already wired into the app, after the import's Undo
    * window. The import itself never waits and its rows land exactly as before.
    *   Barcode first (books: ISBN -> Open Library / Google Books; music: MusicBrainz; games:
-   *   Wikidata + UPCitemdb -> IGDB relay). Exactly one barcode match -> only EMPTY fields are
+   *   Wikidata -> IGDB relay). Exactly one barcode match -> only EMPTY fields are
    *   filled (cover, creator, year, platform, ...): "enriched".
-   *   Several barcode matches, and every title search (title + platform / year, comics series +
-   *   issue + year) -> nothing is filled, the item is marked "Needs a pick" (enrich: "pick").
-   *   Too little to search with, no source for the type, or no match -> "Needs lookup"
-   *   (enrich: "lookup"). Errors leave the item as imported: retried once, then "failed" and
-   *   marked Needs lookup.
-   * Daily caps: UPCitemdb is counted here (about 100 a day, the trial limit) and every source's
-   * 429 / limit answer (Retry-After honoured) or the relays' busy / daily-cap answers pause the
-   * queue. The queue (position, counts, the time it may resume) is kept in this browser and
-   * resumes on the next open once that time has passed; no item is skipped and nothing is
-   * retried against a limit. Restoring a backup never queues anything.
+   *   Several barcode matches, and title searches (title + platform / year) -> nothing is
+   *   filled, the item is marked "Needs a pick" (enrich: "pick"). Comics are the exception:
+   *   a single clear cover (exactly one Metron picture for series + issue, or an Open Library
+   *   ISBN cover for a trade) auto-fills empty cover fields only; several covers, a match with
+   *   no storable picture, or no match is Needs a pick (picker / Take a photo).
+   *   Too little to search with, no source for the type, or (for non-comics) no match ->
+   *   "Needs lookup" (enrich: "lookup"). Errors leave the item as imported: retried once,
+   *   then "failed" and marked Needs lookup.
+   * A 429 / limit answer (Retry-After honoured when the header is readable) or the relays'
+   * busy / daily-cap answers pause the queue. When Retry-After is hidden by CORS (Open
+   * Library, Google Books, MusicBrainz), the wait is 60 seconds. The queue (position, counts,
+   * the time it may resume) is kept in this browser and resumes on the next open once that
+   * time has passed; no item is skipped and nothing is retried against a limit. Restoring a
+   * backup never queues anything.
    * NEW COPY (fact check): every string in this block. */
   const ENRICH_QUEUE_STORAGE = "freerangemedia-enrich-queue";
-  const ENRICH_CAPS_STORAGE = "freerangemedia-enrich-caps"; // { day: "YYYY-MM-DD", n: { upcitemdb } }
+  const ENRICH_CAPS_STORAGE = "freerangemedia-enrich-caps"; // { day: "YYYY-MM-DD", n: { } }
   const ENRICH_LOCK_STORAGE = "freerangemedia-enrich-lock";
   const ENRICH_LAST_STORAGE = "freerangemedia-enrich-last";
   const ENRICH_DELAY_MS = 2000;
-  const ENRICH_UPC_DELAY_MS = 10000; // UPCitemdb's documented FREE limit is 6 requests a minute
-  const ENRICH_UPC_LAST_STORAGE = "freerangemedia-enrich-upc-last";
   const ENRICH_START_MS = IMPORT_UNDO_MS + 1000; // after the import's Undo window
   const ENRICH_MAX_FAILS = 3; // in a row: pause (offline, or a source is down)
   const ENRICH_MAX_TRIES = 2; // per item: one retry, then "failed"
   const ENRICH_SHORT_WAIT_MS = 5 * 60000; // a busy answer this short resumes in this session
-  /** Local daily counts for sources with a known per-day allowance and no relay of ours in front. */
-  const ENRICH_DAILY_CAPS = { upcitemdb: 100 };
   const ENRICH_TITLE_TYPES = ["book", "movie", "music", "game", "comic"];
   let filterEnrich = ""; // "" | "pick" | "lookup": the Needs a pick / Needs lookup list
   const ENRICH = { running: false, timer: null, beat: null, active: false, shortPauses: 0, epoch: 0 };
@@ -9361,7 +9330,7 @@
     return {
       book: { barcode: ["Open Library", "Google Books"], title: ["Open Library", "Google Books", "Wikipedia"] },
       music: { barcode: ["MusicBrainz"], title: ["MusicBrainz"] },
-      game: { barcode: gameRelayUrl() ? ["Wikidata", "UPCitemdb", "IGDB"] : [], title: GAME_TITLE_SEARCH_TESTED && gameRelayUrl() ? ["IGDB"] : [] },
+      game: { barcode: gameRelayUrl() ? ["Wikidata", "IGDB"] : [], title: GAME_TITLE_SEARCH_TESTED && gameRelayUrl() ? ["IGDB"] : [] },
       movie: { barcode: [], title: [...(getOmdbKey() ? ["OMDb"] : []), "Wikipedia"] },
       comic: { barcode: [], title: comicRelaySetUp() ? ["Grand Comics Database"] : [] },
       tabletop: { barcode: [], title: [] }, // no import path lands tabletop games (BGG stays manual)
@@ -9608,25 +9577,12 @@
       this.reason = reason;
     }
   }
-  /** Called by the game barcode fetch: during enrichment, UPCitemdb past its daily allowance is never asked. */
-  function enrichGuardUpc(url) {
-    if (!/^https:\/\/api\.upcitemdb\.com\//.test(url)) return;
-    if (ENRICH.active && enrichCapUsed("upcitemdb") >= ENRICH_DAILY_CAPS.upcitemdb) throw new EnrichCap(enrichNextMidnight(), "UPCitemdb");
-  }
-
-  function enrichNoteUpcCall() {
-    enrichCount("upcitemdb");
-    try {
-      localStorage.setItem(ENRICH_UPC_LAST_STORAGE, String(Date.now()));
-    } catch {
-      /* ignore */
-    }
-  }
-
   /** The lookupIssues of one enrichment call -> a cap, a failure, or nothing. */
   function enrichIssueOutcome(issues) {
     for (const [src, issue] of issues) {
       if (issue.kind === "limit") return { kind: "cap", until: enrichNextMidnight(), reason: src };
+      // issue.until is 0 when Retry-After is missing or unreadable (including a
+      // cross-origin 429 that did not expose the header). Default wait: 60 seconds.
       if (issue.kind === "http" && (issue.status === 429 || (issue.status === 503 && src === "MusicBrainz"))) return { kind: "cap", until: issue.until || Date.now() + 60000, reason: src };
     }
     return issues.length ? { kind: "failed" } : null;
@@ -9649,7 +9605,7 @@
   function enrichGameCooldownInfo(relay) {
     let until = 0;
     let reason = "";
-    for (const [origin, name] of [[relay, "Game lookup"], ["https://query.wikidata.org", "Wikidata"], ["https://api.upcitemdb.com", "UPCitemdb"]]) {
+    for (const [origin, name] of [[relay, "Game lookup"], ["https://query.wikidata.org", "Wikidata"]]) {
       const t = origin ? gameCooldowns.get(origin) || 0 : 0;
       if (t > until) {
         until = t;
@@ -9745,7 +9701,45 @@
     return null;
   }
 
-  /** A title search never fills anything: a result means "Needs a pick", none "Needs lookup". */
+  /** A collected edition / trade (CLZ sets edition: "collected"). */
+  function comicIsTrade(it) {
+    return Boolean(it && it.type === "comic" && it.edition === "collected");
+  }
+
+  /**
+   * Cover data to auto-fill from one comic lookup. A single storable Metron picture
+   * (series + issue) wins. Otherwise a trade with an ISBN gets its Open Library cover.
+   * Several Metron covers, or nothing clear, is not auto-filled.
+   */
+  function enrichComicCoverData(it, res) {
+    const outcome = classifyCoverAnswer(res);
+    if (outcome.kind === "one" && outcome.tile && outcome.tile.url) {
+      const { tile, match } = outcome;
+      const own = comicSourceIssueId(tile);
+      return {
+        coverUrl: tile.url,
+        coverSource: "comiclookup",
+        coverSourceId: "",
+        coverLabel: tile.label || "",
+        coverVariant: tile.variant === true,
+        sourceId: own ? tile.sourceId : match && match.sourceId,
+        sourceName: match && match.sourceName,
+        sourceUrl: own ? comicIssuePageUrl(tile.sourceId) || (match && match.sourceUrl) : match && match.sourceUrl,
+      };
+    }
+    // Several covers: never guess a variant, even if the trade also has an ISBN.
+    const several = Boolean(res && res.match) && outcome.kind !== "one" && (
+      Math.max(res.total || 0, (res.covers || []).length, (res.variants || []).length) > 1
+    );
+    if (several) return null;
+    if (comicIsTrade(it) && looksLikeIsbn(it.barcode)) {
+      const url = openLibraryIsbnCoverUrl(it.barcode, "M");
+      if (url) return { coverUrl: url, coverSource: "openlibrary", coverSourceId: "" };
+    }
+    return null;
+  }
+
+  /** A title search never fills anything except a comic's single clear cover (empty fields only). A result (or a comic with no clear cover) means "Needs a pick"; a non-comic with none means "Needs lookup". */
   async function enrichByTitle(it) {
     if (it.type === "comic") {
       let res;
@@ -9756,7 +9750,10 @@
       }
       if (res.busy) return { kind: "cap", until: Date.now() + Math.max(60000, comicBusyRemainingMs()), reason: "Comic lookup" };
       if (res.failed || res.notSetUp) return { kind: "failed" };
-      return res.match ? { kind: "pick" } : { kind: "lookup" };
+      const data = enrichComicCoverData(it, res);
+      if (data) return { kind: "enriched", data };
+      // Multiple covers, a match with no picture, or no match: Needs a pick (picker / Take a photo).
+      return { kind: "pick" };
     }
     if (it.type === "game") {
       const relay = gameRelayUrl();
@@ -9819,6 +9816,13 @@
       f.coverSource = String(data.coverSource || "").trim();
       f.coverSourceId = String(data.coverSourceId || "").trim();
       if (cur.type === "game") f.coverPlatform = String(data.coverPlatform || cur.platform || "").trim();
+      if (cur.type === "comic") {
+        if (enrichBlank(cur.coverLabel) && !enrichBlank(data.coverLabel)) f.coverLabel = String(data.coverLabel).trim();
+        if (cur.coverVariant !== true && data.coverVariant === true && enrichBlank(cur.coverLabel)) f.coverVariant = true;
+        if (enrichBlank(cur.sourceId) && !enrichBlank(data.sourceId)) f.sourceId = String(data.sourceId).trim();
+        if (enrichBlank(cur.sourceName) && !enrichBlank(data.sourceName)) f.sourceName = String(data.sourceName).trim();
+        if (enrichBlank(cur.sourceUrl) && !enrichBlank(data.sourceUrl)) f.sourceUrl = String(data.sourceUrl).trim();
+      }
     }
     if (cur.type === "book" && enrichBlank(cur.googleBooksUrl) && safeGoogleBooksUrl(data.googleBooksUrl)) f.googleBooksUrl = data.googleBooksUrl;
     if (cur.type === "game") {
@@ -9945,14 +9949,8 @@
         } catch {
           last = 0;
         }
-        let lastUpc = 0;
-        try {
-          lastUpc = Number(localStorage.getItem(ENRICH_UPC_LAST_STORAGE)) || 0;
-        } catch {
-          lastUpc = 0;
-        }
-        const gap = Math.max(last + ENRICH_DELAY_MS, lastUpc + ENRICH_UPC_DELAY_MS) - Date.now();
-        if (gap > 0 && gap <= ENRICH_UPC_DELAY_MS) await coverFillSleep(gap);
+        const gap = last + ENRICH_DELAY_MS - Date.now();
+        if (gap > 0 && gap <= ENRICH_DELAY_MS) await coverFillSleep(gap);
         try {
           localStorage.setItem(ENRICH_LAST_STORAGE, String(Date.now()));
         } catch {

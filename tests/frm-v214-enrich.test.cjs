@@ -1,6 +1,7 @@
 // V2.14: enrichment bug fixes (Undo, offline, timeouts, Continue at, Retry-After,
-// UPCitemdb pacing / CORS / X-RateLimit-Reset, hand-saves, pick counts, storage wording,
-// progress bar, in-file CLZ repeats, unclosed CSV quotes, leftover marks write).
+// hand-saves, pick counts, storage wording, progress bar, in-file CLZ repeats,
+// unclosed CSV quotes, leftover marks write). UPCitemdb is no longer used.
+// Comic single-cover auto-fill; cross-origin 429 without expose falls back to 60s.
 // Real app.js in a vm. No network, no browser.
 "use strict";
 const assert = require("node:assert/strict");
@@ -66,7 +67,6 @@ const BOOK = { ...BASE, id: "a1", type: "book", title: "Dune", barcode: "9780441
 const GAME_BC = { ...BASE, id: "g1", type: "game", title: "Halo 3", platform: "Xbox 360", barcode: "882224479325", format: "physical" };
 const WIKI_MISS = [/query\.wikidata\.org/, () => ({ body: { results: { bindings: [] } } })];
 const IGDB_ONE = [/\/game\/search\?title=/, () => ({ body: { candidates: [{ igdbId: 7, title: "Halo 3", creator: "Bungie", year: 2007, platforms: ["Xbox 360"], coverUrl: "" }] } })];
-const UPC_OK = [/upcitemdb/, () => ({ body: { items: [{ title: "Halo 3 Xbox 360" }] } })];
 
 async function queueAndRun(b, ids) {
   // Write the queue directly so we do not start the 11s post-Undo timer (that
@@ -139,12 +139,12 @@ check("offline: the queue pauses (not failed), no try is spent, and the online e
 check("online event does not resume a cap or error pause", async () => {
   const b = bootWith(OL_BOOK);
   b.seed([BOOK]);
-  b.api.writeEnrichQueue({ ...b.api.readEnrichQueue(), ids: ["a1"], total: 1, seen: true, dismissed: false, paused: true, reason: "UPCitemdb", until: 0 });
+  b.api.writeEnrichQueue({ ...b.api.readEnrichQueue(), ids: ["a1"], total: 1, seen: true, dismissed: false, paused: true, reason: "Open Library", until: 0 });
   b.api.enrichOnOnline();
   await tick();
   const q = b.api.readEnrichQueue();
   assert.equal(q.paused, true);
-  assert.equal(q.reason, "UPCitemdb");
+  assert.equal(q.reason, "Open Library");
   assert.equal(b.fetch.calls.length, 0);
 });
 
@@ -194,7 +194,8 @@ check("Continue at: a short busy pause still resumes at the promised time after 
   const done = again.api.readEnrichQueue();
   assert.ok(c.now >= until, "the clock waited until the promised time");
   assert.equal(done.ids.length, 0, "the item ran once the promised time passed");
-  assert.equal(done.pick, 1);
+  assert.equal(done.enriched, 1, "a single Metron cover is auto-filled once the pause ends");
+  assert.equal(again.stored()[0].coverUrl, "https://static.metron.cloud/x.jpg");
   assert.ok(again.fetch.calls.some((u) => /\/comic\?/.test(u)));
 });
 
@@ -237,23 +238,7 @@ check("Retry-After: MusicBrainz 503 pauses until the header", async () => {
   assert.deepEqual([...q.ids], ["m1"]);
 });
 
-/* ---------- (6) / (c) UPCitemdb pacing is 10s after a real response ---------- */
-check("UPCitemdb: pacing is 10s after a real HTTP response, not 2s", async () => {
-  const times = [];
-  const b = bootWith([
-    WIKI_MISS,
-    [/upcitemdb/, () => { times.push(b.clock.now); return { body: { items: [{ title: "Halo 3 Xbox 360" }] } }; }],
-    IGDB_ONE,
-  ]);
-  assert.equal(b.api.ENRICH_UPC_DELAY_MS, 10000);
-  b.seed([GAME_BC, { ...GAME_BC, id: "g2", barcode: "811949030023" }]);
-  await queueAndRun(b, ["g1", "g2"]);
-  assert.equal(times.length, 2);
-  assert.ok(times[1] - times[0] >= 10000, `UPC calls at ${times[0]} and ${times[1]}`);
-  assert.equal(b.api.readEnrichQueue().ids.length, 0);
-});
-
-/* ---------- (7) Hand-saved items are not re-marked ---------- */
+/* ---------- (6) Hand-saved items are not re-marked ---------- */
 check("hand-saved: an item edited since import is dropped from the queue and never re-marked", async () => {
   const b = bootWith(OL_BOOK);
   b.seed([{ ...BOOK, dateUpdated: "2026-11-14T12:00:00.000Z", title: "My edited Dune" }]);
@@ -387,78 +372,170 @@ check("leftover enrichAfterRestore(false): a failed marks write keeps the queue 
   assert.ok(b.toasts.some((t) => /storage/i.test(t) || /didn’t fit/i.test(t) || /Couldn’t save/i.test(t)));
 });
 
-/* ---------- UPCitemdb (a) CORS / network is a quiet no-match ---------- */
-check("UPCitemdb CORS: no cap count, no failed mark, no pause; falls through to title / Needs a pick", async () => {
+/* ---------- UPCitemdb is gone: no request is ever made ---------- */
+check("UPCitemdb: Wikidata hit never asks UPCitemdb; falls through to IGDB on the title", async () => {
   const b = bootWith([
-    WIKI_MISS,
-    [/upcitemdb/, () => ({ throw: new TypeError("Failed to fetch") })],
+    [/query\.wikidata\.org/, () => ({ body: { results: { bindings: [{ itemLabel: { value: "Halo 3" }, platLabel: { value: "Xbox 360" } }] } } })],
+    [/upcitemdb/, () => ({ body: { items: [{ title: "SHOULD NOT BE ASKED" }] } })],
     IGDB_ONE,
   ]);
   b.seed([GAME_BC]);
-  const usedBefore = b.api.enrichCapUsed("upcitemdb");
   const q = await queueAndRun(b, ["g1"]);
-  assert.ok(b.fetch.calls.some((u) => /upcitemdb/.test(u)), "UPCitemdb was asked");
-  assert.ok(b.fetch.calls.some((u) => /\/game\/search\?title=/.test(u)), "fell through to the title search");
-  assert.equal(b.api.enrichCapUsed("upcitemdb"), usedBefore, "CORS does not count against the daily cap");
-  assert.equal(q.paused, false);
-  assert.equal(q.failed, 0);
-  assert.equal(b.stored()[0].enrich, "pick", "a title search is Needs a pick, like no barcode match");
-  assert.notEqual(q.reason, "offline");
-  // A second item after a CORS miss must not wait 10s: lastUpc was not stamped.
+  assert.equal(b.fetch.calls.filter((u) => /upcitemdb/.test(u)).length, 0, "UPCitemdb is never asked");
+  assert.equal(q.enriched, 1);
+  assert.equal(b.stored()[0].igdbId, "7");
 });
 
-check("UPCitemdb CORS: no usable title after a miss is Needs lookup, never failed or capped", async () => {
+check("UPCitemdb: a Wikidata miss never asks UPCitemdb; title search is used instead", async () => {
   const b = bootWith([
     WIKI_MISS,
-    [/upcitemdb/, () => ({ throw: new TypeError("Failed to fetch") })],
-  ]);
-  // "x" is too short to be a usable game title, so there is no title search to fall through to.
-  b.seed([{ ...BASE, id: "g0", type: "game", title: "x", platform: "Xbox 360", barcode: "882224479325", format: "physical" }]);
-  const q = await queueAndRun(b, ["g0"]);
-  assert.equal(q.paused, false);
-  assert.equal(q.failed, 0);
-  assert.equal(b.stored()[0].enrich, "lookup");
-  assert.equal(b.api.enrichCapUsed("upcitemdb"), 0);
-  assert.equal(b.fetch.calls.some((u) => /\/game\/search/.test(u)), false);
-});
-
-check("UPCitemdb CORS: a miss at 99/100 does not trip the daily cap or stamp 10s pacing", async () => {
-  const times = [];
-  const b = bootWith([
-    WIKI_MISS,
-    [/upcitemdb/, () => { times.push(b.clock.now); return { throw: new TypeError("Failed to fetch") }; }],
+    [/upcitemdb/, () => ({ body: { items: [{ title: "SHOULD NOT BE ASKED" }] } })],
     IGDB_ONE,
   ]);
-  const today = new Date(b.clock.now);
-  const day = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  b.store.set("freerangemedia-enrich-caps", JSON.stringify({ day, n: { upcitemdb: 99 } }));
-  b.seed([GAME_BC, { ...GAME_BC, id: "g2", barcode: "811949030023" }]);
-  const q = await queueAndRun(b, ["g1", "g2"]);
-  assert.equal(q.paused, false, "99 + a CORS miss must not look like the daily cap");
-  assert.equal(b.api.enrichCapUsed("upcitemdb"), 99);
-  assert.equal(times.length, 2);
-  assert.ok(times[1] - times[0] < 10000, "a CORS miss does not stamp the 10s UPCitemdb gap");
+  b.seed([GAME_BC]);
+  const q = await queueAndRun(b, ["g1"]);
+  assert.equal(b.fetch.calls.filter((u) => /upcitemdb/.test(u)).length, 0, "UPCitemdb is never asked");
+  assert.ok(b.fetch.calls.some((u) => /query\.wikidata\.org/.test(u)));
+  assert.ok(b.fetch.calls.some((u) => /\/game\/search\?title=/.test(u)), "title search runs after a Wikidata miss");
+  assert.equal(q.pick, 1, "a title search with one result is still Needs a pick");
+  assert.equal(b.stored()[0].enrich, "pick");
+  assert.equal(b.stored()[0].igdbId, "");
 });
 
-/* ---------- UPCitemdb (b) X-RateLimit-Reset wins over a shorter Retry-After ---------- */
-check("UPCitemdb 429: a readable X-RateLimit-Reset is the stop time; a shorter Retry-After does not win", async () => {
-  const b = bootWith([
-    WIKI_MISS,
-    [/upcitemdb/, () => {
-      const reset = Math.floor((b.clock.now + 3600 * 1000) / 1000);
-      return { status: 429, headers: { "Retry-After": "10", "X-RateLimit-Reset": String(reset) }, body: { code: "TOO_FAST" } };
-    }],
-  ]);
-  b.seed([GAME_BC, { ...GAME_BC, id: "g2", barcode: "811949030023" }]);
+/* ---------- Retry-After: cross-origin 429 without expose falls back to 60s ---------- */
+check("Retry-After: a cross-origin 429 WITHOUT Access-Control-Expose-Headers falls back to 60s", async () => {
+  // Simulate a browser: the source sent Retry-After: 120, but CORS hid it.
+  const fetch = mockFetch([]);
+  const hidden = async (url, opts) => {
+    const u = String(url);
+    fetch.calls.push(u);
+    if (/openlibrary\.org\/isbn\//.test(u)) {
+      const headers = new Headers({
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "https://freerangeice.github.io",
+        // No Access-Control-Expose-Headers: Retry-After — the header is on the
+        // wire (120s) but not visible to script, the way OL/GB/MB behave.
+      });
+      return new Response("{}", { status: 429, headers });
+    }
+    if (/googleapis/.test(u)) return new Response("{}", { status: 404 });
+    return new Response("{}", { status: 404 });
+  };
+  hidden.calls = fetch.calls;
+  const b = bootWith([], { fetch: hidden });
+  b.seed([BOOK]);
   const t0 = b.clock.now + 20000;
-  const q = await queueAndRun(b, ["g1", "g2"]);
+  const q = await queueAndRun(b, ["a1"]);
   assert.equal(q.paused, true);
-  assert.equal(q.reason, "UPCitemdb");
-  assert.deepEqual([...q.ids], ["g1", "g2"]);
-  assert.ok(q.until >= t0 + 3600 * 1000 - 1000, `until ${q.until} must be the Reset, not Retry-After 10s (t0=${t0})`);
-  assert.ok(q.until - t0 > 60 * 1000, "must not retry after 10s or the 60s default");
-  assert.equal(b.fetch.calls.filter((u) => /upcitemdb/.test(u)).length, 1, "one request, then stop");
-  assert.equal(b.api.enrichCapUsed("upcitemdb"), 1, "a readable 429 is a real answer and counts");
+  assert.equal(q.reason, "Open Library");
+  assert.deepEqual([...q.ids], ["a1"]);
+  assert.ok(q.until >= t0 + 60000 - 50, `until ${q.until} should be the 60s default (t0=${t0})`);
+  assert.ok(q.until < t0 + 120000, "must not honour the hidden 120s Retry-After");
+  assert.ok(q.until - t0 < 90000, "60s, not a long hidden wait");
+});
+
+/* ---------- Comic cover auto-fill: one clear match fills; several / none stay a pick ---------- */
+const METRON = "https://static.metron.cloud/media/issue/2019/12/10/saga-1.jpg";
+const TRADE_ISBN = "9781632159038";
+const OL_TRADE = "https://covers.openlibrary.org/b/isbn/9781632159038-M.jpg?default=false";
+const COMIC_MATCH = {
+  series: "Saga", issue: "1", year: 2012, publisher: "Image", writer: ["Brian K. Vaughan"], artist: [],
+  sourceId: "gcd-issue-911609", sourceName: "Grand Comics Database", sourceUrl: "https://www.comics.org/issue/911609/",
+};
+function comicBody(covers, extras = {}) {
+  const list = covers.map((c, i) => ({
+    sourceId: c.sourceId || `gcd-issue-${911609 + i}`,
+    url: c.url || "",
+    label: c.label || (i ? `Variant ${i}` : "Direct Sales"),
+    variant: c.variant === true,
+  }));
+  return {
+    match: extras.match === undefined ? COMIC_MATCH : extras.match,
+    covers: list,
+    variants: list.map((c) => ({ sourceId: c.sourceId, label: c.label, variant: c.variant, image: c.url })),
+    total: extras.total != null ? extras.total : list.length,
+    imagesFrom: list.some((c) => c.url) ? "metron" : "",
+    ...extras,
+  };
+}
+
+check("comics: a single exact Metron cover auto-fills empty cover fields only", async () => {
+  const b = bootWith([[/\/comic\?/, () => ({ body: comicBody([{ url: METRON, label: "Direct Sales" }]) })]]);
+  b.seed([{ ...BASE, id: "k1", type: "comic", series: "Saga", issue: "1", year: 2012, coverUrl: "", coverLabel: "" }]);
+  const q = await queueAndRun(b, ["k1"]);
+  const it = b.stored()[0];
+  assert.equal(q.enriched, 1);
+  assert.equal(it.enrich, undefined);
+  assert.equal(it.coverUrl, METRON);
+  assert.equal(it.coverSource, "comiclookup");
+  assert.equal(it.coverLabel, "Direct Sales");
+  assert.equal(it.sourceId, "gcd-issue-911609");
+  assert.equal(it.writer, "", "writer is not a cover field and is not filled");
+});
+
+check("comics: several covers are Needs a pick; nothing is attached; Take a photo stays available", async () => {
+  const b = bootWith([[/\/comic\?/, () => ({ body: comicBody([
+    { url: METRON, label: "Direct Sales" },
+    { url: "https://static.metron.cloud/media/issue/2019/12/10/saga-1b.jpg", label: "Variant", variant: true },
+  ]) })]]);
+  b.seed([{ ...BASE, id: "k2", type: "comic", series: "Saga", issue: "1", year: 2012, coverUrl: "" }]);
+  const q = await queueAndRun(b, ["k2"]);
+  const it = b.stored()[0];
+  assert.equal(q.pick, 1);
+  assert.equal(it.enrich, "pick");
+  assert.equal(it.coverUrl, "", "several covers are never auto-attached");
+  const html = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+  assert.match(html, /Take a photo/);
+  assert.match(html, /comic-take-photo/);
+});
+
+check("comics: no match is Needs a pick so Take a photo / the picker can be used", async () => {
+  const b = bootWith([[/\/comic\?/, () => ({ body: { match: null, covers: [], variants: [], total: 0 } })]]);
+  b.seed([{ ...BASE, id: "k3", type: "comic", series: "Harbor Patrol", issue: "99", coverUrl: "" }]);
+  const q = await queueAndRun(b, ["k3"]);
+  const it = b.stored()[0];
+  assert.equal(q.pick, 1);
+  assert.equal(it.enrich, "pick");
+  assert.equal(it.coverUrl, "");
+  const html = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+  assert.match(html, /Take a photo/);
+});
+
+check("comics: an existing cover is never overwritten, even by a single Metron match", async () => {
+  const kept = "https://static.metron.cloud/media/issue/2019/01/01/mine.jpg";
+  const b = bootWith([[/\/comic\?/, () => ({ body: comicBody([{ url: METRON, label: "Direct Sales" }]) })]]);
+  b.seed([{ ...BASE, id: "k4", type: "comic", series: "Saga", issue: "1", year: 2012, coverUrl: kept, coverSource: "manual", coverLabel: "My scan" }]);
+  const q = await queueAndRun(b, ["k4"]);
+  const it = b.stored()[0];
+  assert.equal(it.coverUrl, kept, "existing cover stays");
+  assert.equal(it.coverSource, "manual");
+  assert.equal(it.coverLabel, "My scan");
+  assert.equal(it.enrich, undefined);
+  assert.equal(q.enriched, 0);
+});
+
+check("comics: a trade with an ISBN and no Metron cover auto-fills the Open Library ISBN cover", async () => {
+  const b = bootWith([[/\/comic\?/, () => ({ body: { match: null, covers: [], variants: [], total: 0 } })]]);
+  b.seed([{ ...BASE, id: "k5", type: "comic", series: "Saga", issue: "1", edition: "collected", comicFormat: "Trade Paperback", barcode: TRADE_ISBN, coverUrl: "" }]);
+  const q = await queueAndRun(b, ["k5"]);
+  const it = b.stored()[0];
+  assert.equal(q.enriched, 1);
+  assert.equal(it.coverUrl, OL_TRADE);
+  assert.equal(it.coverSource, "openlibrary");
+  assert.equal(it.enrich, undefined);
+});
+
+check("comics: several Metron covers on a trade with an ISBN are still Needs a pick, not an Open Library fill", async () => {
+  const b = bootWith([[/\/comic\?/, () => ({ body: comicBody([
+    { url: METRON, label: "Direct Sales" },
+    { url: "https://static.metron.cloud/media/issue/2019/12/10/saga-1b.jpg", label: "Variant", variant: true },
+  ]) })]]);
+  b.seed([{ ...BASE, id: "k6", type: "comic", series: "Saga", issue: "1", edition: "collected", comicFormat: "Trade Paperback", barcode: TRADE_ISBN, coverUrl: "" }]);
+  const q = await queueAndRun(b, ["k6"]);
+  const it = b.stored()[0];
+  assert.equal(q.pick, 1);
+  assert.equal(it.enrich, "pick");
+  assert.equal(it.coverUrl, "", "do not guess Open Library when Metron has several covers");
 });
 
 (async () => {

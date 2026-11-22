@@ -14,7 +14,7 @@ const shelf = [
 let pass = 0, fail = 0;
 const check = (n, ok, d = "") => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"} ${n}${ok ? "" : " " + d}`); };
 const store = p => p.evaluate(() => JSON.parse(localStorage.getItem("media-tracker-v1")).items);
-async function open(browser, { futureTitleSearch = false, configured = true, candidates = [result], status = 200, delay = 0, barcodeTitle = "Switchblade - Definitive Edition (Nintendo Switch)", wikidata = false, upcStatus = 200, failNetwork = false, items = shelf } = {}) {
+async function open(browser, { futureTitleSearch = false, configured = true, candidates = [result], status = 200, delay = 0, barcodeTitle = "Switchblade - Definitive Edition (Nintendo Switch)", wikidata = false, wikidataPlat = "Nintendo Switch", upcStatus = 200, failNetwork = false, items = shelf } = {}) {
  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block" });
  await ctx.addInitScript(({ configured, relay, items }) => {
   if (configured) window.__FRM_GAME_RELAY__ = relay;
@@ -35,7 +35,7 @@ async function open(browser, { futureTitleSearch = false, configured = true, can
    if (failNetwork) return r.abort();
    return r.fulfill({ status, contentType: "application/json", headers: { "Access-Control-Allow-Origin": ORIGIN, "Access-Control-Expose-Headers": "Retry-After", "Retry-After": "120" }, body: JSON.stringify(status === 200 ? { source: "igdb", candidates } : { error: "provider_busy" }) });
   }
-  if (url.hostname === "query.wikidata.org") { requests.push({ kind: "wikidata" }); return r.fulfill({ contentType: "application/json", headers: { "Access-Control-Allow-Origin": ORIGIN }, body: JSON.stringify({ results: { bindings: wikidata && barcodeTitle ? [{ itemLabel: { value: barcodeTitle }, platLabel: { value: "Nintendo Switch" } }] : [] } }) }); }
+  if (url.hostname === "query.wikidata.org") { requests.push({ kind: "wikidata" }); return r.fulfill({ contentType: "application/json", headers: { "Access-Control-Allow-Origin": ORIGIN }, body: JSON.stringify({ results: { bindings: wikidata && barcodeTitle ? [{ itemLabel: { value: barcodeTitle }, platLabel: { value: wikidataPlat } }] : [] } }) }); }
   if (url.hostname === "api.upcitemdb.com") { requests.push({ kind: "upc" }); return r.fulfill({ status: upcStatus, contentType: "application/json", headers: { "Access-Control-Allow-Origin": ORIGIN, "Retry-After": "120", "Access-Control-Expose-Headers": "Retry-After" }, body: JSON.stringify({ items: barcodeTitle ? [{ title: barcodeTitle }] : [] }) }); }
   if (url.origin === ORIGIN) {
    if ((process.env.GAME_UI_SOURCE || futureTitleSearch) && url.pathname === "/app.js") {
@@ -64,15 +64,15 @@ async function choose(p, index = 0) { await p.click(`[data-game-pick="${index}"]
    const s = await open(browser, { configured: false }); const p = s.page; await form(p);
    check("unconfigured title search hidden", await p.isHidden("#btn-game-title-lookup"));
    await barcode(p); await p.waitForFunction(() => !document.querySelector("#btn-lookup").disabled);
-   check("barcode-only lookup does not require Title", s.requests.some(r => r.kind === "upc") && await p.inputValue("#field-title") === "");
+   check("barcode-only lookup does not require Title", !s.requests.some(r => r.kind === "upc") && await p.inputValue("#field-title") === "");
    check("unconfigured relay receives no request and gives actionable status", !s.requests.some(r => r.kind === "igdb") && /not configured/.test(await p.textContent("#lookup-status")));
    check("old RAWG key never requested or sent", !s.requests.some(r => r.host === "api.rawg.io") && !JSON.stringify(s.requests).includes("dummy-legacy-key"));
    check("manual fields/shelf preserved without relay", (await store(p)).length === 2 && await p.inputValue("#field-cover") === "");
    await s.ctx.close();
   }
   {
-   const s = await open(browser); const p = s.page; await form(p); await barcode(p); await p.waitForSelector("#game-match-picker:not([hidden])");
-   check("barcode flow is Wikidata then UPCitemdb then IGDB title only", s.requests.filter(r => r.kind !== "blocked").map(r => r.kind).join(",") === "wikidata,upc,igdb");
+   const s = await open(browser, { wikidata: true }); const p = s.page; await form(p); await barcode(p); await p.waitForSelector("#game-match-picker:not([hidden])");
+   check("barcode flow is Wikidata then IGDB title only", s.requests.filter(r => r.kind !== "blocked").map(r => r.kind).join(",") === "wikidata,igdb");
    check("raw dashed/edition product title retained in conservative query", s.requests.find(r => r.kind === "igdb").title === "Switchblade - Definitive Edition (Nintendo Switch)");
    check("ONE result never autofills cover/details/title", await p.inputValue("#field-title") === "" && await p.inputValue("#field-cover") === "" && await p.inputValue("#field-year") === "");
    check("configured barcode relay leaves title search hidden", await p.isHidden("#btn-game-title-lookup"));
@@ -105,11 +105,11 @@ async function choose(p, index = 0) { await p.click(`[data-game-pick="${index}"]
   }
   {
    const s = await open(browser, { wikidata: true }); const p = s.page; await form(p); await barcode(p); await p.waitForSelector("#game-match-picker:not([hidden])");
-   check("Wikidata barcode hit skips UPCitemdb", !s.requests.some(r => r.kind === "upc") && s.requests.some(r => r.kind === "igdb"));
+   check("Wikidata barcode hit never asks UPCitemdb", !s.requests.some(r => r.kind === "upc") && s.requests.some(r => r.kind === "igdb"));
    await s.ctx.close();
   }
   {
-   const s = await open(browser, { barcodeTitle: "Hades (PlayStation 5)" }); const p = s.page; await form(p); await barcode(p); await p.waitForFunction(() => !document.querySelector("#btn-lookup").disabled);
+   const s = await open(browser, { wikidata: true, barcodeTitle: "Hades", wikidataPlat: "PlayStation 5" }); const p = s.page; await form(p); await barcode(p); await p.waitForFunction(() => !document.querySelector("#btn-lookup").disabled);
    check("barcode platform mismatch does not query IGDB or change platform", !s.requests.some(r => r.kind === "igdb") && await p.inputValue("#field-platform") === "Switch" && /different platform/.test(await p.textContent("#lookup-status")));
    await s.ctx.close();
   }
@@ -131,7 +131,7 @@ async function choose(p, index = 0) { await p.click(`[data-game-pick="${index}"]
    await s.ctx.close();
   }
   {
-   const s = await open(browser, { candidates: Array.from({ length: 5 }, (_, i) => ({ ...result, igdbId: String(100 + i), coverUrl: i ? "" : result.coverUrl })) }); const p = s.page;
+   const s = await open(browser, { wikidata: true, candidates: Array.from({ length: 5 }, (_, i) => ({ ...result, igdbId: String(100 + i), coverUrl: i ? "" : result.coverUrl })) }); const p = s.page;
    await form(p); await barcode(p); await p.waitForSelector("#game-match-picker:not([hidden])"); await p.waitForTimeout(100);
    check("five results still require a deliberate selection", await p.locator("[data-game-pick]").count() === 5 && await p.isDisabled("#game-match-use") && await p.inputValue("#field-title") === "");
    const frames = await p.$$eval('.game-match-cover', els => els.map(e => { const r = e.getBoundingClientRect(); return [r.width, r.height, getComputedStyle(e).borderRadius]; }));
@@ -142,8 +142,8 @@ async function choose(p, index = 0) { await p.click(`[data-game-pick="${index}"]
    check("cancel choice preserves manual entry and restores normal Save", await p.isHidden("#game-match-picker") && (await store(p)).length === 2);
    await s.ctx.close();
   }
-  for (const options of [{ barcodeTitle: "" }, { barcodeTitle: "012345678901" }, { candidates: [] }, { status: 503 }, { status: 401 }, { status: 504 }, { status: 429 }, { failNetwork: true }, { upcStatus: 429 }]) {
-   const s = await open(browser, options); const p = s.page; await form(p); await p.fill("#field-title", "Keep manual"); await p.fill("#field-year", "1999"); await barcode(p); await p.waitForFunction(() => !document.querySelector("#btn-lookup").disabled);
+  for (const options of [{ barcodeTitle: "" }, { barcodeTitle: "012345678901" }, { candidates: [] }, { status: 503 }, { status: 401 }, { status: 504 }, { status: 429 }, { failNetwork: true }]) {
+   const s = await open(browser, { wikidata: options.barcodeTitle === undefined, ...options }); const p = s.page; await form(p); await p.fill("#field-title", "Keep manual"); await p.fill("#field-year", "1999"); await barcode(p); await p.waitForFunction(() => !document.querySelector("#btn-lookup").disabled);
    check(`failure ${JSON.stringify(options)} preserves manual inputs and shelf`, await p.inputValue("#field-title") === "Keep manual" && await p.inputValue("#field-year") === "1999" && (await store(p)).length === 2);
    if (options.failNetwork) check("network error is actionable without exposing provider internals", /Try again.*What you typed is kept/.test(await p.textContent("#lookup-status")));
    if (options.barcodeTitle !== undefined) check("no usable barcode title means no IGDB request", !s.requests.some(r => r.kind === "igdb"));
@@ -151,7 +151,7 @@ async function choose(p, index = 0) { await p.click(`[data-game-pick="${index}"]
    await s.ctx.close();
   }
   {
-   const s = await open(browser, { delay: 300 }); const p = s.page; await form(p); await barcode(p);
+   const s = await open(browser, { wikidata: true, delay: 300 }); const p = s.page; await form(p); await barcode(p);
    await p.waitForFunction(() => document.querySelector("#btn-lookup").disabled);
    await p.fill("#field-title", "Newer manual edit"); await p.waitForTimeout(400);
    check("late response cannot overwrite newer edit or reopen picker", await p.inputValue("#field-title") === "Newer manual edit" && await p.isHidden("#game-match-picker"));
