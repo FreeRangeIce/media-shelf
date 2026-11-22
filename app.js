@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6, 2.7…; bump APP_VERSION and
-  // the service worker cache name together (media-shelf-v2.15.1) so the Duo drops old files.
-  const APP_VERSION = "2.15.1";
+  // the service worker cache name together (media-shelf-v2.15.2) so the Duo drops old files.
+  const APP_VERSION = "2.15.2";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -1396,6 +1396,8 @@
     const s = String(url || "").trim();
     if (s) failedCoverUrls.add(s);
   }
+  // The card img onerror in coverMarkup runs as a global handler, so it can call this.
+  globalThis.rememberFailedCoverUrl = rememberFailedCoverUrl;
 
   /**
    * Library / detail / preview URL: a stored cover, else an Open Library ISBN cover for a
@@ -2687,7 +2689,7 @@
       return col(`<div class="item-cover-placeholder ${type}" aria-hidden="true">${label}</div>`);
     }
     return col(
-      `<img class="item-cover" src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none';var p=this.nextElementSibling;if(p)p.hidden=false;" /><div class="item-cover-placeholder ${type}" hidden aria-hidden="true">${label}</div>`
+      `<img class="item-cover" src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none';var p=this.nextElementSibling;if(p)p.hidden=false;rememberFailedCoverUrl(this.src);" /><div class="item-cover-placeholder ${type}" hidden aria-hidden="true">${label}</div>`
     );
   }
 
@@ -2848,7 +2850,7 @@
       edit.classList.toggle("btn-outline", marked);
     }
     const cov = body.querySelector(".tt-detail-cover img");
-    if (cov) cov.addEventListener("error", () => { const w = cov.closest(".tt-detail-cover"); if (w) w.remove(); }, { once: true });
+    if (cov) cov.addEventListener("error", function () { rememberFailedCoverUrl(this.src || cov.src); const w = cov.closest(".tt-detail-cover"); if (w) w.remove(); }, { once: true });
     m.hidden = false;
     m.setAttribute("aria-hidden", "false");
     document.body.classList.add("modal-open");

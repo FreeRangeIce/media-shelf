@@ -63,7 +63,7 @@ const check = (name, ok, detail = "") => {
   console.log("PASS", name);
 };
 
-check("APP_VERSION 2.15.1 and cache media-shelf-v2.15.1", /const APP_VERSION = "2\.15.1";/.test(app) && /const CACHE = "media-shelf-v2\.15.1";/.test(sw));
+check("APP_VERSION 2.15.2 and cache media-shelf-v2.15.2", /const APP_VERSION = "2\.15.2";/.test(app) && /const CACHE = "media-shelf-v2\.15.2";/.test(sw));
 check("production relay stays frm-gcd; review host or ?comicRelay=review uses the review worker",
   /const COMIC_RELAY_URL = "https:\/\/frm-gcd\.freerangeice\.workers\.dev"/.test(app) &&
   app.includes('COMIC_REVIEW_RELAY_URL = "https://frm-gcd-review.freerangeice.workers.dev"') &&

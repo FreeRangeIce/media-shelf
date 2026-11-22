@@ -72,6 +72,24 @@ function imageStub({ width = 200, height = 300, error = false, requests } = {}) 
   };
 }
 
+/** Paint a shelf card the way coverMarkup does: request the display URL, and on error call rememberFailedCoverUrl(this.src). */
+function paintCard(b, item) {
+  const html = b.api.coverMarkup(item);
+  const m = /<img class="item-cover" src="([^"]*)"/.exec(html);
+  if (!m) return "";
+  const url = m[1].replace(/&amp;/g, "&");
+  const img = new b.ctx.Image();
+  img.style = { display: "" };
+  img.nextElementSibling = { hidden: true };
+  img.onerror = function () {
+    this.style.display = "none";
+    if (this.nextElementSibling) this.nextElementSibling.hidden = false;
+    b.ctx.rememberFailedCoverUrl(this.src);
+  };
+  img.src = url;
+  return url;
+}
+
 const BASE = { status: "owned", sources: ["clz"], dateAdded: "2026-11-14T00:00:00.000Z", dateUpdated: "2026-11-14T00:00:00.000Z" };
 const OL_BOOK = [
   [/openlibrary\.org\/isbn\//, () => ({ body: { title: "Dune", publish_date: "1965", covers: [42], authors: [{ key: "/authors/A1" }] } })],
@@ -565,23 +583,25 @@ check("comics: a 1×1 Open Library placeholder is Needs a pick, and the URL is n
 check("comics: after a failed Open Library ISBN check, the unsaved URL is requested once; re-renders do not fetch it again", async () => {
   const requests = [];
   const b = bootWith([[/\/comic\?/, () => ({ body: { match: null, covers: [], variants: [], total: 0 } })]], { Image: imageStub({ error: true, requests }) });
-  b.seed([{ ...BASE, id: "k5r", type: "comic", series: "Saga", issue: "1", edition: "collected", comicFormat: "Trade Paperback", barcode: TRADE_ISBN, coverUrl: "" }]);
+  const seeded = b.seed([{ ...BASE, id: "k5r", type: "comic", series: "Saga", issue: "1", edition: "collected", comicFormat: "Trade Paperback", barcode: TRADE_ISBN, coverUrl: "" }]);
+  // The card onerror and the detail-cover error handler both remember the failed URL.
+  assert.match(b.api.coverMarkup(seeded[0]), /rememberFailedCoverUrl\(this\.src\)/);
+  assert.match(fs.readFileSync(path.join(__dirname, "../app.js"), "utf8"), /cov\.addEventListener\("error", function \(\) \{ rememberFailedCoverUrl\(this\.src \|\| cov\.src\);/);
+  // First paint, as on the review page, happens before the probe.
+  assert.equal(paintCard(b, seeded[0]), OL_TRADE);
+  assert.deepEqual(requests.filter((u) => u === OL_TRADE), [OL_TRADE]);
+  assert.equal(b.api.itemDisplayCoverUrl(b.stored()[0]), "", "after the card onerror, the unsaved ISBN is not painted again");
   const q = await queueAndRun(b, ["k5r"]);
   const it = b.stored()[0];
   assert.equal(q.pick, 1);
   assert.equal(it.enrich, "pick");
-  assert.equal(it.coverUrl, "");
+  assert.equal(it.coverUrl, "", "a URL already known to have failed is still a failed probe: Needs a pick, nothing saved");
+  assert.equal(it.coverSource || "", "");
   assert.equal(b.api.itemDisplayCoverUrl(it), "", "Needs a pick does not fall back to the unsaved ISBN image");
-  // Six list re-renders, as on the review page: paint whatever the display URL is.
-  for (let i = 0; i < 6; i++) {
-    const url = b.api.itemDisplayCoverUrl(it);
-    if (url) {
-      const img = new (imageStub({ error: true, requests }))();
-      img.src = url;
-    }
-  }
+  // Six list re-renders, as on the review page: paint whatever the card would show.
+  for (let i = 0; i < 6; i++) paintCard(b, it);
   const hits = requests.filter((u) => u === OL_TRADE);
-  assert.equal(hits.length, 1, "failed ISBN requested once in total, not again on re-render: " + JSON.stringify(requests));
+  assert.equal(hits.length, 1, "failed ISBN requested once in total (first paint; probe and re-renders skip it): " + JSON.stringify(requests));
 });
 
 check("comics: a saved Open Library or Metron cover still displays after the failed-ISBN path exists", async () => {

@@ -14,9 +14,9 @@ const ttSrc = fs.readFileSync(path.join(root, 'tabletop.js'), 'utf8');
 let passed = 0;
 const check = (n, fn) => { fn(); passed++; console.log('PASS', n); };
 
-check('APP_VERSION is 2.15.1; sw cache is media-shelf-v2.15.1', () => {
-  assert.match(app, /const APP_VERSION = "2\.15.1"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.15.1"/);
+check('APP_VERSION is 2.15.2; sw cache is media-shelf-v2.15.2', () => {
+  assert.match(app, /const APP_VERSION = "2\.15.2"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.15.2"/);
 });
 
 check('item A: no-cover / failed-image placeholder is #0d0d0d with #b5aa9c label', () => {
@@ -53,7 +53,7 @@ check('item A: per-category cover ratios and type size are unchanged', () => {
 });
 
 check('item A: media failed-image path still unhides the sibling placeholder (no layout change)', () => {
-  assert.match(app, /onerror="this\.style\.display='none';var p=this\.nextElementSibling;if\(p\)p\.hidden=false;"/);
+  assert.match(app, /onerror="this\.style\.display='none';var p=this\.nextElementSibling;if\(p\)p\.hidden=false;rememberFailedCoverUrl\(this\.src\);"/);
   assert.match(app, /<div class="item-cover-placeholder \$\{type\}" hidden aria-hidden="true">\$\{label\}<\/div>/);
   assert.match(app, /<div class="item-cover-placeholder \$\{type\}" aria-hidden="true">\$\{label\}<\/div>/);
 });
