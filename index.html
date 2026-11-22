@@ -207,7 +207,12 @@
             </button>
             <label class="comic-take-photo" id="btn-comic-take-photo">
               <input type="file" id="comic-take-photo-input" accept="image/*" capture="environment" />
-              <span class="comic-cover-thumb comic-cover-blank" aria-hidden="true"></span>
+              <span class="comic-cover-thumb comic-cover-blank" aria-hidden="true">
+                <svg class="comic-take-photo-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+                  <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" d="M8 8.5 9.2 6.5h5.6L16 8.5h2.5A1.5 1.5 0 0 1 20 10v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18v-8A1.5 1.5 0 0 1 5.5 8.5H8Z"/>
+                  <circle cx="12" cy="13.25" r="3" fill="none" stroke="currentColor" stroke-width="1.75"/>
+                </svg>
+              </span>
               <span class="comic-cover-label">Take a photo</span>
             </label>
             <p id="comic-take-photo-status" class="field-hint" role="status" hidden></p>

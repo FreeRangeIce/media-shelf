@@ -3275,30 +3275,41 @@ body.modal-open {
   text-align: center;
 }
 
-/* V2.14: Take a photo in the cover picker — same 8px radius, 1px outline, 44px target as No cover. */
+/* V2.14: Take a photo matches the No cover tile: 48×72 frame on the left, label
+   to the right, same 8px radius, 1px border and padding. Min-height 76px (72px
+   thumb + 2px padding each side) keeps the tap target above 44px. The camera
+   glyph is decorative (aria-hidden); "Take a photo" stays the accessible name. */
 .comic-take-photo {
+  appearance: none;
   position: relative;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: var(--space-2);
   width: 100%;
+  min-width: 0;
+  min-height: 76px;
   box-sizing: border-box;
   margin-top: var(--space-2);
-  min-height: 44px;
-  padding: var(--space-2);
-  border: 1px solid #5c5348;
-  border-radius: 8px;
+  padding: 2px var(--space-3) 2px 2px;
+  padding-right: calc(var(--space-3) + 26px); /* room for the check mark */
   background: #fffdf8;
+  border: 1px solid #5c5348;
+  border-radius: var(--radius-sm);
   color: #1a1a1a;
-  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-sm);
   text-align: left;
+  cursor: pointer;
 }
 .comic-take-photo:hover {
   background: #f7f7f7;
+  border-color: #5c5348;
+  color: #1a1a1a;
 }
 .comic-take-photo:focus-within {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus);
 }
 .comic-take-photo input[type="file"] {
   position: absolute;
@@ -3309,12 +3320,27 @@ body.modal-open {
   cursor: pointer;
 }
 .comic-take-photo .comic-cover-label {
+  width: 100%;
+  min-width: 0;
   font: inherit;
   font-size: var(--fs-sm);
-  color: inherit;
+  color: #1a1a1a;
+  overflow-wrap: break-word;
+  -webkit-line-clamp: unset;
+  line-clamp: none;
+  display: block;
+  overflow: visible;
+}
+.comic-take-photo-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+  color: #1a1a1a;
+  pointer-events: none;
 }
 .comic-take-photo.is-selected {
   border-color: #8B5E3C;
+  color: #1a1a1a;
   background: #fffdf8;
   box-shadow: inset 0 0 0 1px #8B5E3C;
 }
@@ -3323,6 +3349,7 @@ body.modal-open {
   position: absolute;
   top: 50%;
   right: var(--space-2);
+  left: auto;
   transform: translateY(-50%);
   width: 22px;
   height: 22px;
@@ -5215,6 +5242,11 @@ body {
 .tt-list,
 #main {
   padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 12px) !important;
+}
+/* V2.14: the fixed bottom nav was covering the credit lines and App version.
+   --frm-nav-h is the nav's real height (64px + safe-area-inset-bottom). */
+.site-footer {
+  padding-bottom: var(--frm-nav-h);
 }
 .frm-nav-btn,
 .frm-nav-add,

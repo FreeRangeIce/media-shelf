@@ -77,11 +77,23 @@ check("Take a photo is in the cover picker: file input, accept=image/*, capture=
   /id="comic-take-photo-input"[^>]*accept="image\/\*"[^>]*capture="environment"/.test(html) &&
   html.indexOf('id="btn-comic-take-photo"') > html.indexOf('id="btn-comic-no-cover"') &&
   html.indexOf('id="btn-comic-take-photo"') < html.indexOf('id="field-comic-cover-url"'));
-check("Take a photo is outlined like the other tiles, with a 44px target",
-  /\.comic-take-photo\s*\{[^}]*min-height:\s*44px/.test(css) &&
+check("Take a photo matches the No cover tile layout (48×72 frame, label to the right, same radius, border and padding, ≥44px target)",
+  /\.comic-take-photo\s*\{[^}]*min-height:\s*76px/.test(css) &&
+  /\.comic-take-photo\s*\{[^}]*padding:\s*2px var\(--space-3\) 2px 2px/.test(css) &&
   /\.comic-take-photo\s*\{[^}]*border:\s*1px solid #5c5348/.test(css) &&
-  /\.comic-take-photo\s*\{[^}]*border-radius:\s*8px/.test(css) &&
-  /\.comic-take-photo\s*\{[^}]*background:\s*#fffdf8/.test(css));
+  /\.comic-take-photo\s*\{[^}]*border-radius:\s*var\(--radius-sm\)/.test(css) &&
+  /\.comic-take-photo\s*\{[^}]*background:\s*#fffdf8/.test(css) &&
+  /\.comic-no-cover[\s\S]{0,400}min-height:\s*76px/.test(css) &&
+  /\.comic-no-cover[\s\S]{0,400}padding:\s*2px var\(--space-3\) 2px 2px/.test(css) &&
+  /\.comic-no-cover[\s\S]{0,800}border-radius:\s*var\(--radius-sm\)/.test(css));
+check("Take a photo has a decorative camera glyph in the 48×72 frame; the label stays the accessible name",
+  /id="btn-comic-take-photo"[\s\S]{0,600}comic-cover-thumb comic-cover-blank" aria-hidden="true"/.test(html) &&
+  /comic-cover-blank" aria-hidden="true">\s*<svg class="comic-take-photo-icon"[\s\S]{0,400}aria-hidden="true"/.test(html) &&
+  /<span class="comic-cover-label">Take a photo<\/span>/.test(html) &&
+  !/<svg[^>]*aria-label=/.test(html.match(/comic-take-photo-icon[\s\S]{0,800}/)[0]));
+check("library footer padding-bottom is the nav height plus the safe area (--frm-nav-h), so credits clear the nav",
+  /--frm-nav-h:\s*calc\(64px \+ env\(safe-area-inset-bottom, 0px\)\)/.test(css) &&
+  /\.site-footer\s*\{\s*padding-bottom:\s*var\(--frm-nav-h\);/.test(css));
 check("photos are downscaled to a 600px long edge as JPEG at quality 0.8",
   /COVER_PHOTO_MAX_EDGE = 600/.test(app) && /COVER_PHOTO_QUALITY = 0\.8/.test(app) &&
   /toDataURL\("image\/jpeg", COVER_PHOTO_QUALITY\)/.test(app));
