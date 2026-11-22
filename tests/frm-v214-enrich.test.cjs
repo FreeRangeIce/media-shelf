@@ -57,11 +57,12 @@ function bootWith(routes, { store, clock, fetch, Image } = {}) {
   return { ...b, fetch: f, clock: c };
 }
 
-function imageStub({ width = 200, height = 300, error = false } = {}) {
+function imageStub({ width = 200, height = 300, error = false, requests } = {}) {
   return class Image {
     constructor() { this.naturalWidth = 0; this.naturalHeight = 0; this.onload = null; this.onerror = null; this._src = ""; }
     set src(v) {
       this._src = String(v || "");
+      if (requests) requests.push(this._src);
       if (error) { if (typeof this.onerror === "function") this.onerror(); return; }
       this.naturalWidth = width;
       this.naturalHeight = height;
@@ -559,6 +560,40 @@ check("comics: a 1×1 Open Library placeholder is Needs a pick, and the URL is n
   assert.equal(it.enrich, "pick");
   assert.equal(it.coverUrl, "", "do not store a 1×1 placeholder as a cover");
   assert.equal(it.coverSource || "", "");
+});
+
+check("comics: after a failed Open Library ISBN check, the unsaved URL is requested once; re-renders do not fetch it again", async () => {
+  const requests = [];
+  const b = bootWith([[/\/comic\?/, () => ({ body: { match: null, covers: [], variants: [], total: 0 } })]], { Image: imageStub({ error: true, requests }) });
+  b.seed([{ ...BASE, id: "k5r", type: "comic", series: "Saga", issue: "1", edition: "collected", comicFormat: "Trade Paperback", barcode: TRADE_ISBN, coverUrl: "" }]);
+  const q = await queueAndRun(b, ["k5r"]);
+  const it = b.stored()[0];
+  assert.equal(q.pick, 1);
+  assert.equal(it.enrich, "pick");
+  assert.equal(it.coverUrl, "");
+  assert.equal(b.api.itemDisplayCoverUrl(it), "", "Needs a pick does not fall back to the unsaved ISBN image");
+  // Six list re-renders, as on the review page: paint whatever the display URL is.
+  for (let i = 0; i < 6; i++) {
+    const url = b.api.itemDisplayCoverUrl(it);
+    if (url) {
+      const img = new (imageStub({ error: true, requests }))();
+      img.src = url;
+    }
+  }
+  const hits = requests.filter((u) => u === OL_TRADE);
+  assert.equal(hits.length, 1, "failed ISBN requested once in total, not again on re-render: " + JSON.stringify(requests));
+});
+
+check("comics: a saved Open Library or Metron cover still displays after the failed-ISBN path exists", async () => {
+  const requests = [];
+  const b = bootWith([[/\/comic\?/, () => ({ body: comicBody([{ url: METRON, label: "Direct Sales" }]) })]], { Image: imageStub({ requests }) });
+  b.seed([{ ...BASE, id: "k5s", type: "comic", series: "Saga", issue: "1", year: 2012, coverUrl: METRON, coverSource: "comiclookup", coverLabel: "Direct Sales" }]);
+  assert.equal(b.api.itemDisplayCoverUrl(b.stored()[0]), METRON, "a stored Metron cover is unchanged");
+  const olItem = { ...b.stored()[0], id: "k5t", edition: "collected", comicFormat: "Trade Paperback", barcode: TRADE_ISBN, coverUrl: OL_TRADE, coverSource: "openlibrary", enrich: undefined };
+  assert.equal(b.api.itemDisplayCoverUrl(olItem), OL_TRADE, "a saved Open Library cover is unchanged");
+  const pickButSaved = { ...olItem, enrich: "pick" };
+  assert.equal(b.api.itemDisplayCoverUrl(pickButSaved), OL_TRADE, "a stored cover still displays even if the row is Needs a pick");
+  assert.equal(requests.length, 0, "displaying a stored URL does not go through the probe");
 });
 
 check("comics: several Metron covers on a trade with an ISBN are still Needs a pick, not an Open Library fill", async () => {

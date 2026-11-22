@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6, 2.7…; bump APP_VERSION and
-  // the service worker cache name together (media-shelf-v2.15) so the Duo drops old files.
-  const APP_VERSION = "2.15";
+  // the service worker cache name together (media-shelf-v2.15.1) so the Duo drops old files.
+  const APP_VERSION = "2.15.1";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -1389,12 +1389,28 @@
     return "https://covers.openlibrary.org/b/isbn/" + encodeURIComponent(n) + "-" + edge + ".jpg?default=false";
   }
 
-  /** Library / detail / preview URL: a stored cover, else an Open Library ISBN cover for a trade. */
+  /** ISBN cover URLs that already failed a load (probe or a later display). Session only. */
+  const failedCoverUrls = new Set();
+
+  function rememberFailedCoverUrl(url) {
+    const s = String(url || "").trim();
+    if (s) failedCoverUrls.add(s);
+  }
+
+  /**
+   * Library / detail / preview URL: a stored cover, else an Open Library ISBN cover for a
+   * trade. Skip that ISBN fallback while the comic is marked Needs a pick, and skip a URL
+   * that already failed to load, so a missing ISBN is not re-requested on every re-render.
+   */
   function itemDisplayCoverUrl(item) {
     if (!item) return "";
     const stored = comicImageSuppressed(item.type, item.coverUrl) ? "" : String(item.coverUrl || "").trim();
     if (stored) return stored;
-    if (item.type === "comic" && looksLikeIsbn(item.barcode)) return openLibraryIsbnCoverUrl(item.barcode, "M");
+    if (item.type === "comic" && item.enrich === "pick") return "";
+    if (item.type === "comic" && looksLikeIsbn(item.barcode)) {
+      const url = openLibraryIsbnCoverUrl(item.barcode, "M");
+      return url && !failedCoverUrls.has(url) ? url : "";
+    }
     return "";
   }
 
@@ -9722,12 +9738,14 @@
   function probeCoverImage(url) {
     const src = String(url || "").trim();
     if (!src) return Promise.resolve(false);
+    if (failedCoverUrls.has(src)) return Promise.resolve(false);
     return new Promise((resolve) => {
       let done = false;
       const finish = (ok) => {
         if (done) return;
         done = true;
         clearTimeout(timer);
+        if (ok !== true) rememberFailedCoverUrl(src);
         resolve(ok === true);
       };
       const timer = setTimeout(() => finish(false), LOOKUP_FETCH_MS);
