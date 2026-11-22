@@ -6428,3 +6428,36 @@ html {
   object-fit: contain !important;
   object-position: center;
 }
+
+
+/* ========== V2.16 (Micah-supplied platform marks) ==========
+   Square marks (GameCube, Steam, original Xbox) sit in the existing 24px disc
+   with an 18px image. Wordmarks (Switch 2, Series X|S, Xbox One, Xbox 360)
+   stay 24px tall with the same rgba(0,0,0,.55) scrim and 8px cover inset, but
+   size the mark by height (12px) with a max width of 44px so 360 and ONE stay
+   readable. The disc becomes a pill. PlayStation, Switch, Wii and Wii U are
+   unchanged. */
+.platform-badge.platform-badge-square img,
+.platform-badge-square img {
+  max-width: 18px;
+  max-height: 18px;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+.platform-badge.platform-badge-wordmark {
+  width: auto;
+  max-width: 52px;
+  height: 24px;
+  padding: 0 4px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.platform-badge.platform-badge-wordmark img,
+.platform-badge-wordmark img {
+  max-width: 44px;
+  max-height: 12px;
+  width: auto;
+  height: 12px;
+  object-fit: contain;
+}

@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6, 2.7…; bump APP_VERSION and
-  // the service worker cache name together (media-shelf-v2.15.2) so the Duo drops old files.
-  const APP_VERSION = "2.15.2";
+  // the service worker cache name together (media-shelf-v2.16) so the Duo drops old files.
+  const APP_VERSION = "2.16";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -2523,24 +2523,24 @@
 
   /**
    * Official marks (white monochrome, see assets/platforms/SOURCES.md) live in
-   * assets/platforms/. Text abbreviations are used when no official asset is in
-   * this build (GameCube, Steam, Switch 2, PC, Other).
+   * assets/platforms/. Text abbreviations are used when no mark is in this
+   * build (PC, Other, and the PSP / PS Vita labels).
    */
   const PLATFORM_BADGES = {
-    Steam: { file: "", abbr: "STM", label: "Steam" },
+    Steam: { file: "steam.svg", square: true, label: "Steam" },
     PSN: { file: "playstation.svg", label: "PlayStation" },
     "PS1": { file: "playstation.svg", label: "PlayStation 1" },
     "PS2": { file: "playstation.svg", label: "PlayStation 2" },
     "PS3": { file: "playstation.svg", label: "PlayStation 3" },
     "PS4": { file: "playstation.svg", label: "PlayStation 4" },
     "PS5": { file: "playstation.svg", label: "PlayStation 5" },
-    Xbox: { file: "xbox.svg", label: "Xbox" },
-    "Xbox 360": { file: "xbox.svg", label: "Xbox 360" },
-    "Xbox One": { file: "xbox.svg", label: "Xbox One" },
-    "Series X|S": { file: "xbox.svg", label: "Xbox Series X|S" },
+    Xbox: { file: "xbox-original.svg", square: true, label: "Xbox" },
+    "Xbox 360": { file: "xbox-360.svg", wordmark: true, label: "Xbox 360" },
+    "Xbox One": { file: "xbox-one.svg", wordmark: true, label: "Xbox One" },
+    "Series X|S": { file: "xbox-series-xs.svg", wordmark: true, label: "Xbox Series X|S" },
     Switch: { file: "switch.svg", label: "Nintendo Switch" },
-    "Switch 2": { file: "", abbr: "NS2", label: "Switch 2" },
-    GameCube: { file: "", abbr: "GCN", label: "GameCube" },
+    "Switch 2": { file: "switch2.svg", wordmark: true, label: "Switch 2" },
+    GameCube: { file: "gamecube.svg", square: true, label: "GameCube" },
     Wii: { file: "wii.svg", label: "Wii" },
     "Wii U": { file: "wiiu.svg", label: "Wii U" },
     // V2.11 (Nathan QA): explicit text labels so the 3-character cut never shows "PS ".
@@ -2669,9 +2669,19 @@
     }
     const title = escapeHtml(meta.label || raw);
     if (meta.file) {
-      const wiiuClass = meta.file === "wiiu.svg" ? " platform-badge-wiiu" : "";
-      const imgSize = meta.file === "wiiu.svg" ? ` width="18" height="7"` : ` width="16" height="16"`;
-      return `<span class="platform-badge${wiiuClass}" title="${title}"><img src="./assets/platforms/${escapeHtml(meta.file)}" alt=""${imgSize}></span>`;
+      let extraClass = "";
+      let imgSize = ` width="16" height="16"`;
+      if (meta.file === "wiiu.svg") {
+        extraClass = " platform-badge-wiiu";
+        imgSize = ` width="18" height="7"`;
+      } else if (meta.wordmark) {
+        extraClass = " platform-badge-wordmark";
+        imgSize = ` width="44" height="12"`;
+      } else if (meta.square) {
+        extraClass = " platform-badge-square";
+        imgSize = ` width="18" height="18"`;
+      }
+      return `<span class="platform-badge${extraClass}" title="${title}"><img src="./assets/platforms/${escapeHtml(meta.file)}" alt=""${imgSize}></span>`;
     }
     return `<span class="platform-badge platform-badge-text" title="${title}">${escapeHtml(meta.abbr || raw)}</span>`;
   }

@@ -817,10 +817,10 @@ check("V2.12 enrich write: skip a Needs lookup mark this run did not own, and ne
   assert.equal(got.dateUpdated, "2026-11-15T00:00:00.000Z");
 });
 
-check("APP_VERSION 2.15.2 and cache media-shelf-v2.15.2", () => {
+check("APP_VERSION 2.16 and cache media-shelf-v2.16", () => {
 
-  assert.match(app, /const APP_VERSION = "2\.15.2";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.15.2";/);
+  assert.match(app, /const APP_VERSION = "2\.16";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.16";/);
 });
 
 (async () => {

@@ -1,5 +1,5 @@
-/* FreeRangeMedia service worker — cache version V2.15.2 */
-const CACHE = "media-shelf-v2.15.2";
+/* FreeRangeMedia service worker — cache version V2.16 */
+const CACHE = "media-shelf-v2.16";
 /*
  * Cross-origin responses (cover images, APIs, CDNs) are never written to the cache: only
  * same-origin responses are (see the fetch handler). Comic data and covers from the Grand
@@ -39,6 +39,13 @@ const ASSETS = [
   "./assets/platforms/switch.svg",
   "./assets/platforms/wii.svg",
   "./assets/platforms/wiiu.svg",
+  "./assets/platforms/switch2.svg",
+  "./assets/platforms/xbox-series-xs.svg",
+  "./assets/platforms/xbox-one.svg",
+  "./assets/platforms/xbox-360.svg",
+  "./assets/platforms/xbox-original.svg",
+  "./assets/platforms/gamecube.svg",
+  "./assets/platforms/steam.svg",
 ];
 
 self.addEventListener("install", (event) => {

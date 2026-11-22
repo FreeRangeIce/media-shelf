@@ -22,11 +22,11 @@ function check(name, fn) {
   console.log("PASS", name);
 }
 
-check("APP_VERSION 2.15.2 and cache media-shelf-v2.15.2, no suffixes", () => {
-  assert.match(app, /const APP_VERSION = "2\.15.2";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.15.2";/);
+check("APP_VERSION 2.16 and cache media-shelf-v2.16, no suffixes", () => {
+  assert.match(app, /const APP_VERSION = "2\.16";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.16";/);
   assert.doesNotMatch(app, /const APP_VERSION = "2\.12-/);
-  assert.doesNotMatch(sw, /media-shelf-v2\.15.2-/);
+  assert.doesNotMatch(sw, /media-shelf-v2\.16-/);
 });
 
 check("item 1: official marks are white monochrome; text badges for the rest; Micah personal-use note", () => {
@@ -38,9 +38,9 @@ check("item 1: official marks are white monochrome; text badges for the rest; Mi
   assert.match(sources, /switch\.svg/);
   assert.match(sources, /wii\.svg/);
   assert.match(sources, /wiiu\.svg/);
-  assert.match(sources, /GCN/);
+  assert.match(sources, /gamecube\.svg/);
   assert.match(sources, /Steam/);
-  assert.match(sources, /NS2/);
+  assert.match(sources, /switch2\.svg/);
   const xbox = fs.readFileSync(path.join(root, "assets/platforms/xbox.svg"), "utf8");
   const ps = fs.readFileSync(path.join(root, "assets/platforms/playstation.svg"), "utf8");
   const nsw = fs.readFileSync(path.join(root, "assets/platforms/switch.svg"), "utf8");
@@ -57,11 +57,13 @@ check("item 1: official marks are white monochrome; text badges for the rest; Mi
   assert.match(wiiu, /fill:#FFFFFF/i);
   assert.doesNotMatch(wiiu, /#0096C8|#8C8C8C/);
   // Text-only platforms (no file)
-  assert.match(app, /Steam:\s*\{\s*file:\s*""/);
-  assert.match(app, /"Switch 2":\s*\{\s*file:\s*"",\s*abbr:\s*"NS2"/);
-  assert.match(app, /GameCube:\s*\{\s*file:\s*"",\s*abbr:\s*"GCN"/);
   assert.match(app, /PC:\s*\{\s*file:\s*"",\s*abbr:\s*"PC"/);
   assert.match(app, /Other:\s*\{\s*file:\s*"",\s*abbr:\s*"OTH"/);
+  assert.match(app, /PSP:\s*\{\s*file:\s*"",\s*abbr:\s*"PSP"/);
+  assert.match(app, /"PS Vita":\s*\{\s*file:\s*"",\s*abbr:\s*"PSV"/);
+  assert.match(app, /Steam:\s*\{\s*file:\s*"steam\.svg"/);
+  assert.match(app, /"Switch 2":\s*\{\s*file:\s*"switch2\.svg"/);
+  assert.match(app, /GameCube:\s*\{\s*file:\s*"gamecube\.svg"/);
   assert.match(sw, /\.\/assets\/platforms\/xbox\.svg/);
   assert.match(sw, /\.\/assets\/platforms\/wiiu\.svg/);
   assert.doesNotMatch(sw, /boardgamegeek|geekdo/);

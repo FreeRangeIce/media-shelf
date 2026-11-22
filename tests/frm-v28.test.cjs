@@ -13,9 +13,9 @@ let passed = 0;
 function check(name, fn) { fn(); passed++; console.log('PASS ' + name); }
 assert.ok(v28.length > 200, 'V2.8 CSS block missing');
 
-check('APP_VERSION 2.15.2 and cache media-shelf-v2.15.2, no suffixes', () => {
-  assert.match(app, /const APP_VERSION = "2\.15.2";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.15.2";/);
+check('APP_VERSION 2.16 and cache media-shelf-v2.16, no suffixes', () => {
+  assert.match(app, /const APP_VERSION = "2\.16";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.16";/);
 });
 check('item 1: grid card markup has no Base game pill; detail sheet keeps Base game', () => {
   const tile = tt.slice(tt.indexOf('function tileHtml'), tt.indexOf('function cardHtml'));
@@ -155,8 +155,8 @@ check('follow-up 6: platform badges use official assets or text fallbacks; SW BG
   assert.match(sources, /switch\.svg/);
   assert.match(sources, /nintendo\.co\.jp/);
   assert.match(sources, /Steam/);
-  assert.match(sources, /NS2/);
-  assert.match(sources, /GCN/);
+  assert.match(sources, /switch2\.svg/);
+  assert.match(sources, /gamecube\.svg/);
   assert.match(app, /PLATFORM_BADGES/);
   assert.match(app, /function platformBadgeMarkup/);
   assert.match(v28, /\.platform-badge\s*\{[^}]*width:\s*24px/);

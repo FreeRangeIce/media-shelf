@@ -48,11 +48,11 @@ function hexToRgb(hex) {
 
 const B = loadBadgeFns();
 
-check("APP_VERSION 2.15.2 and cache media-shelf-v2.15.2, no suffixes", () => {
-  assert.match(app, /const APP_VERSION = "2\.15.2";/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.15.2";/);
+check("APP_VERSION 2.16 and cache media-shelf-v2.16, no suffixes", () => {
+  assert.match(app, /const APP_VERSION = "2\.16";/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.16";/);
   assert.doesNotMatch(app, /const APP_VERSION = "2\.12-/);
-  assert.doesNotMatch(sw, /media-shelf-v2\.15.2-/);
+  assert.doesNotMatch(sw, /media-shelf-v2\.16-/);
   assert.doesNotMatch(app, /const APP_VERSION = "2\.9";/);
   assert.doesNotMatch(sw, /const CACHE = "media-shelf-v2\.9";/);
 });
@@ -157,11 +157,15 @@ check("badge markup: PSN / long names / lowercase share one logo per family", ()
     ["ps4", "playstation.svg"],
     ["Nintendo Switch", "switch.svg"],
     ["Switch", "switch.svg"],
-    ["Xbox Series X|S", "xbox.svg"],
-    ["Xbox One", "xbox.svg"],
-    ["Xbox 360", "xbox.svg"],
+    ["Xbox Series X|S", "xbox-series-xs.svg"],
+    ["Xbox One", "xbox-one.svg"],
+    ["Xbox 360", "xbox-360.svg"],
+    ["Xbox", "xbox-original.svg"],
     ["Wii", "wii.svg"],
     ["Wii U", "wiiu.svg"],
+    ["Nintendo Switch 2", "switch2.svg"],
+    ["Steam", "steam.svg"],
+    ["GameCube", "gamecube.svg"],
   ];
   for (const [name, file] of cases) {
     const html = B.platformBadgeMarkup({ type: "game", platform: name });
@@ -169,12 +173,15 @@ check("badge markup: PSN / long names / lowercase share one logo per family", ()
     assert.doesNotMatch(html, /platform-badge-text/, name);
   }
   const ns2 = B.platformBadgeMarkup({ type: "game", platform: "Nintendo Switch 2" });
-  assert.match(ns2, />NS2</);
-  assert.doesNotMatch(ns2, /switch\.svg/);
+  assert.match(ns2, /switch2\.svg/);
+  assert.doesNotMatch(ns2, />NS2</);
+  assert.doesNotMatch(ns2, /switch\.svg(?!2)/);
   const steam = B.platformBadgeMarkup({ type: "game", platform: "Steam" });
-  assert.match(steam, />STM</);
+  assert.match(steam, /steam\.svg/);
+  assert.doesNotMatch(steam, />STM</);
   const gcn = B.platformBadgeMarkup({ type: "game", platform: "GameCube" });
-  assert.match(gcn, />GCN</);
+  assert.match(gcn, /gamecube\.svg/);
+  assert.doesNotMatch(gcn, />GCN</);
 });
 
 check("display-time only: normalizePlatform / backup keys / routes are not rewritten by badge code", () => {
@@ -260,7 +267,7 @@ check("badgePlatformKey is not used to write storage; cache name scheme unchange
   assert.match(ttSrc, /function dominantHueFromPixels/);
   assert.match(ttSrc, /sat < 0\.20/);
   assert.match(ttSrc, /function darkenRgbForWhiteText/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.15.2"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.16"/);
 });
 
 console.log(`${passed}/${passed} passed (v2.10 badge mapping + text size + Wii U + pills + scroll pad)`);
