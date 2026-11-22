@@ -11,7 +11,7 @@ const EXPOSE = [
   'normalizeItem', 'parseClzCsv', 'clzAutoMapping', 'clzCandidate', 'parseImportText', 'importCandidate',
   'CLZ_TYPES', 'CLZ_HEADER_ALIASES', 'clzScore',
 ];
-const OPTIONAL = ['ENRICH', 'restoreCoverQueue', 'readCoverQueue', 'resumeCoverFillOnOpen', 'resolveGameBarcode', 'barcodePlatformFit', 'enrichPauseLines', 'enrichResumeClock', 'enrichPlanFor', 'enrichFillEmpty', 'enrichSummaryText', 'readEnrichQueue', 'writeEnrichQueue', 'enqueueEnrich', 'runEnrich', 'enrichSources', 'commitClz', 'commitImport', 'importJson', 'clzComicFormat', 'clzComicIssue', 'enrichOne', 'resumeEnrichOnOpen', 'renderEnrichUi', 'enrichAfterRestore', 'enrichMarked', 'detailHtml', 'enrichWrite', 'enrichKey'];
+const OPTIONAL = ['ENRICH', 'restoreCoverQueue', 'readCoverQueue', 'resumeCoverFillOnOpen', 'resolveGameBarcode', 'barcodePlatformFit', 'enrichPauseLines', 'enrichResumeClock', 'enrichPlanFor', 'enrichFillEmpty', 'enrichSummaryText', 'readEnrichQueue', 'writeEnrichQueue', 'enqueueEnrich', 'runEnrich', 'enrichSources', 'commitClz', 'commitImport', 'importJson', 'clzComicFormat', 'clzComicIssue', 'enrichOne', 'resumeEnrichOnOpen', 'renderEnrichUi', 'enrichAfterRestore', 'enrichMarked', 'detailHtml', 'enrichWrite', 'enrichKey', 'undoImport', 'enrichOnOnline', 'startEnrichAt', 'setEnrichFilter', 'clzChoice', 'evaluateClz', 'clzCounts', 'parseDelimited', 'rememberImportUndoRaw', 'LOOKUP_FETCH_MS', 'ENRICH_UPC_DELAY_MS', 'retryAfterUntil'];
 
 function bootSource(src, { fetch, store: sharedStore, clock } = {}) {
   const t = boot([], []), toasts = [];
@@ -22,8 +22,8 @@ function bootSource(src, { fetch, store: sharedStore, clock } = {}) {
   const timers = [];
   const ctx = {
     MutationObserver: class { observe() {} }, document: { querySelector: el, querySelectorAll: () => [], getElementById: el, createElement: () => new El(), addEventListener() {}, body: new El(), documentElement: new El(), visibilityState: 'visible', hidden: false },
-    localStorage, sessionStorage: { getItem: () => null, setItem() {} }, navigator: {}, location: { hostname: 'freerangeice.github.io', origin: 'https://freerangeice.github.io', href: 'https://freerangeice.github.io/media-shelf/' },
-    addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }),
+    localStorage, sessionStorage: { getItem: () => null, setItem() {} }, navigator: { onLine: true }, location: { hostname: 'freerangeice.github.io', origin: 'https://freerangeice.github.io', href: 'https://freerangeice.github.io/media-shelf/' },
+    addEventListener(type, fn) { (globalThis.__listeners ||= {})[type] = (globalThis.__listeners[type] || []).concat(fn); }, matchMedia: () => ({ matches: false, addEventListener() {} }),
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
 
     FileReader: class { readAsText(f) { this.result = f.content; this.onload(); } },
@@ -42,7 +42,7 @@ function bootSource(src, { fetch, store: sharedStore, clock } = {}) {
   ctx.window = ctx; ctx.globalThis = ctx;
   const tail = '\n  init();\n})();'; assert(src.includes(tail), 'app.js init tail');
   const names = [...EXPOSE, ...OPTIONAL].map(n => `${n}: (typeof ${n} === 'undefined' ? undefined : ${n})`).join(', ');
-  src = src.replace(tail, `\n  showToast = (m) => globalThis.__toasts.push(m);\n  render = () => {};\n  openConfirm = (title, desc, ok, label, opts) => { globalThis.__pending = { ok, opts }; };\n  closeConfirm = () => {};\n  globalThis.__app = { ${names}, getItems: () => items, setItems: (v) => { items = v; }, setSynced: (v) => { lastSyncedRaw = v; }, setClz: (v) => { clz = v; } };\n})();`);
+  src = src.replace(tail, `\n  showToast = (m) => globalThis.__toasts.push(m);\n  render = () => {};\n  openConfirm = (title, desc, ok, label, opts) => { globalThis.__pending = { ok, opts }; };\n  closeConfirm = () => {};\n  globalThis.__app = { ${names}, getItems: () => items, setItems: (v) => { items = v; }, setSynced: (v) => { lastSyncedRaw = v; }, setClz: (v) => { clz = v; }, setImportUndo: (v) => { importUndo = v; }, getImportUndo: () => importUndo, getLastStorageFailureMsg: () => lastStorageFailureMsg, setLastStorageFailureMsg: (v) => { lastStorageFailureMsg = v; }, getFilterType: () => filterType, getFilterEnrich: () => filterEnrich, enrichCapUsed: (src) => enrichCapUsed(src) };\n})();`);
   vm.createContext(ctx); vm.runInContext(src, ctx);
   const MEDIA = 'media-tracker-v1';
   return {

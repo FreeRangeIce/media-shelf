@@ -3919,17 +3919,37 @@
     if (override || !lookupIssues.has(source)) lookupIssues.set(source, issue);
   }
 
-  /** fetch() for Lookup sources: records HTTP errors (not 404) and network failures. */
+  const LOOKUP_FETCH_MS = 15000;
+
+  /** Retry-After as an epoch ms, or 0 if the header is missing or unreadable. */
+  function retryAfterUntil(res) {
+    if (!res || !res.headers) return 0;
+    const raw = res.headers.get("Retry-After");
+    if (raw == null || raw === "") return 0;
+    const sec = Number(raw);
+    if (Number.isFinite(sec) && sec >= 0) return Date.now() + sec * 1000;
+    const when = Date.parse(raw);
+    return Number.isNaN(when) ? 0 : when;
+  }
+
+  /** fetch() for Lookup sources: records HTTP errors (not 404) and network failures. Times out at 15 s. */
   async function lookupFetch(url) {
     const source = lookupSource;
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), LOOKUP_FETCH_MS);
     let res;
     try {
-      res = await fetch(url);
+      res = await fetch(url, { signal: ac.signal });
     } catch (err) {
       noteLookupIssue(source, { kind: "network" });
       throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    if (!res.ok && res.status !== 404) noteLookupIssue(source, { kind: "http", status: res.status });
+    if (!res.ok && res.status !== 404) {
+      const until = retryAfterUntil(res);
+      noteLookupIssue(source, { kind: "http", status: res.status, ...(until ? { until } : {}) });
+    }
     return res;
   }
 
@@ -6083,9 +6103,17 @@
       throw new Error("Game lookup couldn’t connect. Try again, or enter the details yourself. What you typed is kept.");
     }
     if (res.status === 429) {
-      const header = res.headers.get("Retry-After"), reset = Number(res.headers.get("X-RateLimit-Reset"));
-      const n = header && /^\d+$/.test(header) ? Number(header) : header ? (Date.parse(header) - Date.now()) / 1000 : reset ? (reset * 1000 - Date.now()) / 1000 : 60;
-      const seconds = Number.isFinite(n) ? Math.max(1, Math.ceil(n)) : 60;
+      const header = res.headers.get("Retry-After"), resetRaw = res.headers.get("X-RateLimit-Reset"), reset = Number(resetRaw);
+      let seconds;
+      // UPCitemdb: a readable X-RateLimit-Reset is the stop time; never retry earlier
+      // (a shorter Retry-After must not win). Unix seconds, or ms if the value is already large.
+      if (key === "https://api.upcitemdb.com" && Number.isFinite(reset) && reset > 0) {
+        const until = reset > 1e12 ? reset : reset * 1000;
+        seconds = Math.max(1, Math.ceil((until - Date.now()) / 1000));
+      } else {
+        const n = header && /^\d+$/.test(header) ? Number(header) : header ? (Date.parse(header) - Date.now()) / 1000 : reset ? (reset * 1000 - Date.now()) / 1000 : 60;
+        seconds = Number.isFinite(n) ? Math.max(1, Math.ceil(n)) : 60;
+      }
       gameCooldowns.set(key, Date.now() + seconds * 1000);
       throw new Error(`This source is limiting requests. Try again in ${seconds} seconds. What you typed is kept.`);
     }
@@ -6093,7 +6121,29 @@
     try { return await res.json(); }
     catch { throw new Error("Game lookup returned unreadable details. Try again, or enter the details yourself. What you typed is kept."); }
   }
-  async function fetchGameBarcodeJson(url, signal) { enrichGuardUpc(url); return gameJson(url, signal); }
+  async function fetchGameBarcodeJson(url, signal) {
+    const isUpc = /^https:\/\/api\.upcitemdb\.com\//.test(url);
+    enrichGuardUpc(url);
+    try {
+      const data = await gameJson(url, signal);
+      if (isUpc) enrichNoteUpcCall();
+      return data;
+    } catch (err) {
+      if (!isUpc) throw err;
+      if (err instanceof EnrichCap) throw err;
+      // A 429 is a real answer (pause until the reset). Count it, then let the cooldown stand.
+      if (err && /limiting requests/i.test(err.message)) {
+        enrichNoteUpcCall();
+        throw err;
+      }
+      // CORS or network-type failure: the browser never gives us a usable body (UPCitemdb
+      // answers Access-Control-Allow-Origin: https://www.upcitemdb.com). Do not count the
+      // daily cap, do not pause, and treat it as no match so enrichment falls through.
+      if (signal && signal.aborted) return null;
+      if (err && /couldn’t connect/i.test(err.message)) return null;
+      throw err;
+    }
+  }
   async function runGameLookup(byTitle) {
     if (gameBusy || lookupBusy || els.fieldType.value !== "game") return;
     resetGameLookup();
@@ -7581,8 +7631,14 @@
             cell += '"';
             i++;
           } else inQuotes = false;
+        } else if (ch === "\n") {
+          // An unclosed quote ends this record at the line break so the next row is not swallowed.
+          out.unterminated = true;
+          endRecord();
+          line++;
+          recordLine = line;
+          inQuotes = false;
         } else {
-          if (ch === "\n") line++;
           cell += ch;
         }
         continue;
@@ -7602,7 +7658,7 @@
       }
     }
     endRecord();
-    out.unterminated = inQuotes; // a quote never closed: callers that care (CLZ) refuse the file
+    if (inQuotes) out.unterminated = true; // a quote never closed: callers that care (CLZ) refuse the file
     return out;
   }
 
@@ -8453,8 +8509,9 @@
     // More than one matching comic (any rule): never updated automatically — Skip
     // until the row's own choice says otherwise (Nathan).
     const c = clz.choices.get(i) || (ev.ambiguous ? "skip" : $("#clz-dup-mode").value || "update");
-    // A repeat inside the file has nothing on the shelf to update: it's another copy.
-    return c === "update" && !ev.dup ? "add" : c;
+    // A repeat inside the file has nothing on the shelf to update: Skip unless this row
+    // was explicitly set to a separate copy (default Update would otherwise land extra copies).
+    return c === "update" && !ev.dup ? "skip" : c;
   }
 
   function clzCounts() {
@@ -9287,6 +9344,8 @@
   const ENRICH_LOCK_STORAGE = "freerangemedia-enrich-lock";
   const ENRICH_LAST_STORAGE = "freerangemedia-enrich-last";
   const ENRICH_DELAY_MS = 2000;
+  const ENRICH_UPC_DELAY_MS = 10000; // UPCitemdb's documented FREE limit is 6 requests a minute
+  const ENRICH_UPC_LAST_STORAGE = "freerangemedia-enrich-upc-last";
   const ENRICH_START_MS = IMPORT_UNDO_MS + 1000; // after the import's Undo window
   const ENRICH_MAX_FAILS = 3; // in a row: pause (offline, or a source is down)
   const ENRICH_MAX_TRIES = 2; // per item: one retry, then "failed"
@@ -9395,8 +9454,11 @@
     ENRICH.timer = null;
     const q = readEnrichQueue();
     // Merge already folded the marks into its write (pendingStamps is then an object). A direct
-    // call, such as an in-flight answer in this tab, still marks here.
-    if (!replace && q.ids.length && pendingStamps === undefined) enrichMarkUnreached(q.ids);
+    // call, such as an in-flight answer in this tab, still marks here — and must not drop the
+    // queue if that marks write fails, or unreached items would look finished.
+    if (!replace && q.ids.length && pendingStamps === undefined) {
+      if (!enrichMarkUnreached(q.ids)) return renderEnrichUi();
+    }
     if (!q.ids.length && !q.seen) return renderEnrichUi();
     writeEnrichQueue({ ...enrichEmptyQueue(), until: q.until, reason: q.until > Date.now() ? q.reason : "", paused: false });
     renderEnrichUi();
@@ -9430,8 +9492,8 @@
 
   /** Mark still-queued items Needs lookup (direct enrichAfterRestore path only). */
   function enrichMarkUnreached(ids, pendingStamps) {
-    if (!(ids || []).length) return;
-    commitItems((list) => {
+    if (!(ids || []).length) return true;
+    return commitItems((list) => {
       const out = enrichApplyUnreachedMarks(list, ids, pendingStamps);
       return out === list ? undefined : out;
     }, "other");
@@ -9440,7 +9502,12 @@
   function resumeEnrichOnOpen() {
     const q = readEnrichQueue();
     if (!q.ids.length) return renderEnrichUi();
-    if (q.until > Date.now()) return renderEnrichUi(); // a daily cap still holds: no request until it ends
+    if (q.until > Date.now()) {
+      // Short busy waits keep their promised time after a reload. A daily cap waits for
+      // the next open (or Resume once the time has passed); do not start a hours-long timer.
+      if (q.until - Date.now() <= ENRICH_SHORT_WAIT_MS) startEnrichAt(q.until);
+      return renderEnrichUi();
+    }
     if (q.paused) {
       q.paused = false;
       q.reason = "";
@@ -9545,14 +9612,22 @@
   function enrichGuardUpc(url) {
     if (!/^https:\/\/api\.upcitemdb\.com\//.test(url)) return;
     if (ENRICH.active && enrichCapUsed("upcitemdb") >= ENRICH_DAILY_CAPS.upcitemdb) throw new EnrichCap(enrichNextMidnight(), "UPCitemdb");
+  }
+
+  function enrichNoteUpcCall() {
     enrichCount("upcitemdb");
+    try {
+      localStorage.setItem(ENRICH_UPC_LAST_STORAGE, String(Date.now()));
+    } catch {
+      /* ignore */
+    }
   }
 
   /** The lookupIssues of one enrichment call -> a cap, a failure, or nothing. */
   function enrichIssueOutcome(issues) {
     for (const [src, issue] of issues) {
       if (issue.kind === "limit") return { kind: "cap", until: enrichNextMidnight(), reason: src };
-      if (issue.kind === "http" && (issue.status === 429 || (issue.status === 503 && src === "MusicBrainz"))) return { kind: "cap", until: Date.now() + 60000, reason: src };
+      if (issue.kind === "http" && (issue.status === 429 || (issue.status === 503 && src === "MusicBrainz"))) return { kind: "cap", until: issue.until || Date.now() + 60000, reason: src };
     }
     return issues.length ? { kind: "failed" } : null;
   }
@@ -9796,7 +9871,19 @@
       return out;
     }, "other");
     if (!ok) return { state: "failed", filled: 0 };
+    if (state === "written") rememberImportUndoRaw();
     return { state, filled };
+  }
+
+  /** Enrichment writes during the 10 s Undo window must not make Undo think something else changed. */
+  function rememberImportUndoRaw() {
+    if (!importUndo || Date.now() > importUndo.until) return;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw != null) importUndo.raw = raw;
+    } catch {
+      /* ignore */
+    }
   }
 
   async function runEnrich() {
@@ -9832,6 +9919,21 @@
           writeEnrichQueue(q);
           continue;
         }
+        // Saved by hand since the import: the mark was cleared; do not look up or re-mark.
+        if (parseTime(it.dateUpdated) > parseTime(it.dateAdded)) {
+          q.ids.shift();
+          q.total = Math.max(q.done, q.total - 1);
+          delete q.tries[id];
+          writeEnrichQueue(q);
+          renderEnrichUi();
+          continue;
+        }
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          q.paused = true;
+          q.reason = "offline";
+          writeEnrichQueue(q);
+          break;
+        }
         // A manual Lookup in progress has the sources to itself; wait for it.
         if (lookupBusy || gameBusy) {
           await coverFillSleep(1000);
@@ -9843,8 +9945,14 @@
         } catch {
           last = 0;
         }
-        const gap = last + ENRICH_DELAY_MS - Date.now();
-        if (gap > 0 && gap <= ENRICH_DELAY_MS) await coverFillSleep(gap);
+        let lastUpc = 0;
+        try {
+          lastUpc = Number(localStorage.getItem(ENRICH_UPC_LAST_STORAGE)) || 0;
+        } catch {
+          lastUpc = 0;
+        }
+        const gap = Math.max(last + ENRICH_DELAY_MS, lastUpc + ENRICH_UPC_DELAY_MS) - Date.now();
+        if (gap > 0 && gap <= ENRICH_UPC_DELAY_MS) await coverFillSleep(gap);
         try {
           localStorage.setItem(ENRICH_LAST_STORAGE, String(Date.now()));
         } catch {
@@ -9878,6 +9986,12 @@
           break;
         }
         if (res.kind === "failed") {
+          if (typeof navigator !== "undefined" && navigator.onLine === false) {
+            q.paused = true;
+            q.reason = "offline";
+            writeEnrichQueue(q);
+            break;
+          }
           fails += 1;
           const tries = (Number(q.tries[id]) || 0) + 1;
           q.ids = q.ids.filter((x) => x !== id);
@@ -10016,17 +10130,23 @@
     const show = showRun || pickN > 0 || lookN > 0 || Boolean(filterEnrich);
     box.hidden = !show;
     if (!show) return;
-    const pos = Math.min(q.total, q.done + (ENRICH.running && active ? 1 : 0));
-    const shown = Math.max(1, pos); // the number in "Enriching {shown} of {total}"; the bar fills to it
-    const errorPause = q.reason === "errors" || q.reason === "storage";
+    const waiting = showRun && active && !q.paused && !ENRICH.running && q.startAt > Date.now();
+    const working = ENRICH.running && active && !q.paused;
+    const shown = waiting ? 0 : Math.min(q.total, q.done + (working ? 1 : 0));
+    const errorPause = q.reason === "errors" || q.reason === "storage" || q.reason === "offline";
     const capPause = showRun && active && q.paused && !errorPause;
     const pauseLines = capPause ? enrichPauseLines(q) : null;
     let line = "";
     if (showRun && active && q.paused) {
-      line = errorPause
-        ? `Paused after ${q.done.toLocaleString()} of ${q.total.toLocaleString()}. Lookups aren’t working right now.`
-        : pauseLines[0];
-    } else if (showRun && active) line = `Enriching ${shown.toLocaleString()} of ${q.total.toLocaleString()}`;
+      if (q.reason === "storage") {
+        line = `Paused after ${q.done.toLocaleString()} of ${q.total.toLocaleString()}. ${lastStorageFailureMsg || STORAGE_FAIL_MESSAGES.other}`;
+      } else if (q.reason === "offline") {
+        line = `Paused after ${q.done.toLocaleString()} of ${q.total.toLocaleString()}. You’re offline.`;
+      } else if (errorPause) {
+        line = `Paused after ${q.done.toLocaleString()} of ${q.total.toLocaleString()}. Lookups aren’t working right now.`;
+      } else line = pauseLines[0];
+    } else if (showRun && active && waiting) line = `Waiting to enrich ${q.total.toLocaleString()} ${q.total === 1 ? "item" : "items"}`;
+    else if (showRun && active) line = `Enriching ${Math.max(1, shown).toLocaleString()} of ${q.total.toLocaleString()}`;
     else if (showRun) line = `Finished: ${q.done.toLocaleString()} imported ${q.done === 1 ? "item" : "items"} checked.`;
     else line = "Imported items to finish";
     $("#enrich-line").textContent = line;
@@ -10040,7 +10160,8 @@
     }
     const bar = $("#enrich-bar");
     bar.hidden = !(showRun && active && !q.paused); // hidden while paused
-    $("#enrich-bar-fill").style.width = `${q.total ? Math.round((Math.min(shown, q.total) / q.total) * 100) : 0}%`;
+    // Fill to work finished (q.done), never to the in-flight item or a placeholder "1 of N".
+    $("#enrich-bar-fill").style.width = `${q.total ? Math.round((q.done / q.total) * 100) : 0}%`;
     const counts = $("#enrich-counts");
     const countText = showRun ? enrichSummaryText(q) : "";
     counts.hidden = !countText;
@@ -10049,7 +10170,9 @@
     let msg = "";
     if (pauseLines) msg = pauseLines[1];
     else if (showRun && active && q.paused) {
-      msg = "It picks up where it stopped the next time you open the app, or tap Resume.";
+      msg = q.reason === "offline"
+        ? "It picks up again when you’re back online, or tap Resume."
+        : "It picks up where it stopped the next time you open the app, or tap Resume.";
     } else if (showRun && active) msg = "You can keep using the app. Only empty fields are filled.";
     if (filterEnrich) {
       const here = enrichMarked(filterEnrich, true).length;
@@ -10074,7 +10197,18 @@
 
   function setEnrichFilter(mark) {
     filterEnrich = mark;
-    if (mark) filterNeedsCover = false;
+    if (mark) {
+      filterNeedsCover = false;
+      filterType = "all";
+      $$(".type-tabs .chip").forEach((b) => {
+        const on = b.dataset.type === "all";
+        b.classList.toggle("active", on);
+        b.setAttribute("aria-selected", on ? "true" : "false");
+        if (on) b.setAttribute("aria-current", "true");
+        else b.removeAttribute("aria-current");
+      });
+      revealActiveTab();
+    }
     render();
     renderEnrichUi();
   }
@@ -10119,13 +10253,34 @@
     }
     // Every tab with a queue looks again about every 5 s and takes over when the runner is gone.
     setInterval(() => {
-      if (ENRICH.running || ENRICH.timer) return;
       const q = readEnrichQueue();
+      if (!q.ids.length) return;
+      if (q.until > Date.now()) {
+        if (!ENRICH.running && !ENRICH.timer && q.until - Date.now() <= ENRICH_SHORT_WAIT_MS) startEnrichAt(q.until);
+        return;
+      }
+      if (q.paused && q.until <= Date.now() && !ENRICH.running) {
+        renderEnrichUi(); // Resume can appear once the promised time has passed
+      }
+      if (ENRICH.running || ENRICH.timer) return;
       const wait = q.startAt - Date.now();
-      if (!q.ids.length || q.paused || q.until > Date.now() || (wait > 0 && wait <= ENRICH_START_MS)) return;
+      if (q.paused || (wait > 0 && wait <= ENRICH_START_MS)) return;
       if (coverLockStale(readEnrichLock()) || ownsEnrichLock()) startEnrich(0);
     }, 5000);
     window.addEventListener("pagehide", () => releaseEnrichLock());
+    window.addEventListener("online", enrichOnOnline);
+  }
+
+  /** Offline pauses resume when the connection comes back; other pauses stay until Resume or their timer. */
+  function enrichOnOnline() {
+    const q = readEnrichQueue();
+    if (!q.ids.length || q.reason !== "offline") return;
+    if (q.until > Date.now()) return;
+    q.paused = false;
+    q.reason = "";
+    q.until = 0;
+    writeEnrichQueue(q);
+    startEnrich(0);
   }
 
   function bindClz() {

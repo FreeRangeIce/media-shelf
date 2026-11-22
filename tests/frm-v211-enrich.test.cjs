@@ -485,10 +485,9 @@ check("paused: two plain lines from the real resume time; one item reads singula
   assert.match(app, /bar\.hidden = !\(showRun && active && !q\.paused\);/);
 });
 
-check("progress bar: fills to the shown count, #8B5E3C on #3a3a3a, 4px, rounded ends", () => {
-  assert.match(app, /const shown = Math\.max\(1, pos\);/);
-  assert.match(app, /line = `Enriching \$\{shown\.toLocaleString\(\)\} of/);
-  assert.match(app, /\$\("#enrich-bar-fill"\)\.style\.width = `\$\{q\.total \? Math\.round\(\(Math\.min\(shown, q\.total\) \/ q\.total\) \* 100\) : 0\}%`;/);
+check("progress bar: fills to work done, #8B5E3C on #3a3a3a, 4px, rounded ends", () => {
+  assert.match(app, /line = `Enriching \$\{Math\.max\(1, shown\)\.toLocaleString\(\)\} of/);
+  assert.match(app, /\$\("#enrich-bar-fill"\)\.style\.width = `\$\{q\.total \? Math\.round\(\(q\.done \/ q\.total\) \* 100\) : 0\}%`;/);
   const block = css.slice(css.indexOf("========== V2.11 import enrichment"));
   assert.match(block, /\.enrich-bar \{\s*height: 4px;\s*border-radius: 2px;\s*background: #3a3a3a;/);
   assert.match(block, /\.enrich-bar-fill \{[^}]*border-radius: 2px;[^}]*background: #8B5E3C;/);

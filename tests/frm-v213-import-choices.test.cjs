@@ -136,7 +136,7 @@ console.log(`RATIO selected #ffffff on #8B5E3C = ${selected.toFixed(2)}:1`);
 
 check("picker thumbnails only use comicCoverUrl (Metron / fixture); GCD hosts are never requested", app.includes("function comicPickerImageUrl(u, fixture) {\n    return comicCoverUrl(u, fixture);\n  }"));
 check("comicCoverUrl drops files1.comics.org and keeps static.metron.cloud", /files1\.comics\.org is\s+dropped|files1\.comics\.org included/.test(app) && /static\.metron\.cloud/.test(app) && /COMIC_IMAGE_HOST_RE = \/\^files\\d\*\\.comics\\.org\$/i.test(app));
-check("service worker still never handles comics.org or Metron (no proxy, no image cache)", /NEVER_HANDLE_HOSTS = \/\(\^\\|\\.\)comics\\.org\$/i.test(sw) && /IMAGE_HOSTS = \/\^static\\.metron\\.cloud/i.test(sw) && /media-shelf-v2\.14/.test(sw));
+check("service worker still never handles comics.org, Metron or Open Library covers (no proxy, no image cache)", /NEVER_HANDLE_HOSTS = \/\(\^\\|\\.\)comics\\.org\$/i.test(sw) && /IMAGE_HOSTS = \/\^\(static\\.metron\\.cloud\|covers\\.openlibrary\\.org\)/i.test(sw) && /media-shelf-v2\.14/.test(sw));
 check("No cover sits under the tile list, before the paste-URL field", (() => {
   const list = html.indexOf('id="comic-cover-list"');
   const none = html.indexOf('id="btn-comic-no-cover"');
