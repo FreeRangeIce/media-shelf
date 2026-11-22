@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6, 2.7…; bump APP_VERSION and
-  // the service worker cache name together (media-shelf-v2.14) so the Duo drops old files.
-  const APP_VERSION = "2.14";
+  // the service worker cache name together (media-shelf-v2.15) so the Duo drops old files.
+  const APP_VERSION = "2.15";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -5419,19 +5419,19 @@
   /**
    * A cover URL from the relay, kept exactly as sent (never rewritten), and only from a
    * picture source's host (static.metron.cloud); anything else, files1.comics.org included,
-   * is dropped. The dev fixture may also use its own placeholder files. Image bytes are
-   * never fetched or copied: no data:, blob: or canvas.
+   * is dropped. The dev fixture may also use inline SVG data URLs (not shipped). Image
+   * bytes from providers are never fetched or copied: no data:, blob: or canvas.
    */
   function comicCoverUrl(u, fixture) {
     const s = String(u || "").trim();
-    if (fixture && /^\.\/dev\/fixture-cover-\d\.svg$/.test(s)) return s; // dev placeholder files only
+    if (fixture && /^data:image\/svg\+xml[,;]/i.test(s)) return s; // test-only inline placeholders
     const url = exactHttpsUrl(s);
     return url && comicImageSourceFor(url) ? url : "";
   }
 
   /**
-   * HTTPS image URL for a picker thumbnail. Same hosts as a stored cover (Metron, and
-   * dev fixture files). GCD's files1.comics.org is never kept or requested: the live
+   * HTTPS image URL for a picker thumbnail. Same hosts as a stored cover (Metron), plus
+   * the dev fixture's inline SVGs. GCD's files1.comics.org is never kept or requested: the live
    * relay does not send those URLs, and those hosts refuse browsers outside comics.org.
    * Never stored as a copy, never rewritten.
    */
@@ -5488,9 +5488,11 @@
     "Cover R Newsstand Edition",
   ];
 
-  /** DEV ONLY: one of five plain placeholder covers in ./dev (a URL, like the relay's). */
+  /** DEV ONLY: one of five plain inline SVG placeholder covers (not shipped as files). */
   function devFixtureCoverUrl(i) {
-    return `./dev/fixture-cover-${i % 5}.svg`;
+    const fill = ["#1d5486", "#9a3b3b", "#146354", "#8f4e12", "#4c468f"][i % 5];
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="${fill}"/></svg>`;
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
   }
 
   function devFixtureVariant(i) {
@@ -5502,7 +5504,7 @@
    * by hand; nothing in the app does). Answers one relay route ("barcode" | "series") in
    * the relay's shape, as { busy, body }, labelled as COMIC_ACTIVE_SOURCE. The body carries
    * a stray price that must be dropped.
-   * Placeholder data only (plain SVG files in ./dev, made-up names) — never real source data.
+   * Placeholder data only (inline SVG data URLs, made-up names) — never real source data.
    * Covers stand in for Metron pictures (imagesFrom: "metron").
    * Modes: "5" five covers · "2" · "1" · "0" match without covers · "18" eighteen named
    * covers, every one with a picture (the grid; 5 shown until "Show all") · "miss" no match (with a candidate) ·
@@ -9707,9 +9709,44 @@
   }
 
   /**
+   * True when a loaded image is a real picture, not a 1×1 placeholder or an error.
+   */
+  function coverImageLooksReal(img) {
+    return Boolean(img && img.naturalWidth > 1);
+  }
+
+  /**
+   * Load a cover URL and resolve true only if it paints a real image. A 404, a
+   * decode error, a 1×1 placeholder, or a timeout is false.
+   */
+  function probeCoverImage(url) {
+    const src = String(url || "").trim();
+    if (!src) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (ok) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(ok === true);
+      };
+      const timer = setTimeout(() => finish(false), LOOKUP_FETCH_MS);
+      try {
+        const img = new Image();
+        img.onload = () => finish(coverImageLooksReal(img));
+        img.onerror = () => finish(false);
+        img.src = src;
+      } catch {
+        finish(false);
+      }
+    });
+  }
+
+  /**
    * Cover data to auto-fill from one comic lookup. A single storable Metron picture
-   * (series + issue) wins. Otherwise a trade with an ISBN gets its Open Library cover.
-   * Several Metron covers, or nothing clear, is not auto-filled.
+   * (series + issue) wins. Otherwise a trade with an ISBN gets its Open Library cover,
+   * saved only after that image actually loads (naturalWidth > 1). Several Metron
+   * covers, a missing or 1×1 Open Library image, or nothing clear, is not auto-filled.
    */
   function enrichComicCoverData(it, res) {
     const outcome = classifyCoverAnswer(res);
@@ -9751,8 +9788,11 @@
       if (res.busy) return { kind: "cap", until: Date.now() + Math.max(60000, comicBusyRemainingMs()), reason: "Comic lookup" };
       if (res.failed || res.notSetUp) return { kind: "failed" };
       const data = enrichComicCoverData(it, res);
+      if (data && data.coverSource === "openlibrary") {
+        if (!(await probeCoverImage(data.coverUrl))) return { kind: "pick" };
+      }
       if (data) return { kind: "enriched", data };
-      // Multiple covers, a match with no picture, or no match: Needs a pick (picker / Take a photo).
+      // Multiple covers, a match with no picture, a missing Open Library image, or no match: Needs a pick (picker / Take a photo).
       return { kind: "pick" };
     }
     if (it.type === "game") {

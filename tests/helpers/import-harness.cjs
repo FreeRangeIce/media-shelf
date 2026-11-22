@@ -13,7 +13,7 @@ const EXPOSE = [
 ];
 const OPTIONAL = ['ENRICH', 'restoreCoverQueue', 'readCoverQueue', 'resumeCoverFillOnOpen', 'resolveGameBarcode', 'barcodePlatformFit', 'enrichPauseLines', 'enrichResumeClock', 'enrichPlanFor', 'enrichFillEmpty', 'enrichSummaryText', 'readEnrichQueue', 'writeEnrichQueue', 'enqueueEnrich', 'runEnrich', 'enrichSources', 'commitClz', 'commitImport', 'importJson', 'clzComicFormat', 'clzComicIssue', 'enrichOne', 'resumeEnrichOnOpen', 'renderEnrichUi', 'enrichAfterRestore', 'enrichMarked', 'detailHtml', 'enrichWrite', 'enrichKey', 'undoImport', 'enrichOnOnline', 'startEnrichAt', 'setEnrichFilter', 'clzChoice', 'evaluateClz', 'clzCounts', 'parseDelimited', 'rememberImportUndoRaw', 'LOOKUP_FETCH_MS', 'ENRICH_UPC_DELAY_MS', 'retryAfterUntil'];
 
-function bootSource(src, { fetch, store: sharedStore, clock } = {}) {
+function bootSource(src, { fetch, store: sharedStore, clock, Image: ImageImpl } = {}) {
   const t = boot([], []), toasts = [];
   const store = sharedStore || t.store;
   const localStorage = { getItem: k => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k), key: i => [...store.keys()][i] ?? null, get length() { return store.size; } };
@@ -29,6 +29,11 @@ function bootSource(src, { fetch, store: sharedStore, clock } = {}) {
     FileReader: class { readAsText(f) { this.result = f.content; this.onload(); } },
     URL, URLSearchParams, AbortController, console, crypto: globalThis.crypto, performance, FRMTabletop: t.tt, Headers: globalThis.Headers, Response: globalThis.Response,
     fetch: fetch || (() => { throw new Error('no network in tests'); }), __toasts: toasts,
+    Image: ImageImpl || class Image {
+      constructor() { this.naturalWidth = 0; this.naturalHeight = 0; this.onload = null; this.onerror = null; this._src = ''; }
+      set src(v) { this._src = String(v || ''); this.naturalWidth = 200; this.naturalHeight = 300; if (typeof this.onload === 'function') this.onload(); }
+      get src() { return this._src; }
+    },
   };
   if (clock) {
     // Fake clock: every timer fires on the next real tick and moves the clock forward by its delay,

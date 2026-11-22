@@ -50,11 +50,25 @@ function mockFetch(routes) {
   return fn;
 }
 
-function bootWith(routes, { store, clock, fetch } = {}) {
+function bootWith(routes, { store, clock, fetch, Image } = {}) {
   const f = fetch || mockFetch(routes || []);
   const c = clock || H.makeClock();
-  const b = H.bootFile(undefined, { fetch: f, store, clock: c });
+  const b = H.bootFile(undefined, { fetch: f, store, clock: c, Image });
   return { ...b, fetch: f, clock: c };
+}
+
+function imageStub({ width = 200, height = 300, error = false } = {}) {
+  return class Image {
+    constructor() { this.naturalWidth = 0; this.naturalHeight = 0; this.onload = null; this.onerror = null; this._src = ""; }
+    set src(v) {
+      this._src = String(v || "");
+      if (error) { if (typeof this.onerror === "function") this.onerror(); return; }
+      this.naturalWidth = width;
+      this.naturalHeight = height;
+      if (typeof this.onload === "function") this.onload();
+    }
+    get src() { return this._src; }
+  };
 }
 
 const BASE = { status: "owned", sources: ["clz"], dateAdded: "2026-11-14T00:00:00.000Z", dateUpdated: "2026-11-14T00:00:00.000Z" };
@@ -514,8 +528,8 @@ check("comics: an existing cover is never overwritten, even by a single Metron m
   assert.equal(q.enriched, 0);
 });
 
-check("comics: a trade with an ISBN and no Metron cover auto-fills the Open Library ISBN cover", async () => {
-  const b = bootWith([[/\/comic\?/, () => ({ body: { match: null, covers: [], variants: [], total: 0 } })]]);
+check("comics: a trade with an ISBN and no Metron cover auto-fills the Open Library ISBN cover when the image loads", async () => {
+  const b = bootWith([[/\/comic\?/, () => ({ body: { match: null, covers: [], variants: [], total: 0 } })]], { Image: imageStub({ width: 250, height: 375 }) });
   b.seed([{ ...BASE, id: "k5", type: "comic", series: "Saga", issue: "1", edition: "collected", comicFormat: "Trade Paperback", barcode: TRADE_ISBN, coverUrl: "" }]);
   const q = await queueAndRun(b, ["k5"]);
   const it = b.stored()[0];
@@ -523,6 +537,28 @@ check("comics: a trade with an ISBN and no Metron cover auto-fills the Open Libr
   assert.equal(it.coverUrl, OL_TRADE);
   assert.equal(it.coverSource, "openlibrary");
   assert.equal(it.enrich, undefined);
+});
+
+check("comics: a trade Open Library cover that fails to load is Needs a pick, and the URL is not saved", async () => {
+  const b = bootWith([[/\/comic\?/, () => ({ body: { match: null, covers: [], variants: [], total: 0 } })]], { Image: imageStub({ error: true }) });
+  b.seed([{ ...BASE, id: "k5e", type: "comic", series: "Saga", issue: "1", edition: "collected", comicFormat: "Trade Paperback", barcode: TRADE_ISBN, coverUrl: "" }]);
+  const q = await queueAndRun(b, ["k5e"]);
+  const it = b.stored()[0];
+  assert.equal(q.pick, 1);
+  assert.equal(it.enrich, "pick");
+  assert.equal(it.coverUrl, "", "do not store a cover URL that failed to load");
+  assert.equal(it.coverSource || "", "");
+});
+
+check("comics: a 1×1 Open Library placeholder is Needs a pick, and the URL is not saved", async () => {
+  const b = bootWith([[/\/comic\?/, () => ({ body: { match: null, covers: [], variants: [], total: 0 } })]], { Image: imageStub({ width: 1, height: 1 }) });
+  b.seed([{ ...BASE, id: "k5p", type: "comic", series: "Saga", issue: "1", edition: "collected", comicFormat: "Trade Paperback", barcode: TRADE_ISBN, coverUrl: "" }]);
+  const q = await queueAndRun(b, ["k5p"]);
+  const it = b.stored()[0];
+  assert.equal(q.pick, 1);
+  assert.equal(it.enrich, "pick");
+  assert.equal(it.coverUrl, "", "do not store a 1×1 placeholder as a cover");
+  assert.equal(it.coverSource || "", "");
 });
 
 check("comics: several Metron covers on a trade with an ISBN are still Needs a pick, not an Open Library fill", async () => {

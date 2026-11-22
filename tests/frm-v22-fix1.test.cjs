@@ -41,9 +41,9 @@ function filterMedia(items, { shelfMode, filterType = 'all', filterStatus = 'all
 
 const CATEGORIES = ['book', 'game', 'movie', 'music', 'comic'];
 
-check('APP_VERSION is 2.14; sw cache is media-shelf-v2.14', () => {
-  assert.match(app, /const APP_VERSION = "2\.14"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.14"/);
+check('APP_VERSION is 2.15; sw cache is media-shelf-v2.15', () => {
+  assert.match(app, /const APP_VERSION = "2\.15"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.15"/);
 });
 
 check('shared isWantStatus / isLibraryStatus helpers exist and Library excludes Want in filteredItems', () => {
