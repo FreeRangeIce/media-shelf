@@ -1,0 +1,9 @@
+{
+  "name": "frm-gcd-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:offline": "node test/offline.mjs",
+    "test:live": "node test/live.mjs"
+  }
+}

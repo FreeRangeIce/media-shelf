@@ -1,0 +1,1 @@
+`gcd-recorded.json` contains real data from the Grand Comics Database™ (https://www.comics.org/), licensed under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/). Price fields were removed. This file stays on this computer. If the relay ever goes into a repo, keep this credit beside the file or swap in synthetic fixtures. No GCD data is committed to media-shelf.

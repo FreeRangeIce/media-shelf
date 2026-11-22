@@ -1,0 +1,12 @@
+# FreeRangeMedia GCD (comics.org) relay. Deployed as the Worker "frm-gcd"
+# (https://frm-gcd.freerangeice.workers.dev). GCD's API needs no key. The one secret,
+# METRON_API_TOKEN, is set with `wrangler secret put` (never here). The account id comes from CLOUDFLARE_ACCOUNT_ID at deploy time.
+name = "frm-gcd"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+# Workers KV cache (issue records 7 days, /comic answers 7 days, misses 1 day; see README).
+# The Cache API (caches.default) is not used: it has no effect on *.workers.dev.
+[[kv_namespaces]]
+binding = "GCD_CACHE"
+id = "4ef1dd290ef64ae78b9a147d2068c2cc" # title "frm-gcd-GCD_CACHE"
