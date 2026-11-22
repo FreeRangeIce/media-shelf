@@ -85,7 +85,9 @@ check("Take a photo matches the No cover tile layout (48×72 frame, label to the
   /\.comic-take-photo\s*\{[^}]*background:\s*#fffdf8/.test(css) &&
   /\.comic-no-cover[\s\S]{0,400}min-height:\s*76px/.test(css) &&
   /\.comic-no-cover[\s\S]{0,400}padding:\s*2px var\(--space-3\) 2px 2px/.test(css) &&
-  /\.comic-no-cover[\s\S]{0,800}border-radius:\s*var\(--radius-sm\)/.test(css));
+  /\.comic-no-cover[\s\S]{0,800}border-radius:\s*var\(--radius-sm\)/.test(css) &&
+  /\.item-form label\.comic-take-photo/.test(css) &&
+  /label\.comic-take-photo,\s*\n\.comic-take-photo\s*\{[\s\S]{0,200}flex-direction:\s*row/.test(css));
 check("Take a photo has a decorative camera glyph in the 48×72 frame; the label stays the accessible name",
   /id="btn-comic-take-photo"[\s\S]{0,600}comic-cover-thumb comic-cover-blank" aria-hidden="true"/.test(html) &&
   /comic-cover-blank" aria-hidden="true">\s*<svg class="comic-take-photo-icon"[\s\S]{0,400}aria-hidden="true"/.test(html) &&
