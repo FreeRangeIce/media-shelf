@@ -3275,6 +3275,69 @@ body.modal-open {
   text-align: center;
 }
 
+/* V2.14: Take a photo in the cover picker — same 8px radius, 1px outline, 44px target as No cover. */
+.comic-take-photo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-2);
+  border: 1px solid #5c5348;
+  border-radius: 8px;
+  background: #fffdf8;
+  color: #1a1a1a;
+  cursor: pointer;
+  text-align: left;
+}
+.comic-take-photo:hover {
+  background: #f7f7f7;
+}
+.comic-take-photo:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.comic-take-photo input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+.comic-take-photo .comic-cover-label {
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: inherit;
+}
+.comic-take-photo.is-selected {
+  border-color: #8B5E3C;
+  background: #fffdf8;
+  box-shadow: inset 0 0 0 1px #8B5E3C;
+}
+.comic-take-photo.is-selected::after {
+  content: "✓";
+  position: absolute;
+  top: 50%;
+  right: var(--space-2);
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: var(--fs-sm);
+  line-height: 22px;
+  text-align: center;
+  pointer-events: none;
+}
+#comic-take-photo-status {
+  margin-top: var(--space-1);
+}
+
 /* Save blocked until a comic cover is chosen: the disabled button plus the reason */
 #btn-save:disabled,
 #btn-save:disabled:hover,

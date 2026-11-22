@@ -19,11 +19,11 @@ const check = (n, fn) => { fn(); passed++; console.log('PASS', n); };
 const v26 = css.slice(css.indexOf('========== V2.6'));
 assert.ok(v26.length > 200, 'V2.6 CSS block missing');
 
-check('APP_VERSION is 2.13; sw cache is media-shelf-v2.13', () => {
-  assert.match(app, /const APP_VERSION = "2\.13"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.13"/);
+check('APP_VERSION is 2.14; sw cache is media-shelf-v2.14', () => {
+  assert.match(app, /const APP_VERSION = "2\.14"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.14"/);
   assert.doesNotMatch(app, /const APP_VERSION = "2\.6-/);
-  assert.doesNotMatch(sw, /media-shelf-v2\.13-/);
+  assert.doesNotMatch(sw, /media-shelf-v2\.14-/);
 });
 
 check('item 1: Base game tag CSS keeps padding and inner-span clamp (markup removed from cards in V2.8)', () => {

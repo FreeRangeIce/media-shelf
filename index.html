@@ -153,7 +153,7 @@
 
   <footer class="site-footer">
     <p>Your library is saved in this browser (<code>localStorage</code>). Back up, or Export in Settings, to keep a copy. Hosted on GitHub Pages.</p>
-    <p class="footer-credits"><span class="footer-credit">Game data from <a href="https://www.igdb.com/" target="_blank" rel="noopener noreferrer">IGDB.com</a>.</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Movie data from <a href="https://www.omdbapi.com" target="_blank" rel="noopener noreferrer">OMDb</a> (<a class="nowrap" href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>)</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Music data from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Covers from the <a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer">Cover Art Archive</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit" id="footer-comic-credit"></span></p>
+    <p class="footer-credits"><span class="footer-credit">Game data from <a href="https://www.igdb.com/" target="_blank" rel="noopener noreferrer">IGDB.com</a>.</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Movie data from <a href="https://www.omdbapi.com" target="_blank" rel="noopener noreferrer">OMDb</a> (<a class="nowrap" href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>)</span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Music data from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit">Covers from the <a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer">Cover Art Archive</a></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit" id="footer-comic-credit"></span><span class="footer-sep" aria-hidden="true"> · </span><span class="footer-credit" id="footer-openlibrary-credit"></span></p>
     <!-- "App version V<APP_VERSION>" (cleared, Berean, Oct 11), same line as in Settings, filled by fillAppVersionLine() -->
     <p class="footer-version" id="footer-version"></p>
   </footer>
@@ -205,6 +205,12 @@
               <span class="comic-cover-thumb comic-cover-blank" aria-hidden="true"></span>
               <span class="comic-cover-label">No cover</span>
             </button>
+            <label class="comic-take-photo" id="btn-comic-take-photo">
+              <input type="file" id="comic-take-photo-input" accept="image/*" capture="environment" />
+              <span class="comic-cover-thumb comic-cover-blank" aria-hidden="true"></span>
+              <span class="comic-cover-label">Take a photo</span>
+            </label>
+            <p id="comic-take-photo-status" class="field-hint" role="status" hidden></p>
             <div id="comic-picker-credit" class="comic-credit" hidden></div>
             <div class="comic-picker-url">
               <label for="field-comic-cover-url">Or paste a photo URL</label>
@@ -828,6 +834,7 @@
       </p>
       <!-- Comic data credit, filled from the active source in COMIC_SOURCES (app.js). -->
       <p class="settings-intro settings-credit" id="comic-lookup-credit"></p>
+      <p class="settings-intro settings-credit" id="openlibrary-cover-credit"></p>
       <div class="form-actions-right settings-done-row">
         <button type="button" class="btn btn-primary" data-settings-close="true" id="btn-settings-done">Done</button>
       </div>

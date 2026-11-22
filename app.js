@@ -4,8 +4,8 @@
 
   // App version shown at the end of Settings ("App version v35"; cleared, Berean, Oct 11).
   // Major stays V2 until a major redesign. Minors step 2.3, 2.4, 2.5, 2.6, 2.7…; bump APP_VERSION and
-  // the service worker cache name together (media-shelf-v2.13) so the Duo drops old files.
-  const APP_VERSION = "2.13";
+  // the service worker cache name together (media-shelf-v2.14) so the Duo drops old files.
+  const APP_VERSION = "2.14";
   const STORAGE_KEY = "media-tracker-v1";
 
   /*
@@ -972,7 +972,8 @@
       prefix: "gcd-",
       name: "Grand Comics Database",
       shortName: "GCD", // short source name (not shown in copy)
-      barcodeRoute: false, // GCD has no barcode search: a barcode alone is a miss
+      // GCD has no barcode API; the relay searches Metron by UPC and loads the GCD issue from Metron's gcd_id.
+      barcodeRoute: true,
       // Credit wording cleared by Berean (Oct 5, 2026). Use exactly.
       creditHtml: () =>
         'Comic details from the <span class="nowrap"><a class="nowrap credit-src" href="https://www.comics.org/" target="_blank" rel="noopener noreferrer">Grand Comics Database</a>™</span>, ' +
@@ -1021,6 +1022,14 @@
       // Cleared (Berean, Oct 5 / Oct 10): the cover sentence, shown whenever a picture is.
       coverSentence: "Cover images are © their respective copyright holders and shown for identification only.",
     },
+    {
+      key: "openlibrary",
+      name: "Open Library",
+      hostRe: /^covers\.openlibrary\.org$/i,
+      creditHtml: () =>
+        'Covers from <a class="credit-src" href="https://openlibrary.org/" target="_blank" rel="noopener noreferrer">Open Library</a>.',
+      coverSentence: "Cover images are © their respective copyright holders and shown for identification only.",
+    },
   ];
   const COMIC_ACTIVE_IMAGE_SOURCE = COMIC_IMAGE_SOURCES[0];
 
@@ -1067,6 +1076,11 @@
     if (settings) settings.innerHTML = html;
     const el = document.getElementById("footer-comic-credit");
     if (el) el.innerHTML = html;
+    const ol = 'Covers from <a class="credit-src" href="https://openlibrary.org/" target="_blank" rel="noopener noreferrer">Open Library</a>.';
+    const settingsOl = document.getElementById("openlibrary-cover-credit");
+    if (settingsOl) settingsOl.innerHTML = ol;
+    const footerOl = document.getElementById("footer-openlibrary-credit");
+    if (footerOl) footerOl.innerHTML = ol;
   }
 
   /**
@@ -1367,6 +1381,23 @@
     return false;
   }
 
+  /** Direct Open Library cover link. default=false makes a missing cover a 404, not a blank GIF. */
+  function openLibraryIsbnCoverUrl(isbn, size) {
+    const n = normalizeBarcode(isbn);
+    if (!looksLikeIsbn(n)) return "";
+    const edge = size === "L" ? "L" : "M";
+    return "https://covers.openlibrary.org/b/isbn/" + encodeURIComponent(n) + "-" + edge + ".jpg?default=false";
+  }
+
+  /** Library / detail / preview URL: a stored cover, else an Open Library ISBN cover for a trade. */
+  function itemDisplayCoverUrl(item) {
+    if (!item) return "";
+    const stored = comicImageSuppressed(item.type, item.coverUrl) ? "" : String(item.coverUrl || "").trim();
+    if (stored) return stored;
+    if (item.type === "comic" && looksLikeIsbn(item.barcode)) return openLibraryIsbnCoverUrl(item.barcode, "M");
+    return "";
+  }
+
   function setLookupStatus(msg, kind) {
     if (!msg) {
       els.lookupStatus.hidden = true;
@@ -1441,14 +1472,16 @@
   const COVER_PHOTO_MAX_DATA = 700000; // ~500KB binary; keeps localStorage headroom
 
   function setCoverPhotoStatus(msg) {
-    if (!els.coverPhotoStatus) return;
-    if (!msg) {
-      els.coverPhotoStatus.hidden = true;
-      els.coverPhotoStatus.textContent = "";
-      return;
+    const elsTo = [els.coverPhotoStatus, document.getElementById("comic-take-photo-status")].filter(Boolean);
+    for (const el of elsTo) {
+      if (!msg) {
+        el.hidden = true;
+        el.textContent = "";
+      } else {
+        el.hidden = false;
+        el.textContent = msg;
+      }
     }
-    els.coverPhotoStatus.hidden = false;
-    els.coverPhotoStatus.textContent = msg;
   }
 
   function downscaleImageFile(file) {
@@ -1496,13 +1529,22 @@
       els.fieldCoverSource.value = "photo";
       if (els.fieldCoverSourceId) els.fieldCoverSourceId.value = "";
       if (els.fieldCoverPlatform) els.fieldCoverPlatform.value = "";
+      if (els.fieldCoverLabel) els.fieldCoverLabel.value = comicPicker.open ? "Photo" : (els.fieldCoverLabel.value || "");
       setCoverPhotoStatus("");
+      if (comicPicker.open) {
+        comicPicker.choice = "photo";
+        comicPicker.picked = -1;
+        setComicSourceRecord(null);
+        renderComicPicker();
+      }
       updateCoverPreview();
     } catch (err) {
       setCoverPhotoStatus((err && err.message) || "Couldn't use that photo");
     } finally {
       if (els.coverPhotoFile) els.coverPhotoFile.value = "";
       if (els.coverPhotoCamera) els.coverPhotoCamera.value = "";
+      const pickerIn = document.getElementById("comic-take-photo-input");
+      if (pickerIn) pickerIn.value = "";
     }
   }
 
@@ -2621,7 +2663,7 @@
     const type = escapeHtml(item.type);
     // A stored GCD image URL (and, in names-only mode, a Metron one) is kept but never
     // requested; the card shows the Comic placeholder only (no cover-name line on the card).
-    const url = comicImageSuppressed(item.type, item.coverUrl) ? "" : (item.coverUrl || "").trim();
+    const url = itemDisplayCoverUrl(item);
     const badge = platformBadgeMarkup(item);
     // Badge sits on the visible cover (letterboxed image or no-cover fill), not the card edge.
     const col = (inner) => `<div class="item-cover-col" data-type="${type}"><div class="item-cover-fit">${inner}${badge}</div></div>`;
@@ -2747,7 +2789,7 @@
       `<span class="badge badge-status ${escapeHtml(item.status)}">${escapeHtml(STATUS_LABELS[item.status] || item.status)}</span>` +
       `<span class="badge badge-format">${escapeHtml(formatBadgeText(item))}</span></div>` +
       (metaLine ? `<p class="tt-detail-line">${metaLine}</p>` : "");
-    const url = comicImageSuppressed(item.type, item.coverUrl) ? "" : String(item.coverUrl || "").trim();
+    const url = itemDisplayCoverUrl(item);
     const rows = [url
       ? `<div class="tt-detail-top"><span class="tt-detail-cover"><img src="${escapeHtml(url)}" alt="" referrerpolicy="no-referrer" /></span><div class="tt-detail-meta">${head}</div></div>`
       : head];
@@ -2769,6 +2811,8 @@
     if (item.notes) rows.push(`<p class="tt-detail-line item-detail-notes">${escapeHtml(item.notes)}</p>`);
     const gbUrl = item.coverSource === "googlebooks" ? safeGoogleBooksUrl(item.googleBooksUrl) : "";
     if (gbUrl) rows.push(`<p class="card-credit"><a class="card-credit-link" href="${escapeHtml(gbUrl)}" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">Cover from Google Books</span></a></p>`);
+    const olCover = item.type === "comic" && (item.coverSource === "openlibrary" || comicImageSourceByKey("openlibrary") && comicImageSourceFor(itemDisplayCoverUrl(item)) && comicImageSourceFor(itemDisplayCoverUrl(item)).key === "openlibrary");
+    if (olCover) rows.push(`<p class="card-credit"><a class="card-credit-link" href="https://openlibrary.org/" target="_blank" rel="noopener noreferrer"><span class="card-credit-text">Covers from Open Library</span></a></p>`);
     return rows.filter(Boolean).join("");
   }
   function openDetail(item) {
@@ -5101,13 +5145,29 @@
   // The frm-gcd Cloudflare Worker (Grand Comics Database relay). Empty = Lookup is inert
   // and says it isn't set up yet.
   const COMIC_RELAY_URL = "https://frm-gcd.freerangeice.workers.dev";
+  const COMIC_REVIEW_RELAY_URL = "https://frm-gcd-review.freerangeice.workers.dev";
+  /**
+   * Production always uses frm-gcd. A review build on media-shelf-review.pages.dev (or
+   * ?comicRelay=review, or that exact review-worker URL) points at the review worker only.
+   */
+  function comicRelayUrl() {
+    try {
+      const q = new URLSearchParams(location.search).get("comicRelay");
+      if (q === "review") return COMIC_REVIEW_RELAY_URL;
+      if (q && /^https:\/\/frm-gcd-review\.freerangeice\.workers\.dev\/?$/.test(q)) return q.replace(/\/+$/, "");
+      if (/\.media-shelf-review\.pages\.dev$/.test(location.hostname)) return COMIC_REVIEW_RELAY_URL;
+    } catch {
+      /* ignore */
+    }
+    return COMIC_RELAY_URL;
+  }
   /**
    * DEV ONLY: localStorage["frm:devComicRelay"] = "off" acts as if COMIC_RELAY_URL were
    * empty (tests use it to keep checking the not-set-up path). Nothing in the app sets it.
    */
   const COMIC_DEV_RELAY_STORAGE = "frm:devComicRelay";
   function comicRelaySetUp() {
-    if (!COMIC_RELAY_URL) return false;
+    if (!comicRelayUrl()) return false;
     try {
       return localStorage.getItem(COMIC_DEV_RELAY_STORAGE) !== "off";
     } catch {
@@ -5221,6 +5281,7 @@
       const query = { series: q.series, issue: q.issue };
       if (q.year) query.year = q.year;
       if (q.publisher) query.publisher = q.publisher;
+      if (/^\d{8,17}$/.test(q.barcode)) query.upc = q.barcode;
       routes.push({ by: "series", path: "/comic", query });
     }
     if (!routes.length) return empty;
@@ -5237,7 +5298,11 @@
       }
       if (got.busy) return { ...empty, busy: true };
       // A 200 that isn't a JSON object is a broken answer, not a miss.
-      if (got.failed || !isPlainObject(got.body)) return { ...empty, failed: true };
+      // A broken or missing barcode route must not block a series + issue lookup.
+      if (got.failed || !isPlainObject(got.body)) {
+        if (route.by === "barcode" && !barcodeOnly) continue;
+        return { ...empty, failed: true };
+      }
       const partial = got.body.partial === true;
       const res = sanitizeComicLookup(got.body, { fixture: useFixture });
       // A partial answer WITH a match opens the picker (covers that arrived + every named
@@ -5258,7 +5323,7 @@
   // live on Oct 10; 10 s left too little room on a slow cell connection (Nathan).
   const COMIC_RELAY_TIMEOUT_MS = 15000;
   async function comicRelayGet(path, query) {
-    const base = COMIC_RELAY_URL.replace(/\/+$/, "");
+    const base = comicRelayUrl().replace(/\/+$/, "");
     if (!/^https:\/\//i.test(base)) return { busy: false, failed: true, body: null };
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), COMIC_RELAY_TIMEOUT_MS);
@@ -5585,6 +5650,11 @@
           return { sourceId: v.sourceId, label: v.label || (c && c.label) || "", variant: v.variant, url: c ? c.url : "", thumb: c ? (c.thumb || c.url) : "" };
         })
       : covers.map((c) => ({ ...c }));
+    const isbn = els.fieldBarcode ? els.fieldBarcode.value : "";
+    const olUrl = comicCoverImagesOn() ? openLibraryIsbnCoverUrl(isbn, "M") : "";
+    if (olUrl && !tiles.some((t) => t.url === olUrl)) {
+      tiles.push({ sourceId: "openlibrary-isbn-" + normalizeBarcode(isbn), label: "Open Library cover", variant: false, url: olUrl, thumb: olUrl });
+    }
     saveBlockedTried = false; // a new picker starts muted
     comicPicker = {
       open: true,
@@ -5650,8 +5720,10 @@
   function pickComicCover(i, { render = true } = {}) {
     const c = comicPicker.tiles[i];
     if (!c) return;
+    if (els.fieldCoverPhoto) els.fieldCoverPhoto.value = "";
     setComicSourceRecord(c);
-    setComicCover(comicTileCoverUrl(c), "comiclookup", { label: c.label, variant: c.variant });
+    const src = (c.url && comicImageSourceFor(c.url) && comicImageSourceFor(c.url).key === "openlibrary") ? "openlibrary" : "comiclookup";
+    setComicCover(comicTileCoverUrl(c), src, { label: c.label, variant: c.variant });
     comicPicker.choice = "cover";
     comicPicker.picked = i;
     if (render) renderComicPicker();
@@ -5772,6 +5844,11 @@
       none.setAttribute("aria-pressed", String(comicPicker.choice === "none"));
       none.classList.toggle("is-selected", comicPicker.choice === "none");
     }
+    const take = $("#btn-comic-take-photo");
+    if (take) {
+      take.setAttribute("aria-pressed", String(comicPicker.choice === "photo"));
+      take.classList.toggle("is-selected", comicPicker.choice === "photo");
+    }
     updateSaveGate();
   }
 
@@ -5804,7 +5881,14 @@
       pick.hidden = !on;
       // Both credits while the picker shows the picture source's images; GCD's sentence alone otherwise.
       const imageCredit = comicCoverImagesOn() && comicPicker.tiles.some((t) => t.url) ? comicPicker.imageCredit : null;
-      pick.innerHTML = on ? comicCreditHtml(comicPicker.credit, els.fieldSourceUrl.value, imageCredit) : "";
+      let html = on ? comicCreditHtml(comicPicker.credit, els.fieldSourceUrl.value, imageCredit) : "";
+      const olSrc = COMIC_IMAGE_SOURCES.find((x) => x.key === "openlibrary");
+      const showOl = comicCoverImagesOn() && olSrc && (
+        (comicPicker.tiles || []).some((t) => t.url && comicImageSourceFor(t.url) && comicImageSourceFor(t.url).key === "openlibrary") ||
+        (els.fieldCoverSource && els.fieldCoverSource.value === "openlibrary")
+      );
+      if (on && showOl) html += `<p class="source-credit"><span class="credit-line">${olSrc.creditHtml()}</span></p>`;
+      pick.innerHTML = html;
     }
   }
 
@@ -6775,12 +6859,20 @@
       comicUrl.addEventListener("blur", () => requestAnimationFrame(updateCoverUrlError));
     }
     bindClick("#btn-comic-no-cover", () => {
+      if (els.fieldCoverPhoto) els.fieldCoverPhoto.value = "";
       setComicCover("", "", { label: "", variant: false });
       comicPicker.choice = "none";
       comicPicker.picked = -1;
       setComicSourceRecord(null);
       renderComicPicker();
     });
+    const pickerPhoto = document.getElementById("comic-take-photo-input");
+    if (pickerPhoto) {
+      pickerPhoto.addEventListener("change", () => {
+        const f = pickerPhoto.files && pickerPhoto.files[0];
+        if (f) applyCoverPhotoFile(f);
+      });
+    }
     if (els.coverChoices) {
       els.coverChoices.addEventListener("click", (e) => {
         const btn = e.target.closest(".cover-choice");

@@ -18,9 +18,9 @@ const check = (n, fn) => { fn(); passed++; console.log('PASS', n); };
 
 const tidyColon = (s) => String(s).replace(/\s+:\s+/g, ': ').replace(/:/g, '\u2060:');
 
-check('APP_VERSION is 2.13; sw cache is media-shelf-v2.13', () => {
-  assert.match(app, /const APP_VERSION = "2\.13"/);
-  assert.match(sw, /const CACHE = "media-shelf-v2\.13"/);
+check('APP_VERSION is 2.14; sw cache is media-shelf-v2.14', () => {
+  assert.match(app, /const APP_VERSION = "2\.14"/);
+  assert.match(sw, /const CACHE = "media-shelf-v2\.14"/);
 });
 
 check('item 1+10: hub clearance media query is max-width 559px; X inset is the 80px hub-clearance line; unfolded rules stay outside it', () => {
